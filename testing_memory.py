@@ -1,13 +1,11 @@
 from pyboy import PyBoy, WindowEvent
-
+import numpy as np
 def read_little_endian(pyboy, start, end):
-    value = 0
     raw_bytes = []
     for i in range(end, start - 1, -1):
         byte = pyboy.get_memory_value(i)
         raw_bytes.append(byte)
-        value = (value << 8) + byte
-    return value, raw_bytes
+    return raw_bytes
 
 def bytes_to_int(byte_list):
     return int.from_bytes(byte_list, byteorder='little')
@@ -39,12 +37,10 @@ while not pyboy.tick():
     for i in range(num_pokemon):
         base_address = 0xDCDF + 0x30 * i
         level = pyboy.get_memory_value(base_address + 0x1F)
-        hp_raw = [pyboy.get_memory_value(base_address + 0x22), pyboy.get_memory_value(base_address + 0x23)]
-        hp = bytes_to_int(hp_raw)
-        exp_raw = [pyboy.get_memory_value(base_address + 0x08), pyboy.get_memory_value(base_address + 0x09), pyboy.get_memory_value(base_address + 0x0A)]
-        exp = bytes_to_int(exp_raw)
+        hp_raw = np.sum(read_little_endian(pyboy, base_address + 0x22, base_address + 0x23) * np.array([1, 256])  )
+        exp_raw = np.sum(read_little_endian(pyboy, base_address + 0x08, base_address + 0x0A) * np.array([1, 256, 65536]))
         total_level += level
-        print(f"Pokémon {i+1}: Level {level}, HP {hp} (Level Raw: {level}, HP Raw: {hp_raw}, EXP: {exp}, EXP Raw: {exp_raw})")
+        print(f"Pokémon {i+1}: Level {level} (Level Raw: {level}, HP Raw: {hp_raw}, EXP Raw: {exp_raw})")
 
     print(f"Total Level of Party: {total_level}")
 

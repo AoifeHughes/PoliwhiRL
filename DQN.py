@@ -186,9 +186,12 @@ class LearnGame:
                 # Encourage exploration
                 # if loc isn't in set then reward  
                 if loc not in visited_locations:
-                    reward = torch.tensor([0.5], dtype=torch.float32,device=self.device)
+                    reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
                     # add loc to visited locations
                     visited_locations.add(loc)
+                else:
+                    # Discourage  revisiting locations too much 
+                    reward = torch.tensor([-0.01], dtype=torch.float32,device=self.device)
                 # Check for final loc = 4 
                 if loc == 4:
                     reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
