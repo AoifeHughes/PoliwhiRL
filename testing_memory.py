@@ -9,11 +9,8 @@ def read_little_endian(pyboy, start, end):
         value = (value << 8) + byte
     return value, raw_bytes
 
-def bcd_to_int(bcd_bytes):
-    total = 0
-    for byte in bcd_bytes:
-        total = (total * 100) + (byte // 16 * 10) + (byte % 16)
-    return total
+def bytes_to_int(byte_list):
+    return int.from_bytes(byte_list, byteorder='little')
 
 def count_set_bits(byte):
     count = 0
@@ -23,12 +20,13 @@ def count_set_bits(byte):
     return count
 
 pyboy = PyBoy('Pokemon - Crystal Version.gbc', window_scale=1)
-pyboy.set_emulation_speed(0)
+pyboy.set_emulation_speed(target_speed=0)
 
 while not pyboy.tick():
-    money_raw = [pyboy.get_memory_value(i) for i in range(0xD84E, 0xD851)]
-    money = bcd_to_int(money_raw)
-    print(f"Player's Money: {money} (Raw bytes: {money_raw})")
+    money_address = 0xD84E
+    money_bytes = [pyboy.get_memory_value(money_address + i) for i in range(3)]
+    money = bytes_to_int(money_bytes[::-1])
+    print(f"Player's Money: {money} (Raw bytes: {money_bytes})")
 
     johto_badges = pyboy.get_memory_value(0xD857)
     kanto_badges = pyboy.get_memory_value(0xD858)
@@ -39,7 +37,7 @@ while not pyboy.tick():
 
     total_level = 0
     for i in range(num_pokemon):
-        base_address = 0xD16C + 0x30 * i
+        base_address = 0xDCDF + 0x30 * i  # Each Pokémon's data is 0x30 bytes apart
         level = pyboy.get_memory_value(base_address + 0x1F)
         hp, hp_raw = read_little_endian(pyboy, base_address + 0x21, base_address + 0x22)
         total_level += level
