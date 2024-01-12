@@ -1,4 +1,6 @@
 from pyboy import PyBoy, WindowEvent
+import glob
+import os 
 
 class Controller:
     def __init__(self, rom_path):
@@ -46,3 +48,11 @@ class Controller:
     
     def stop(self, save=True):
         self.pyboy.stop(save)
+
+                # Delete files with .ram extension
+        for file in glob.glob('*.ram'):
+            os.remove(file)
+
+        # Delete files with .rtc extension
+        for file in glob.glob('*.rtc'):
+            os.remove(file)

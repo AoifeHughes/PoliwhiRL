@@ -157,6 +157,15 @@ class LearnGame:
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+
+    def rewards(self, default_reward=0.05):
+        reward = torch.tensor([default_reward], dtype=torch.float32, device=self.device)
+
+
+        # We want to negatively reward for walking into walls
+
+        return reward
+
     def run(self, num_episodes=100):
         time_per_episode = []
         for i_episode in tqdm(range(self.start_episode, num_episodes + self.start_episode)):
