@@ -15,12 +15,12 @@ class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
         super(DQN, self).__init__()
         self.USE_GRAYSCALE = USE_GRAYSCALE
-        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
+        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 8, kernel_size=5, stride=2)
+        self.bn1 = nn.BatchNorm2d(8)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=5, stride=2)
+        self.bn2 = nn.BatchNorm2d(16)
+        self.conv3 = nn.Conv2d(16, 16, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(16)
         self._to_linear = None
         self._compute_conv_output_size(h, w)
         self.fc = nn.Linear(self._to_linear, outputs)
@@ -72,7 +72,7 @@ class LearnGame:
         self.scaled_size = (int(self.screen_size[0] * SCALE_FACTOR), int(self.screen_size[1] * SCALE_FACTOR))
         self.model = DQN(self.scaled_size[0], self.scaled_size[1], len(self.movements), self.USE_GRAYSCALE).to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(1000)
         self.checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
         self.epsilon = 0.9
         self.start_episode = 0
@@ -160,6 +160,7 @@ class LearnGame:
     def run(self, num_episodes=100):
         time_per_episode = []
         for i_episode in tqdm(range(self.start_episode, num_episodes + self.start_episode)):
+            self.controller.stop()
             self.controller = Controller(self.rom_path)
             state = self.image_to_tensor(self.controller.screen_image())
             visited_locations = set()

@@ -43,3 +43,6 @@ class Controller:
     
     def screen_size(self):
         return self.pyboy.botsupport_manager().screen().screen_ndarray().shape[:2]
+    
+    def stop(self, save=True):
+        self.pyboy.stop(save)
