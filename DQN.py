@@ -15,12 +15,12 @@ class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
         super(DQN, self).__init__()
         self.USE_GRAYSCALE = USE_GRAYSCALE
-        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 8, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(8)
-        self.conv2 = nn.Conv2d(8, 16, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(16)
-        self.conv3 = nn.Conv2d(16, 16, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(16)
+        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(32)
         self._to_linear = None
         self._compute_conv_output_size(h, w)
         self.fc = nn.Linear(self._to_linear, outputs)
