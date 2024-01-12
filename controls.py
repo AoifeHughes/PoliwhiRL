@@ -6,7 +6,7 @@ class Controller:
     def __init__(self, rom_path):
         self.pyboy = PyBoy(rom_path, window_scale=1)
         self.pyboy.set_emulation_speed(target_speed=0)
-        self.movements = ["UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT"]
+        self.movements = ["UP", "DOWN", "LEFT", "RIGHT", "A", "B", "START", "SELECT", "PASS"]
 
         self.event_dict_press = {
                 "UP": WindowEvent.PRESS_ARROW_UP,
@@ -32,9 +32,13 @@ class Controller:
         
 
     def handleMovement(self, movement, ticks_per_input=30, wait=60):
-        self.pyboy.send_input(self.event_dict_press[movement])
-        [self.pyboy.tick() for _ in range(ticks_per_input)]
-        self.pyboy.send_input(self.event_dict_release[movement])
+        if movement != "PASS":
+            self.pyboy.send_input(self.event_dict_press[movement])
+            [self.pyboy.tick() for _ in range(ticks_per_input)]
+            self.pyboy.send_input(self.event_dict_release[movement])
+        else:
+            [self.pyboy.tick() for _ in range(ticks_per_input)]
+
         [self.pyboy.tick() for _ in range(wait)]
 
     def screen_image(self):
