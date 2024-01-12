@@ -37,11 +37,14 @@ while not pyboy.tick():
 
     total_level = 0
     for i in range(num_pokemon):
-        base_address = 0xDCDF + 0x30 * i  # Each Pokémon's data is 0x30 bytes apart
+        base_address = 0xDCDF + 0x30 * i
         level = pyboy.get_memory_value(base_address + 0x1F)
-        hp, hp_raw = read_little_endian(pyboy, base_address + 0x21, base_address + 0x22)
+        hp_raw = [pyboy.get_memory_value(base_address + 0x22), pyboy.get_memory_value(base_address + 0x23)]
+        hp = bytes_to_int(hp_raw)
+        exp_raw = [pyboy.get_memory_value(base_address + 0x08), pyboy.get_memory_value(base_address + 0x09), pyboy.get_memory_value(base_address + 0x0A)]
+        exp = bytes_to_int(exp_raw)
         total_level += level
-        print(f"Pokémon {i+1}: Level {level}, HP {hp} (Level Raw: {level}, HP Raw: {hp_raw})")
+        print(f"Pokémon {i+1}: Level {level}, HP {hp} (Level Raw: {level}, HP Raw: {hp_raw}, EXP: {exp}, EXP Raw: {exp_raw})")
 
     print(f"Total Level of Party: {total_level}")
 
