@@ -14,6 +14,7 @@ from controls import Controller
 class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
         super(DQN, self).__init__()
+        self.USE_GRAYSCALE = USE_GRAYSCALE
         self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
         self.bn1 = nn.BatchNorm2d(16)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
@@ -24,8 +25,7 @@ class DQN(nn.Module):
         self._compute_conv_output_size(h, w)
         self.fc = nn.Linear(self._to_linear, outputs)
 
-        # Setup additional variables 
-        self.USE_GRAYSCALE = USE_GRAYSCALE
+
 
     def _compute_conv_output_size(self, h, w):
         x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
@@ -65,15 +65,15 @@ class LearnGame:
         self.USE_GRAYSCALE = USE_GRAYSCALE
         self.goal_loc = goal_loc
         self.controller = Controller(self.rom_path)
-        self.movements = self.controller.movements()
+        self.movements = self.controller.movements
 
 
         self.screen_size = self.controller.screen_size()
         self.scaled_size = (int(self.screen_size[0] * SCALE_FACTOR), int(self.screen_size[1] * SCALE_FACTOR))
-        self.model = DQN(self.scaled_size[0], self.scaled_size[1], len(movements), self.USE_GRAYSCALE).to(device)
+        self.model = DQN(self.scaled_size[0], self.scaled_size[1], len(self.movements), self.USE_GRAYSCALE).to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.memory = ReplayMemory(10000)
-        self.checkpoint_path = "pokemon_rl_checkpoint.pth"
+        self.checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
         self.epsilon = 0.9
         self.start_episode = 0
         self.load_checkpoint()
@@ -121,8 +121,7 @@ class LearnGame:
         return image
 
     def select_action(self, state):
-        global epsilon
-        if random.random() > epsilon:
+        if random.random() > self.epsilon:
             with torch.no_grad():
                 return self.model(state).max(1)[1].view(1, 1).to(self.device)  # Sending tensor to the specified device
         else:
@@ -167,7 +166,7 @@ class LearnGame:
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.01], dtype=torch.float32)
+                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
 
                 img = self.controller.screen_image()
                 loc = self.controller.get_memory_value(self.location_address)
@@ -177,12 +176,12 @@ class LearnGame:
                 # Encourage exploration
                 # if loc isn't in set then reward  
                 if loc not in visited_locations:
-                    reward = torch.tensor([0.5], dtype=torch.float32)
+                    reward = torch.tensor([0.5], dtype=torch.float32,device=self.device)
                     # add loc to visited locations
                     visited_locations.add(loc)
                 # Check for final loc = 4 
                 if loc == 4:
-                    reward = torch.tensor([1.0], dtype=torch.float32)
+                    reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
                     done = True
 
                 next_state = self.image_to_tensor(img) if not done else None
@@ -206,7 +205,7 @@ class LearnGame:
                     'epsilon': self.epsilon
                 })
 
-        torch.save(self.model.state_dict(), "pokemon_rl_model_final.pth")
+        torch.save(self.model.state_dict(), "./checkpoints/pokemon_rl_model_final.pth")
         self.controller.stop(save=False)
         # Save output of list of time per episode as csv 
         with open('time_per_episode.csv', 'w') as f:
