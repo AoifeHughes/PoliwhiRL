@@ -1,74 +1,53 @@
-from pyboy import PyBoy
+from pyboy import PyBoy, WindowEvent
 
-def bytes_to_int(byte_list):
-    return int.from_bytes(byte_list, byteorder='little')
+def read_little_endian(pyboy, start, end):
+    value = 0
+    raw_bytes = []
+    for i in range(end, start - 1, -1):
+        byte = pyboy.get_memory_value(i)
+        raw_bytes.append(byte)
+        value = (value << 8) + byte
+    return value, raw_bytes
 
-def read_pokemon_data(pyboy, base_address):
-    current_hp_bytes = [
-        pyboy.get_memory_value(base_address),
-        pyboy.get_memory_value(base_address + 1)
-    ]
-    max_hp_bytes = [
-        pyboy.get_memory_value(base_address + 2),
-        pyboy.get_memory_value(base_address + 3)
-    ]
-    
-    current_hp = bytes_to_int(current_hp_bytes)
-    max_hp = bytes_to_int(max_hp_bytes)
-    level = pyboy.get_memory_value(base_address + 30)  # Level is at an offset of 30 bytes
+def bcd_to_int(bcd_bytes):
+    total = 0
+    for byte in bcd_bytes:
+        total = (total * 100) + (byte // 16 * 10) + (byte % 16)
+    return total
 
-    return {
-        'Current HP': current_hp,
-        'Max HP': max_hp,
-        'Level': level
-    }
+def count_set_bits(byte):
+    count = 0
+    while byte:
+        count += byte & 1
+        byte >>= 1
+    return count
 
-
-# Initialize PyBoy and load your ROM
 pyboy = PyBoy('Pokemon - Crystal Version.gbc', window_scale=1)
 pyboy.set_emulation_speed(0)
 
-# Addresses
-money_address = 0xD84E
-badges_johto_address = 0xD857
-badges_kanto_address = 0xD858
-party_size_address = 0xDCD7
-party_data_base_address = 0xDCDF
-pokemon_data_size = 44  # The size of the data block for each Pokemon
-
-previous_data = {}
-
 while not pyboy.tick():
-    # Reading Money
-    money_bytes = [pyboy.get_memory_value(money_address + i) for i in range(3)]
-    money = bytes_to_int(money_bytes[::-1])
+    money_raw = [pyboy.get_memory_value(i) for i in range(0xD84E, 0xD851)]
+    money = bcd_to_int(money_raw)
+    print(f"Player's Money: {money} (Raw bytes: {money_raw})")
 
-    # Reading Badges
-    badges_johto = pyboy.get_memory_value(badges_johto_address)
-    badges_kanto = pyboy.get_memory_value(badges_kanto_address)
+    johto_badges = pyboy.get_memory_value(0xD857)
+    kanto_badges = pyboy.get_memory_value(0xD858)
+    print(f"Johto Badges: {johto_badges}, Kanto Badges: {kanto_badges} (Raw bytes: {[johto_badges, kanto_badges]})")
 
-    # Reading Party Size and Data
-    party_size = pyboy.get_memory_value(party_size_address)
-    party_data = {}
-    for i in range(party_size):
-        pokemon_data_address = party_data_base_address + i * pokemon_data_size
-        party_data[f'Pokemon {i + 1}'] = read_pokemon_data(pyboy, pokemon_data_address)
+    num_pokemon = pyboy.get_memory_value(0xDCD7)
+    print(f"Number of Party Pokémon: {num_pokemon} (Raw byte: {num_pokemon})")
 
-    # Creating a combined dictionary
-    current_data = {
-        'Money': money,
-        'Johto Badges': badges_johto,
-        'Kanto Badges': badges_kanto,
-        'Party': party_data
-    }
+    total_level = 0
+    for i in range(num_pokemon):
+        base_address = 0xD16C + 0x30 * i
+        level = pyboy.get_memory_value(base_address + 0x1F)
+        hp, hp_raw = read_little_endian(pyboy, base_address + 0x21, base_address + 0x22)
+        total_level += level
+        print(f"Pokémon {i+1}: Level {level}, HP {hp} (Level Raw: {level}, HP Raw: {hp_raw})")
 
-    # Check for changes
-    if current_data != previous_data:
-        print(current_data)
-        previous_data = current_data.copy()
+    print(f"Total Level of Party: {total_level}")
 
-    # Uncomment the line below if you want the script to run continuously
-    # Otherwise, it will run only once
-    # break
+    caught_pokemon = sum(count_set_bits(pyboy.get_memory_value(0xDE99 + i)) for i in range(20))
+    print(f"Total Number of Caught Pokémon: {caught_pokemon}")
 
 pyboy.stop()
