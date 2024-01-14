@@ -158,13 +158,14 @@ class LearnGame:
         self.optimizer.step()
 
 
-    # def rewards(self, default_reward=0.05):
-    #     reward = torch.tensor([default_reward], dtype=torch.float32, device=self.device)
+    def rewards(self, default_reward=0.05):
+        reward = torch.tensor([default_reward], dtype=torch.float32, device=self.device)
 
 
-    #     # We want to negatively reward for walking into walls
+        # We want to negatively reward for walking into walls i.e., get previous
+        # state and check if the location is the same as the current state
 
-    #     return reward
+        return reward
 
     def run(self, num_episodes=100):
         time_per_episode = []

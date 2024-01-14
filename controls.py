@@ -2,6 +2,8 @@ from pyboy import PyBoy, WindowEvent
 import glob
 import os 
 import memory
+import OCR
+
 class Controller:
     def __init__(self, rom_path):
         self.pyboy = PyBoy(rom_path, window_scale=1)
@@ -97,3 +99,8 @@ class Controller:
             total_hp += hp
             total_exp += exp
         return total_level, total_hp, total_exp
+    
+    def get_text_on_screen(self):
+        screen_image = self.pyboy.botsupport_manager().screen().screen_image()
+        text = OCR.extract_text(OCR.preprocess_image(screen_image))
+        return text

@@ -1,5 +1,27 @@
 from pyboy import PyBoy, WindowEvent
 import numpy as np
+
+from PIL import Image, ImageEnhance, ImageFilter
+import pytesseract
+
+def preprocess_image(image):
+    # Scale the image by a factor of 2
+    original_size = image.size
+    scaled_size = tuple(2 * x for x in original_size)
+    image = image.resize(scaled_size, Image.LANCZOS)
+    # Convert to grayscale for better processing
+    image = image.convert('L')
+    # Apply threshold to get a binary image
+    threshold_value = 120  # You might need to adjust this
+    image = image.point(lambda p: p > threshold_value and 255)
+    # Additional filters can be applied if necessary
+    # image = image.filter(ImageFilter.MedianFilter())
+    return image
+
+def extract_text(image):
+    text = pytesseract.image_to_string(image, config='--psm 11')
+    return text
+
 def read_little_endian(pyboy, start, end):
     raw_bytes = []
     for i in range(end, start - 1, -1):
@@ -21,6 +43,7 @@ pyboy = PyBoy('Pokemon - Crystal Version.gbc', window_scale=1)
 pyboy.set_emulation_speed(target_speed=0)
 unique_locations = set()
 unique_XY = set()
+
 while not pyboy.tick():
     money_address = 0xD84E
     money_bytes = [pyboy.get_memory_value(money_address + i) for i in range(3)]
@@ -53,6 +76,13 @@ while not pyboy.tick():
     print(f"Total Number of Caught Pokémon: {caught_pokemon}")
     unique_locations.add(pyboy.get_memory_value(0xD148))
     unique_XY.add((x_coord, y_coord))
+
+    # Print the contents of the screen's text 
+    screen_image = pyboy.botsupport_manager().screen().screen_image()
+    screen_image = preprocess_image(screen_image)
+    text = extract_text(screen_image)
+    print(f"Text on screen: {text}")
+
 print(f"Unique Locations: {unique_locations}")
 print(f"Unique XY Coordinates: {unique_XY}")
 
