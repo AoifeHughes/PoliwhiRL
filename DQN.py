@@ -194,7 +194,7 @@ class LearnGame:
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
-    def rewards(self, default_reward=0.05):
+    def rewards(self, action, loc, visited_locations, default_reward=0.05):
         # store if has been rewarded recently
         # if has been rewarded recently, then don't reward again
 
@@ -215,7 +215,20 @@ class LearnGame:
             else:
                 self.negative_keywords[keyword] = False
 
-        return torch.tensor([total_reward], dtype=torch.float32, device=self.device)
+        # We should discourage start and select
+        if action == "START" or action == "SELECT":
+            total_reward -= default_reward
+
+        # Encourage exploration
+        # if loc isn't in set then reward
+        if loc not in visited_locations:
+            total_reward += default_reward
+            # add loc to visited locations
+            visited_locations.add(loc)
+        else:
+            # Discourage  revisiting locations too much
+            total_reward -= default_reward
+        return total_reward
 
     def run(self, num_episodes=100):
         time_per_episode = []
@@ -236,28 +249,17 @@ class LearnGame:
 
                 done = False
 
-                # Encourage exploration
-                # if loc isn't in set then reward
-                if loc not in visited_locations:
-                    reward = torch.tensor(
-                        [1.0], dtype=torch.float32, device=self.device
-                    )
-                    # add loc to visited locations
-                    visited_locations.add(loc)
-                else:
-                    # Discourage  revisiting locations too much
-                    reward = torch.tensor(
-                        [-0.01], dtype=torch.float32, device=self.device
-                    )
-                # Check for final loc = 4
-                if loc == 4:
-                    reward = torch.tensor(
-                        [1.0], dtype=torch.float32, device=self.device
-                    )
+                reward = self.rewards(
+                    self.movements[action.item()], loc, visited_locations
+                )
+
+                if self.locations[loc] == self.goal_loc:
+                    reward = reward + 2
                     done = True
 
                 next_state = self.image_to_tensor(img) if not done else None
 
+                reward = torch.tensor([reward], dtype=torch.float32, device=self.device)
                 self.memory.push(state, action, reward, next_state)
 
                 self.optimize_model()
