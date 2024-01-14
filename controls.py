@@ -1,7 +1,7 @@
 from pyboy import PyBoy, WindowEvent
 import glob
 import os 
-
+import memory
 class Controller:
     def __init__(self, rom_path):
         self.pyboy = PyBoy(rom_path, window_scale=1)
@@ -60,3 +60,40 @@ class Controller:
         # Delete files with .rtc extension
         for file in glob.glob('*.rtc'):
             os.remove(file)
+
+    def get_current_location(self):
+        return self.pyboy.get_memory_value(memory.location)
+    
+    def has_gotten_out_of_house(self):
+        return self.pyboy.get_memory_value(memory.outside_house) == 4
+
+    def player_received(self):
+        return self.pyboy.get_memory_value(memory.recived) 
+    
+    def get_XY(self):
+        x_coord = self.pyboy.get_memory_value(memory.X)
+        y_coord = self.pyboy.get_memory_value(memory.Y)
+        return x_coord, y_coord
+    
+    def get_player_money(self):
+        money_bytes = [self.pyboy.get_memory_value(memory.money + i) for i in range(3)]
+        money = self.bytes_to_int(money_bytes[::-1])
+        return money
+
+    def bytes_to_int(self, byte_list):
+        return int.from_bytes(byte_list, byteorder='little')
+    
+    def party_info(self):
+        num_pokemon = self.pyboy.get_memory_value(memory.party_base)
+        total_level = 0
+        total_hp = 0
+        total_exp = 0
+        for i in range(num_pokemon):
+            base_address = memory.party_base + 0x30 * i
+            level = self.pyboy.get_memory_value(base_address + 0x1F)
+            hp = np.sum(self.read_little_endian(base_address + 0x22, base_address + 0x23) * np.array([1, 256])  )
+            exp = np.sum(self.read_little_endian(base_address + 0x08, base_address + 0x0A) * np.array([1, 256, 65536]))
+            total_level += level
+            total_hp += hp
+            total_exp += exp
+        return total_level, total_hp, total_exp
