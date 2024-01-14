@@ -2,6 +2,5 @@ numpy==1.26.3
 Pillow==10.2.0
 pyboy==1.6.11
 pytesseract==0.3.10
-torch==2.1.2
+tesseract==0.1.3torch==2.1.2
 tqdm==4.66.1
-tesseract==0.1.3
