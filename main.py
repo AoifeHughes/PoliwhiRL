@@ -1,16 +1,31 @@
+# -*- coding: utf-8 -*-
 import DQN
 import torch
-import memory 
+import memory
+
+
 def main():
-    rom_path = 'Pokemon - Crystal Version.gbc'
-    locations = {6: "DownstairsPlayersHouse", 0: "UpstairsPlayersHouse", 4: "OutsideStartingArea"}
-    location_address = 0xD148
+    rom_path = "Pokemon - Crystal Version.gbc"
+
+    location_address = memory.location
+    locations = memory.locations
     device = torch.device("mps")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
-    goal_loc = memory.outside_house
-    model = DQN.LearnGame(rom_path, locations, location_address, device, SCALE_FACTOR, USE_GRAYSCALE, goal_loc)
+    goal_loc = locations[6]
+    timeout = 1500
+    model = DQN.LearnGame(
+        rom_path,
+        locations,
+        location_address,
+        device,
+        SCALE_FACTOR,
+        USE_GRAYSCALE,
+        goal_loc,
+        timeout,
+    )
     model.run()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
