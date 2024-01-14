@@ -351,7 +351,9 @@ class LearnGame:
                         "optimizer": self.optimizer.state_dict(),
                         "epsilon": self.epsilon,
                     },
-                    filename="pokemon_rl_checkpoint_phase_{}.pth".format(self.phase),
+                    filename="./checkpoints/pokemon_rl_checkpoint_phase_{}.pth".format(
+                        self.phase
+                    ),
                 )
 
                 # report on phase
