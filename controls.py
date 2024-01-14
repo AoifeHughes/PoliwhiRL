@@ -31,7 +31,7 @@ class Controller:
             }
         
 
-    def handleMovement(self, movement, ticks_per_input=30, wait=60):
+    def handleMovement(self, movement, ticks_per_input=20, wait=60):
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])
             [self.pyboy.tick() for _ in range(ticks_per_input)]
