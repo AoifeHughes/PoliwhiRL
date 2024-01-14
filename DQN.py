@@ -12,7 +12,7 @@ from PIL import Image
 import csv
 from controls import Controller
 
-DEBUG = True
+DEBUG = False
 
 
 class DQN(nn.Module):
@@ -97,7 +97,7 @@ class LearnGame:
             len(self.movements),
             self.USE_GRAYSCALE,
         ).to(device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.005)
         self.memory = ReplayMemory(1000)
         self.checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
         self.epsilon = 0.9
@@ -241,7 +241,9 @@ class LearnGame:
                 print("Visited locations: ", visited_locations)
         else:
             # Discourage  revisiting locations too much
-            total_reward -= default_reward
+            if DEBUG:
+                print("Discouraging revisiting locations")
+                total_reward -= default_reward
 
         print("Total reward: ", total_reward)
         return total_reward
@@ -258,7 +260,7 @@ class LearnGame:
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.001], dtype=torch.float32, device=self.device)
+                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
 
                 img = self.controller.screen_image()
                 loc = self.controller.get_memory_value(self.location_address)
@@ -275,7 +277,7 @@ class LearnGame:
 
                 next_state = self.image_to_tensor(img) if not done else None
 
-                if t > self.timeout:
+                if t > self.timeout and self.timeout != -1:
                     reward = reward - 2
 
                 self.memory.push(
@@ -289,16 +291,13 @@ class LearnGame:
 
                 state = next_state
                 if done:
-                    if DEBUG:
-                        print("----------------------------------------")
-                        if i_episode > 0:
-                            print(
-                                "Average time per episode: ", np.mean(time_per_episode)
-                            )
-                        print("Time for this episode: ", t)
-                        print("Location: ", loc)
-                        print("Reward: ", reward)
-                        print("----------------------------------------")
+                    print("----------------------------------------")
+                    if i_episode > 0:
+                        print("Average time per episode: ", np.mean(time_per_episode))
+                    print("Time for this episode: ", t)
+                    print("Location: ", loc)
+                    print("Reward: ", reward)
+                    print("----------------------------------------")
                     time_per_episode.append(t)
                     break
 
