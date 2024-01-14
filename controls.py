@@ -45,7 +45,7 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
-    def handleMovement(self, movement, ticks_per_input=20, wait=60):
+    def handleMovement(self, movement, ticks_per_input=30, wait=60):
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])
             [self.pyboy.tick() for _ in range(ticks_per_input)]
@@ -82,7 +82,7 @@ class Controller:
         return self.pyboy.get_memory_value(memory.outside_house) == 4
 
     def player_received(self):
-        return self.pyboy.get_memory_value(memory.recived)
+        return self.pyboy.get_memory_value(memory.received)
 
     def get_XY(self):
         x_coord = self.pyboy.get_memory_value(memory.X)

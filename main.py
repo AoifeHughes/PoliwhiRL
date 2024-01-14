@@ -12,7 +12,8 @@ def main():
     device = torch.device("mps")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
-    goal_loc = locations[4]
+    goal_loc = locations[6]
+    timeout = 1500
     model = DQN.LearnGame(
         rom_path,
         locations,
@@ -21,6 +22,7 @@ def main():
         SCALE_FACTOR,
         USE_GRAYSCALE,
         goal_loc,
+        timeout,
     )
     model.run()
 
