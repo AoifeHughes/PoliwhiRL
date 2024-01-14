@@ -230,7 +230,7 @@ class LearnGame:
             total_reward -= default_reward
         return total_reward
 
-    def run(self, num_episodes=100):
+    def run(self, num_episodes=1000):
         time_per_episode = []
         for i_episode in tqdm(
             range(self.start_episode, num_episodes + self.start_episode)
@@ -242,7 +242,7 @@ class LearnGame:
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
+                reward = torch.tensor([-0.001], dtype=torch.float32, device=self.device)
 
                 img = self.controller.screen_image()
                 loc = self.controller.get_memory_value(self.location_address)
@@ -266,6 +266,7 @@ class LearnGame:
 
                 state = next_state
                 if done:
+                    print("Average time per episode: ", np.mean(time_per_episode))
                     time_per_episode.append(t)
                     break
 
