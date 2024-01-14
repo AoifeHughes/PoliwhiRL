@@ -160,5 +160,5 @@ cython_debug/
 #.idea/
 Pokemon*
 *.ram
-*.rtc 
-*.state 
+*.rtc
+*.state

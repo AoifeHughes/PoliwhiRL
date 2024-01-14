@@ -1,3 +1,0 @@
-[submodule "mgba"]
-	path = mgba
-	url = git@github.com:mgba-emu/mgba.git
