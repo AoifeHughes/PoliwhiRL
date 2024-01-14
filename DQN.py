@@ -67,16 +67,19 @@ class LearnGame:
         device,
         SCALE_FACTOR,
         USE_GRAYSCALE,
-        goal_loc,
+        goal_locs,
+        goal_targets,
         timeout,
     ):
+        self.phase = 0
         self.rom_path = rom_path
         self.locations = locations
         self.location_address = location_address
         self.device = device
         self.SCALE_FACTOR = SCALE_FACTOR
         self.USE_GRAYSCALE = USE_GRAYSCALE
-        self.goal_loc = goal_loc
+        self.goal_locs = goal_locs
+        self.goal_targets = goal_targets
         self.controller = Controller(self.rom_path)
         self.movements = self.controller.movements
         self.positive_keywords = {"received": False, "won": False}
@@ -84,6 +87,10 @@ class LearnGame:
             "lost": False,
             "fainted": False,
             "save the game": False,
+            "saving": False,
+            "select": False,
+            "town map": False,
+            "text speed": False,
         }
         self.timeout = timeout
         self.screen_size = self.controller.screen_size()
@@ -104,8 +111,8 @@ class LearnGame:
         self.start_episode = 0
         self.load_checkpoint()
 
-    def save_checkpoint(self, state):
-        torch.save(state, self.checkpoint_path)
+    def save_checkpoint(self, state, filename="pokemon_rl_checkpoint.pth"):
+        torch.save(state, filename)
 
     def load_checkpoint(self):
         if os.path.isfile(self.checkpoint_path):
@@ -197,7 +204,7 @@ class LearnGame:
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
-    def rewards(self, action, loc, visited_locations, default_reward=0.05):
+    def rewards(self, action, loc, visited_locations, default_reward=0.01):
         # store if has been rewarded recently
         # if has been rewarded recently, then don't reward again
 
@@ -205,7 +212,7 @@ class LearnGame:
         text = self.controller.get_text_on_screen()
         # check if any of the positive keywords are in the text
         for keyword in self.positive_keywords:
-            if keyword in text and not self.positive_keywords[keyword]:
+            if keyword in text.lower() and not self.positive_keywords[keyword]:
                 self.positive_keywords[keyword] = True
                 total_reward += default_reward
                 if DEBUG:
@@ -214,15 +221,13 @@ class LearnGame:
                 self.positive_keywords[keyword] = False
         # check if any of the negative keywords are in the text
         for keyword in self.negative_keywords:
-            if keyword in text and not self.negative_keywords[keyword]:
+            if keyword in text.lower() and not self.negative_keywords[keyword]:
                 self.negative_keywords[keyword] = True
                 total_reward -= default_reward
                 if DEBUG:
                     print("Found negative keyword: ", keyword)
             else:
                 self.negative_keywords[keyword] = False
-        if DEBUG:
-            print("Total reward: ", total_reward)
 
         # We should discourage start and select
         if action == "START" or action == "SELECT":
@@ -245,7 +250,8 @@ class LearnGame:
                 print("Discouraging revisiting locations")
                 total_reward -= default_reward
 
-        print("Total reward: ", total_reward)
+        if DEBUG:
+            print("Total reward: ", total_reward)
         return total_reward
 
     def run(self, num_episodes=1000):
@@ -257,6 +263,7 @@ class LearnGame:
             self.controller = Controller(self.rom_path)
             state = self.image_to_tensor(self.controller.screen_image())
             visited_locations = set()
+            total_reward = 0
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
@@ -271,14 +278,15 @@ class LearnGame:
                     self.movements[action.item()], loc, visited_locations
                 )
 
-                if self.locations[loc] == self.goal_loc:
-                    reward = reward + 2
-                    done = True
+                if loc in self.locations:
+                    if self.locations[loc] == self.goal_locs[self.phase]:
+                        reward = reward + 1
+                        done = True
 
                 next_state = self.image_to_tensor(img) if not done else None
 
                 if t > self.timeout and self.timeout != -1:
-                    reward = reward - 2
+                    reward = reward - 1
 
                 self.memory.push(
                     state,
@@ -288,7 +296,7 @@ class LearnGame:
                 )
 
                 self.optimize_model()
-
+                total_reward += reward
                 state = next_state
                 if done:
                     print("----------------------------------------")
@@ -296,7 +304,7 @@ class LearnGame:
                         print("Average time per episode: ", np.mean(time_per_episode))
                     print("Time for this episode: ", t)
                     print("Location: ", loc)
-                    print("Reward: ", reward)
+                    print("Reward: ", total_reward)
                     print("----------------------------------------")
                     time_per_episode.append(t)
                     break
@@ -304,14 +312,40 @@ class LearnGame:
             self.epsilon = max(self.epsilon * 0.99, 0.05)
 
             if i_episode % 5 == 0:
+                # save checkpoint with the i_episode
                 self.save_checkpoint(
                     {
                         "epoch": i_episode + 1,
                         "state_dict": self.model.state_dict(),
                         "optimizer": self.optimizer.state_dict(),
                         "epsilon": self.epsilon,
-                    }
+                    }, filename=f"{self.checkpoint_path[:-4]}_{i_episode}.pth"
                 )
+
+            # if the phase is optimal, save the model and move on 
+            if np.mean(time_per_episode) >= self.goal_targets[self.phase]:
+                self.phase += 1
+                self.save_checkpoint(
+                    {
+                        "epoch": 0,
+                        "state_dict": self.model.state_dict(),
+                        "optimizer": self.optimizer.state_dict(),
+                        "epsilon": self.epsilon,
+                    },
+                    filename="pokemon_rl_checkpoint_phase_{}.pth".format(self.phase),
+                )
+
+                # report on phase 
+                print("----------------------------------------")
+                print("Phase {} complete".format(self.phase))
+                print("Average time per episode: ", np.mean(time_per_episode))
+                print("Target reward: ", self.goal_targets[self.phase])
+                print("----------------------------------------")
+            
+            # check if all phases are complete
+            if self.phase == len(self.goal_targets):
+                print("All phases complete")
+                break
 
         torch.save(self.model.state_dict(), "./checkpoints/pokemon_rl_model_final.pth")
         self.controller.stop(save=False)
