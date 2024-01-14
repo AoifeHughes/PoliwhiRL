@@ -244,7 +244,7 @@ class LearnGame:
 
         # We should discourage start and select
         if action == "START" or action == "SELECT":
-            total_reward -= default_reward*2
+            total_reward -= default_reward * 2
             if DEBUG:
                 print("Discouraging start and select")
         # Encourage exploration
@@ -333,12 +333,16 @@ class LearnGame:
                         "state_dict": self.model.state_dict(),
                         "optimizer": self.optimizer.state_dict(),
                         "epsilon": self.epsilon,
-                    }, filename=f"{self.checkpoint_path[:-4]}_{i_episode}.pth"
+                    },
+                    filename=f"{self.checkpoint_path[:-4]}_{i_episode}.pth",
                 )
 
-            # if the phase is optimal, save the model and move on 
+            # if the phase is optimal, save the model and move on
             # Ensure at least 20 episodes have been run
-            if np.mean(time_per_episode) >= self.goal_targets[self.phase] and i_episode > 20:
+            if (
+                np.mean(time_per_episode) >= self.goal_targets[self.phase]
+                and i_episode > 20
+            ):
                 self.phase += 1
                 self.save_checkpoint(
                     {
@@ -350,13 +354,13 @@ class LearnGame:
                     filename="pokemon_rl_checkpoint_phase_{}.pth".format(self.phase),
                 )
 
-                # report on phase 
+                # report on phase
                 print("----------------------------------------")
                 print("Phase {} complete".format(self.phase))
                 print("Average time per episode: ", np.mean(time_per_episode))
                 print("Target reward: ", self.goal_targets[self.phase])
                 print("----------------------------------------")
-            
+
             # check if all phases are complete
             if self.phase == len(self.goal_targets):
                 print("All phases complete")
