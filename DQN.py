@@ -115,6 +115,18 @@ class LearnGame:
         torch.save(state, filename)
 
     def load_checkpoint(self):
+        # Check for latest checkpoint in checkpoints folder
+        tmp_path = self.checkpoint_path
+        if os.path.isdir("./checkpoints"):
+            checkpoints = os.listdir("./checkpoints")
+            if len(checkpoints) > 0:
+                # sort checkpoints by last modified date
+                checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
+                self.checkpoint_path = "./checkpoints/" + checkpoints[-1]
+                # Set the start episode to the number of the checkpoint
+                self.start_episode = int(self.checkpoint_path.split("_")[-1][:-4])
+        else:
+            os.mkdir("./checkpoints")
         if os.path.isfile(self.checkpoint_path):
             print(f"Loading checkpoint '{self.checkpoint_path}'")
             checkpoint = torch.load(self.checkpoint_path)
@@ -122,6 +134,7 @@ class LearnGame:
             self.optimizer.load_state_dict(checkpoint["optimizer"])
             self.start_episode = checkpoint["epoch"]
             self.epsilon = checkpoint["epsilon"]
+            self.checkpoint_path = tmp_path
         else:
             print(f"No checkpoint found at '{self.checkpoint_path}'")
 
@@ -231,10 +244,9 @@ class LearnGame:
 
         # We should discourage start and select
         if action == "START" or action == "SELECT":
-            total_reward -= default_reward
+            total_reward -= default_reward*2
             if DEBUG:
                 print("Discouraging start and select")
-
         # Encourage exploration
         # if loc isn't in set then reward
         if loc not in visited_locations:
@@ -300,6 +312,8 @@ class LearnGame:
                 state = next_state
                 if done:
                     print("----------------------------------------")
+                    print("Phase: ", self.phase)
+                    print("Phase target: ", self.goal_targets[self.phase])
                     if i_episode > 0:
                         print("Average time per episode: ", np.mean(time_per_episode))
                     print("Time for this episode: ", t)
@@ -323,7 +337,8 @@ class LearnGame:
                 )
 
             # if the phase is optimal, save the model and move on 
-            if np.mean(time_per_episode) >= self.goal_targets[self.phase]:
+            # Ensure at least 20 episodes have been run
+            if np.mean(time_per_episode) >= self.goal_targets[self.phase] and i_episode > 20:
                 self.phase += 1
                 self.save_checkpoint(
                     {
