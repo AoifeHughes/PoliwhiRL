@@ -166,7 +166,7 @@ class LearnGame:
 
     #     return reward
 
-    def run(self, num_episodes=100):
+    def run(self, num_episodes=1000):
         time_per_episode = []
         for i_episode in tqdm(range(self.start_episode, num_episodes + self.start_episode)):
             self.controller.stop()
@@ -176,7 +176,7 @@ class LearnGame:
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
+                reward = torch.tensor([-0.001], dtype=torch.float32, device=self.device)
 
                 img = self.controller.screen_image()
                 loc = self.controller.get_memory_value(self.location_address)
@@ -184,15 +184,15 @@ class LearnGame:
                 done = False
 
                 # Encourage exploration
-                # if loc isn't in set then reward  
-                if loc not in visited_locations:
-                    reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
-                    # add loc to visited locations
-                    visited_locations.add(loc)
-                else:
-                    # Discourage  revisiting locations too much 
-                    reward = torch.tensor([-0.01], dtype=torch.float32,device=self.device)
-                # Check for final loc = 4 
+                # # if loc isn't in set then reward  
+                # if loc not in visited_locations:
+                #     reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
+                #     # add loc to visited locations
+                #     visited_locations.add(loc)
+                # else:
+                #     # Discourage  revisiting locations too much 
+                #     reward = torch.tensor([-0.01], dtype=torch.float32,device=self.device)
+                # # Check for final loc = 4 
                 if loc == 4:
                     reward = torch.tensor([1.0], dtype=torch.float32,device=self.device)
                     done = True
@@ -205,6 +205,7 @@ class LearnGame:
 
                 state = next_state
                 if done:
+                    print("Average time per episode: ", np.mean(time_per_episode))
                     time_per_episode.append(t)
                     break
 
