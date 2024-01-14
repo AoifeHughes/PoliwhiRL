@@ -12,6 +12,8 @@ from PIL import Image
 import csv
 from controls import Controller
 
+DEBUG = True
+
 
 class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
@@ -66,6 +68,7 @@ class LearnGame:
         SCALE_FACTOR,
         USE_GRAYSCALE,
         goal_loc,
+        timeout,
     ):
         self.rom_path = rom_path
         self.locations = locations
@@ -82,7 +85,7 @@ class LearnGame:
             "fainted": False,
             "save the game": False,
         }
-
+        self.timeout = timeout
         self.screen_size = self.controller.screen_size()
         self.scaled_size = (
             int(self.screen_size[0] * SCALE_FACTOR),
@@ -202,22 +205,30 @@ class LearnGame:
         text = self.controller.get_text_on_screen()
         # check if any of the positive keywords are in the text
         for keyword in self.positive_keywords:
-            if keyword in text:
+            if keyword in text and not self.positive_keywords[keyword]:
                 self.positive_keywords[keyword] = True
                 total_reward += default_reward
+                if DEBUG:
+                    print("Found positive keyword: ", keyword)
             else:
                 self.positive_keywords[keyword] = False
         # check if any of the negative keywords are in the text
         for keyword in self.negative_keywords:
-            if keyword in text:
+            if keyword in text and not self.negative_keywords[keyword]:
                 self.negative_keywords[keyword] = True
                 total_reward -= default_reward
+                if DEBUG:
+                    print("Found negative keyword: ", keyword)
             else:
                 self.negative_keywords[keyword] = False
+        if DEBUG:
+            print("Total reward: ", total_reward)
 
         # We should discourage start and select
         if action == "START" or action == "SELECT":
             total_reward -= default_reward
+            if DEBUG:
+                print("Discouraging start and select")
 
         # Encourage exploration
         # if loc isn't in set then reward
@@ -225,9 +236,14 @@ class LearnGame:
             total_reward += default_reward
             # add loc to visited locations
             visited_locations.add(loc)
+            if DEBUG:
+                print("Encouraging exploration")
+                print("Visited locations: ", visited_locations)
         else:
             # Discourage  revisiting locations too much
             total_reward -= default_reward
+
+        print("Total reward: ", total_reward)
         return total_reward
 
     def run(self, num_episodes=1000):
@@ -259,14 +275,30 @@ class LearnGame:
 
                 next_state = self.image_to_tensor(img) if not done else None
 
-                reward = torch.tensor([reward], dtype=torch.float32, device=self.device)
-                self.memory.push(state, action, reward, next_state)
+                if t > self.timeout:
+                    reward = reward - 2
+
+                self.memory.push(
+                    state,
+                    action,
+                    torch.tensor([reward], dtype=torch.float32, device=self.device),
+                    next_state,
+                )
 
                 self.optimize_model()
 
                 state = next_state
                 if done:
-                    print("Average time per episode: ", np.mean(time_per_episode))
+                    if DEBUG:
+                        print("----------------------------------------")
+                        if i_episode > 0:
+                            print(
+                                "Average time per episode: ", np.mean(time_per_episode)
+                            )
+                        print("Time for this episode: ", t)
+                        print("Location: ", loc)
+                        print("Reward: ", reward)
+                        print("----------------------------------------")
                     time_per_episode.append(t)
                     break
 
