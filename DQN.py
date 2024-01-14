@@ -66,6 +66,8 @@ class LearnGame:
         self.goal_loc = goal_loc
         self.controller = Controller(self.rom_path)
         self.movements = self.controller.movements
+        self.positive_keywords = {"received": False , "won": False}
+        self.negative_keywords = {"lost": False, "fainted": False, "save the game": False}
 
 
         self.screen_size = self.controller.screen_size()
@@ -159,13 +161,27 @@ class LearnGame:
 
 
     def rewards(self, default_reward=0.05):
-        reward = torch.tensor([default_reward], dtype=torch.float32, device=self.device)
+        # store if has been rewarded recently
+        # if has been rewarded recently, then don't reward again
 
+        total_reward = 0
+        text = self.controller.get_text_on_screen()
+        # check if any of the positive keywords are in the text
+        for keyword in self.positive_keywords:
+            if keyword in text:
+                self.positive_keywords[keyword] = True
+                total_reward += default_reward
+            else:
+                self.positive_keywords[keyword] = False
+        # check if any of the negative keywords are in the text
+        for keyword in self.negative_keywords:
+            if keyword in text:
+                self.negative_keywords[keyword] = True
+                total_reward -= default_reward
+            else:
+                self.negative_keywords[keyword] = False
 
-        # We want to negatively reward for walking into walls i.e., get previous
-        # state and check if the location is the same as the current state
-
-        return reward
+        return torch.tensor([total_reward], dtype=torch.float32, device=self.device)
 
     def run(self, num_episodes=100):
         time_per_episode = []

@@ -83,6 +83,10 @@ while not pyboy.tick():
     text = extract_text(screen_image)
     print(f"Text on screen: {text}")
 
+    # pass 60 ticks to let a full second pass
+    for i in range(60):
+        pyboy.tick()
+
 print(f"Unique Locations: {unique_locations}")
 print(f"Unique XY Coordinates: {unique_XY}")
 
