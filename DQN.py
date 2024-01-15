@@ -219,11 +219,12 @@ class LearnGame:
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
-    def rewards(self, action, loc, visited_locations, default_reward=0.01):
+    def rewards(self, action, loc, visited_locations, xy, visited_XY, default_reward=0.01):
         # store if has been rewarded recently
         # if has been rewarded recently, then don't reward again
 
-        total_reward = 0
+        total_reward = -default_reward # every turn has a default cost 
+
         text = self.controller.get_text_on_screen()
         # check if any of the positive keywords are in the text
         for keyword in self.positive_keywords:
@@ -245,25 +246,27 @@ class LearnGame:
                 self.negative_keywords[keyword] = False
 
         # We should discourage start and select
-        if action == "START" or action == "SELECT":
-            total_reward -= default_reward * 2
-            if DEBUG:
-                print("Discouraging start and select")
+        # if action == "START" or action == "SELECT":
+        #     total_reward -= default_reward 
+        #     if DEBUG:
+        #         print("Discouraging start and select")
         # Encourage exploration
         # if loc isn't in set then reward
         if loc not in visited_locations:
-            total_reward += default_reward
+            total_reward += default_reward*5
             # add loc to visited locations
             visited_locations.add(loc)
             if DEBUG:
                 print("Encouraging exploration")
                 print("Visited locations: ", visited_locations)
-        else:
-            # Discourage  revisiting locations too much
-            if DEBUG:
-                print("Discouraging revisiting locations")
-                total_reward -= default_reward
         
+        if xy not in visited_XY:
+            total_reward += default_reward*2
+            visited_XY.add(xy)
+            if DEBUG:
+                print("Encouraging exploration")
+                print("Visited XY: ", visited_XY)
+
         # Encourage party pokemon
         total_level, total_hp, total_exp= self.controller.party_info()
 
@@ -277,7 +280,7 @@ class LearnGame:
             print("Total reward: ", total_reward)
         return total_reward
 
-    def run(self, num_episodes=1000):
+    def run(self, num_episodes=200):
         time_per_episode = []
         for i_episode in tqdm(
             range(self.start_episode, num_episodes + self.start_episode)
@@ -286,19 +289,19 @@ class LearnGame:
             self.controller = Controller(self.rom_path)
             state = self.image_to_tensor(self.controller.screen_image())
             visited_locations = set()
+            visited_XY = set()
             total_reward = 0
             for t in count():
                 action = self.select_action(state)
                 self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
 
                 img = self.controller.screen_image()
                 loc = self.controller.get_memory_value(self.location_address)
-
+                xy = self.controller.get_XY()
                 done = False
 
                 reward = self.rewards(
-                    self.movements[action.item()], loc, visited_locations
+                    self.movements[action.item()], loc, visited_locations, xy, visited_XY
                 )
 
                 if loc in self.locations:
@@ -309,7 +312,6 @@ class LearnGame:
                 next_state = self.image_to_tensor(img) if not done else None
 
                 if t > self.timeout and self.timeout != -1:
-                    reward = reward - 1
                     done = True
 
                 self.memory.push(
@@ -322,6 +324,8 @@ class LearnGame:
                 self.optimize_model()
                 total_reward += reward
                 state = next_state
+                self.document(i_episode, t, img, self.movements[action.item()], reward)
+
                 if done:
                     print("----------------------------------------")
                     print("Phase: ", self.phase)
@@ -372,7 +376,6 @@ class LearnGame:
                 print("Average time per episode: ", np.mean(time_per_episode))
                 print("Target reward: ", self.goal_targets[self.phase])
                 print("----------------------------------------")
-
             # check if all phases are complete
             if self.phase == len(self.goal_targets):
                 print("All phases complete")
@@ -384,3 +387,17 @@ class LearnGame:
         with open("time_per_episode.csv", "w") as f:
             write = csv.writer(f)
             write.writerow(time_per_episode)
+
+    def document(self, episode_id, step_id, img, button_press, reward):
+        # for each episode we want to record a image of each step
+        # as well as the button press that was made as part of the image name
+        # each run should have its own directory 
+        if not os.path.isdir("./runs"):
+            os.mkdir("./runs")
+
+        if not os.path.isdir("./runs/run_{}".format(episode_id)):
+            os.mkdir("./runs/run_{}".format(episode_id))
+        # save image 
+        if not isinstance(img, Image.Image):
+            img = Image.fromarray(img)
+        img.save("./runs/run_{}/{}_{}_{}.png".format(episode_id, step_id, button_press, reward))

@@ -10,11 +10,11 @@ def main():
     location_address = memory.location
     locations = memory.locations
     device = torch.device("mps")
-    SCALE_FACTOR = 1
-    USE_GRAYSCALE = False
+    SCALE_FACTOR = 0.5
+    USE_GRAYSCALE = True
     goal_locs = [locations[6], locations[4]]
     timeout = 300
-    goal_targets = [300, 600]
+    goal_targets = [400, 400]
     model = DQN.LearnGame(
         rom_path,
         locations,
