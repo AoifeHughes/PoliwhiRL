@@ -74,7 +74,7 @@ def run_model(
     goal_locs,
     goal_targets,
     timeout,
-    num_episodes=100,
+    num_episodes=1000,
     report_interval=10,
     num_workers=None,
 ):
@@ -287,10 +287,6 @@ def optimize_model(batch, model, optimizer, device, gamma):
     # Both should be of shape [batch_size, 1]
     expected_state_action_values = expected_state_action_values.unsqueeze(1)
 
-    # Verify and print the shapes (for debugging, can be removed later)
-    print("state_action_values shape:", state_action_values.shape)
-    print("expected_state_action_values shape:", expected_state_action_values.shape)
-
     # Compute loss
     loss = criterion(state_action_values, expected_state_action_values)
 
@@ -377,23 +373,16 @@ def aggregate_results(
 
 
 def _transition_to_batch(transitions, device):
-    # Transforms a batch of transitions to separate batches of states, actions, etc.
     batch = Transition(*zip(*transitions))
 
-    # Ensure each state is a 3D tensor (1 channel image)
-    state_batch = torch.stack(
-        [s.squeeze(0) for s in batch.state]
-    )  # Shape should be [batch_size, 1, height, width]
+    state_batch = torch.stack([s.squeeze(0) for s in batch.state])
     action_batch = torch.stack([a for a in batch.action])
-    reward_batch = torch.stack([r for r in batch.reward])
-    next_state_batch = torch.stack(
-        [s.squeeze(0) for s in batch.next_state if s is not None]
-    )
-    done_batch = torch.tensor(
-        [s is None for s in batch.next_state], dtype=torch.bool, device=device
-    )
+    reward_batch = torch.cat([r for r in batch.reward])  # This should be a 1D tensor
+    next_state_batch = torch.stack([s.squeeze(0) for s in batch.next_state if s is not None])
+    done_batch = torch.tensor([s is None for s in batch.next_state], dtype=torch.bool, device=device)
 
     return state_batch, action_batch, reward_batch, next_state_batch, done_batch
+
 
 
 def run_episode(
