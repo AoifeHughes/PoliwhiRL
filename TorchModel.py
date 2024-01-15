@@ -44,8 +44,5 @@ class ReplayMemory(object):
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
     
-    def sample_variable(self, batch_size):
-        return [random.sample(self.memory, min(len(self.memory), random.randint(1, batch_size))) for _ in range(batch_size)]
-
     def __len__(self):
         return len(self.memory)
