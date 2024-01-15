@@ -9,7 +9,7 @@ def main():
 
     location_address = memory.location
     locations = memory.locations
-    device = torch.device("mps")
+    device = torch.device("cpu")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
     goal_locs = [locations[6], locations[4]]

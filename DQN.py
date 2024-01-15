@@ -14,7 +14,7 @@ from multiprocessing import Pool
 from itertools import count
 from collections import namedtuple
 
-Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"))
+Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "done"))
 
 
 DEBUG = True
@@ -110,9 +110,12 @@ def run_model(
     epsilon_decay = 0.99
     epsilon_min = 0.1
     start_episode, epsilon_initial = load_checkpoint(
-        checkpoint_path, shared_model, shared_optimizer
+        checkpoint_path, shared_model, shared_optimizer, epsilon_initial
     )
+    gamma = 0.5
+    batch_size = 128
     epsilon = epsilon_initial
+    min_update_steps = 5
     results = []
     for start in range(0, num_episodes, report_interval):
         end = min(start + report_interval, num_episodes)
@@ -137,16 +140,19 @@ def run_model(
                 positive_keywords,
                 default_reward,
                 phase,
+                movements
             )
             for worker_id in range(num_workers)
         ]
 
         with Pool(num_workers) as pool:
             partial_results = pool.starmap(run_episode, args)
+            new_experiences = sum(len(worker_result) for worker_result in partial_results)
         results.extend(partial_results)
+        update_steps = max(min_update_steps, new_experiences // batch_size)
 
         # Aggregate and report results after every 'report_interval' episodes
-        aggregate_results(results, shared_memory, shared_optimizer)
+        aggregate_results(results, shared_memory, shared_optimizer, shared_model, device, gamma, batch_size, update_steps)
         print(f"Results after {start + report_interval} episodes: {results}")
         epsilon = max(epsilon * epsilon_decay, epsilon_min)
 
@@ -379,6 +385,7 @@ def run_episode(
     positive_keywords,
     default_reward,
     phase,
+    movements
 ):
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
@@ -404,7 +411,7 @@ def run_episode(
         total_reward = 0
 
         for t in count():
-            action = select_action(state, epsilon, model, device)
+            action = select_action(state, epsilon, movements, model, device)
             controller.handleMovement(controller.movements[action.item()])
             reward = torch.tensor([-0.01], dtype=torch.float32, device=device)
             img = controller.screen_image()
