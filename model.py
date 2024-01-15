@@ -143,9 +143,11 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
     epsilon_max = 1.0
     epsilon_min = 0.1
     start_episode, init_epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, epsilon_max)
-    all_rewards = []
+    all_rewards = {}
     start_time = time()
+    episodes_total = 0
     for timeout in timeouts:
+        all_rewards[timeout] = []
         # Main loop
         epsilon = init_epsilon
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
@@ -155,28 +157,26 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
             # Create a list of arguments for each batch
             batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilons[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
                         for i in range(0, num_episodes, episodes_per_batch)]
-
             for batch_results in pool.starmap(run_episodes_batch, batch_args):
                 batch_gradients, batch_rewards = batch_results
                 # Aggregate gradients
                 aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
                 # Update the model
                 apply_gradients(aggregate_gradients, model, optimizer)
-                all_rewards.append(batch_rewards)
+                all_rewards[timeout].append(batch_rewards)
                 log_rewards(batch_rewards)
                 # Save checkpoint
                 save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
-
                 print(f"{len(all_rewards) / num_episodes * 100}% complete")
                 elapsed_time = time() - start_time
                 print(f"Elapsed time: {elapsed_time // 3600} hours, {(elapsed_time % 3600) // 60} minutes")
                 print(f"Estimated time remaining: {elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) // 3600} hours, {(elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) % 3600) // 60} minutes")
+        episodes_total += len(all_rewards[timeout])
+        # save data with number of episodes completed and timeout
+        with open(f"./checkpoints/all_rewards_timeout_{timeout}_episodetotal_{episodes_total}.csv", "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(all_rewards[timeout])
             
     # Save final model
     save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
 
-    # save data 
-    with open(f'./checkpoints/pokemon_rl_model_{start_episode+num_episodes}.csv', 'w') as f:
-        # write each array in all rewards to a row in the csv file
-        writer = csv.writer(f)
-        writer.writerows(all_rewards)
