@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import deque
 import random
 from itertools import count
 import os
@@ -14,58 +13,9 @@ from multiprocessing import Pool
 from itertools import count
 from collections import namedtuple
 from tqdm import tqdm
-
+from TorchModel import DQN, ReplayMemory
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"))
 
-
-DEBUG = False
-
-
-class DQN(nn.Module):
-    def __init__(self, h, w, outputs, USE_GRAYSCALE):
-        super(DQN, self).__init__()
-        self.USE_GRAYSCALE = USE_GRAYSCALE
-        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
-        self._to_linear = None
-        self._compute_conv_output_size(h, w)
-        self.fc = nn.Linear(self._to_linear, outputs)
-
-    def _compute_conv_output_size(self, h, w):
-        x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        self._to_linear = x.view(1, -1).size(1)
-
-    def forward(self, x):
-        print( x.shape )
-        x = torch.relu(self.bn1(self.conv1(x)))
-        x = torch.relu(self.bn2(self.conv2(x)))
-        x = torch.relu(self.bn3(self.conv3(x)))
-        x = x.reshape(x.size(0), -1)
-        return self.fc(x)
-
-
-class ReplayMemory(object):
-    def __init__(self, capacity):
-        self.memory = deque([], maxlen=capacity)
-
-    def push(self, *args):
-        self.memory.append(args)
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-    
-    def sample_variable(self, batch_size):
-        return [random.sample(self.memory, min(len(self.memory), random.randint(1, batch_size))) for _ in range(batch_size)]
-
-    def __len__(self):
-        return len(self.memory)
 
 
 def run_model(
@@ -175,55 +125,19 @@ def run_model(
         )
         epsilon = max(epsilon * epsilon_decay, epsilon_min)
 
-        # Save checkpoint after every 'report_interval' episodes and record number of episodes completed
-        save_checkpoint(
-            {
-                "epoch": start + report_interval,
-                "state_dict": shared_model.state_dict(),
-                "optimizer": shared_optimizer.state_dict(),
-                "epsilon": epsilon,
-            },
-            filename=f"./checkpoints/pokemon_rl_checkpoint_{start + report_interval + start_episode}.pth",
-        )
+        # save_checkpoint(
+        #     {
+        #         "epoch": start + report_interval,
+        #         "state_dict": shared_model.state_dict(),
+        #         "optimizer": shared_optimizer.state_dict(),
+        #         "epsilon": epsilon,
+        #     },
+        #     filename=f"./checkpoints/pokemon_rl_checkpoint_{start + report_interval + start_episode}.pth",
+        # )
         # Print the average run time per worker
         print(f"Average run time per worker: {np.mean(run_times)}")
 
     return results
-
-
-def save_checkpoint(state, filename="pokemon_rl_checkpoint.pth"):
-    torch.save(state, filename)
-
-
-def load_checkpoint(checkpoint_path, model, optimizer, epsilon):
-    start_episode = 0
-    # Check for latest checkpoint in checkpoints folder
-    tmp_path = checkpoint_path
-    if os.path.isdir("./checkpoints"):
-        checkpoints = [f for f in os.listdir("./checkpoints") if f.endswith(".pth")]
-        if len(checkpoints) > 0:
-            # sort checkpoints by last modified date
-            checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
-            checkpoint_path = "./checkpoints/" + checkpoints[-1]
-            # Set the start episode to the number of the checkpoint
-            start_episode = int(checkpoint_path.split("_")[-1][:-4])
-    else:
-        os.mkdir("./checkpoints")
-    if os.path.isfile(checkpoint_path):
-        print(f"Loading checkpoint '{checkpoint_path}'")
-        try:
-            checkpoint = torch.load(checkpoint_path)
-            model.load_state_dict(checkpoint["state_dict"])
-            optimizer.load_state_dict(checkpoint["optimizer"])
-            start_episode = checkpoint["epoch"]
-            epsilon = checkpoint["epsilon"]
-        except:
-            print("Failed to load checkpoint")
-        checkpoint_path = tmp_path
-    else:
-        print(f"No checkpoint found at '{checkpoint_path}'")
-
-    return start_episode, epsilon
 
 
 def image_to_tensor(image, SCALE_FACTOR, USE_GRAYSCALE, device):
@@ -270,6 +184,7 @@ def optimize_model(batch, model, optimizer, device, gamma):
     optimizer.zero_grad()
 
     total_loss = 0.0
+    print("Batch length:", len(batch))
     for sub_batch in batch:
         if not sub_batch:
             continue
@@ -279,20 +194,34 @@ def optimize_model(batch, model, optimizer, device, gamma):
         if not state_batch:
             continue
 
+        if state_batch:
+           #Concatenate all tensors in the list along the batch dimension
+            state_batch = torch.cat(state_batch, dim=0)
+
         # Compute Q-values for the current states
-        state_batch = torch.stack(state_batch) if state_batch else torch.Tensor()
+        # check shape of state_batch
+        print("State batch shape: ")
+
+
+        print("Finished printing state batch shape")
         if state_batch.nelement() == 0:
             continue
 
         q_values = model(state_batch)
 
-        # Compute Q-values for the actions taken
-        action_batch = action_batch.squeeze(-1).long()
-        state_action_values = q_values.gather(1, action_batch.unsqueeze(-1))
+        # # Compute Q-values for the actions taken
+        # print("q_values shape:", q_values.shape)
+        # print("action_batch shape:", action_batch.shape)
+
+
+        action_batch = action_batch.unsqueeze(-1)
+
+# Perform gather operation
+        state_action_values = q_values.gather(1, action_batch)
 
         # Compute V-values for the next states
         if next_state_batch:
-            next_state_batch = torch.stack(next_state_batch)
+            next_state_batch = torch.cat(next_state_batch, dim=0)
             next_state_values = torch.zeros(len(state_batch), device=device)
             next_state_values[non_final_mask] = model(next_state_batch).max(1)[0].detach()
         else:
@@ -336,8 +265,7 @@ def rewards(
         if keyword in text.lower() and not positive_keywords[keyword]:
             positive_keywords[keyword] = True
             total_reward += default_reward
-            if DEBUG:
-                print("Found positive keyword: ", keyword)
+
 
         else:
             positive_keywords[keyword] = False
@@ -346,33 +274,26 @@ def rewards(
         if keyword in text.lower() and not negative_keywords[keyword]:
             negative_keywords[keyword] = True
             total_reward -= default_reward
-            if DEBUG:
-                print("Found negative keyword: ", keyword)
+
         else:
             negative_keywords[keyword] = False
 
     # We should discourage start and select
     if action == "START" or action == "SELECT":
         total_reward -= default_reward * 2
-        if DEBUG:
-            print("Discouraging start and select")
+
     # Encourage exploration
     # if loc isn't in set then reward
     if loc not in visited_locations:
         total_reward += default_reward
         # add loc to visited locations
         visited_locations.add(loc)
-        if DEBUG:
-            print("Encouraging exploration")
-            print("Visited locations: ", visited_locations)
+
     else:
         # Discourage  revisiting locations too much
-        if DEBUG:
-            print("Discouraging revisiting locations")
-            total_reward -= default_reward
+        total_reward -= default_reward
 
-    if DEBUG:
-        print("Total reward: ", total_reward)
+
     return total_reward
 
 
@@ -394,7 +315,6 @@ def aggregate_results(
 
 def _transition_to_batch(transitions, device):
     batch = Transition(*zip(*transitions))
-
     state_batch = [s.to(device) for s in batch.state if s is not None]
     action_batch = torch.tensor(batch.action, dtype=torch.long, device=device)
     reward_batch = torch.tensor(batch.reward, device=device)
@@ -402,7 +322,6 @@ def _transition_to_batch(transitions, device):
     non_final_mask = torch.tensor([s is not None for s in batch.next_state], dtype=torch.bool, device=device)
 
     return state_batch, action_batch, reward_batch, next_state_batch, non_final_mask
-
 
 def run_episode(
     worker_id,
@@ -489,3 +408,37 @@ def run_episode(
         time_per_episode.append(t)
 
     return (experiences, time_per_episode)
+
+
+def save_checkpoint(state, filename="pokemon_rl_checkpoint.pth"):
+    torch.save(state, filename)
+
+def load_checkpoint(checkpoint_path, model, optimizer, epsilon):
+    start_episode = 0
+    # Check for latest checkpoint in checkpoints folder
+    tmp_path = checkpoint_path
+    if os.path.isdir("./checkpoints"):
+        checkpoints = [f for f in os.listdir("./checkpoints") if f.endswith(".pth")]
+        if len(checkpoints) > 0:
+            # sort checkpoints by last modified date
+            checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
+            checkpoint_path = "./checkpoints/" + checkpoints[-1]
+            # Set the start episode to the number of the checkpoint
+            start_episode = int(checkpoint_path.split("_")[-1][:-4])
+    else:
+        os.mkdir("./checkpoints")
+    if os.path.isfile(checkpoint_path):
+        print(f"Loading checkpoint '{checkpoint_path}'")
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            start_episode = checkpoint["epoch"]
+            epsilon = checkpoint["epsilon"]
+        except:
+            print("Failed to load checkpoint")
+        checkpoint_path = tmp_path
+    else:
+        print(f"No checkpoint found at '{checkpoint_path}'")
+
+    return start_episode, epsilon

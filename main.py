@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import DQN
+import model
 import torch
 import memory
 
@@ -15,7 +15,7 @@ def main():
     goal_locs = [locations[6], locations[4]]
     timeout = 3
     goal_targets = [300, 600]
-    DQN.run_model(
+    model.run_model(
         rom_path,
         locations,
         location_address,
