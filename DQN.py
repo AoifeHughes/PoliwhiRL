@@ -8,7 +8,6 @@ import random
 from itertools import count
 import os
 from PIL import Image
-import csv
 from controls import Controller
 import multiprocessing
 from multiprocessing import Pool
