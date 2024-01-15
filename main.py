@@ -15,7 +15,7 @@ def main():
     goal_locs = [locations[6], locations[4]]
     timeout = -1
     goal_targets = [300, 600]
-    model = DQN.LearnGame(
+    DQN.run_model(
         rom_path,
         locations,
         location_address,
@@ -26,7 +26,6 @@ def main():
         goal_targets,
         timeout,
     )
-    model.run()
 
 
 if __name__ == "__main__":

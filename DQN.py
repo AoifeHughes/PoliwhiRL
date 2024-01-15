@@ -7,12 +7,18 @@ from collections import deque
 import random
 from itertools import count
 import os
-from tqdm import tqdm
 from PIL import Image
 import csv
 from controls import Controller
+import multiprocessing
+from multiprocessing import Pool
+from itertools import count
+from collections import namedtuple
 
-DEBUG = False
+Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"))
+
+
+DEBUG = True
 
 
 class DQN(nn.Module):
@@ -58,317 +64,380 @@ class ReplayMemory(object):
         return len(self.memory)
 
 
-class LearnGame:
-    def __init__(
-        self,
-        rom_path,
-        locations,
-        location_address,
-        device,
-        SCALE_FACTOR,
-        USE_GRAYSCALE,
-        goal_locs,
-        goal_targets,
-        timeout,
-    ):
-        self.phase = 0
-        self.rom_path = rom_path
-        self.locations = locations
-        self.location_address = location_address
-        self.device = device
-        self.SCALE_FACTOR = SCALE_FACTOR
-        self.USE_GRAYSCALE = USE_GRAYSCALE
-        self.goal_locs = goal_locs
-        self.goal_targets = goal_targets
-        self.controller = Controller(self.rom_path)
-        self.movements = self.controller.movements
-        self.positive_keywords = {"received": False, "won": False}
-        self.negative_keywords = {
-            "lost": False,
-            "fainted": False,
-            "save the game": False,
-            "saving": False,
-            "select": False,
-            "town map": False,
-            "text speed": False,
-        }
-        self.timeout = timeout
-        self.screen_size = self.controller.screen_size()
-        self.scaled_size = (
-            int(self.screen_size[0] * SCALE_FACTOR),
-            int(self.screen_size[1] * SCALE_FACTOR),
+def run_model(
+    rom_path,
+    locations,
+    location_address,
+    device,
+    SCALE_FACTOR,
+    USE_GRAYSCALE,
+    goal_locs,
+    goal_targets,
+    timeout,
+    num_episodes=1000,
+    report_interval=10,
+    num_workers=None,
+):
+    if num_workers is None:
+        num_workers = multiprocessing.cpu_count()
+    controller = Controller(rom_path)
+    movements = controller.movements
+    positive_keywords = {"received": False, "won": False}
+    negative_keywords = {
+        "lost": False,
+        "fainted": False,
+        "save the game": False,
+        "saving": False,
+        "select": False,
+        "town map": False,
+        "text speed": False,
+    }
+    screen_size = controller.screen_size()
+    scaled_size = (
+        int(screen_size[0] * SCALE_FACTOR),
+        int(screen_size[1] * SCALE_FACTOR),
+    )
+    shared_model = DQN(
+        scaled_size[0], scaled_size[1], len(movements), USE_GRAYSCALE
+    ).to(device)
+    shared_model.share_memory()  # Prepare model for sharing across processes
+    shared_memory = ReplayMemory(1000)
+    shared_optimizer = optim.Adam(shared_model.parameters(), lr=0.005)
+    default_reward = 0.1
+    phase = 0
+    # Load checkpoint if available
+    checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
+    epsilon_initial = 0.9
+    epsilon_decay = 0.99
+    epsilon_min = 0.1
+    start_episode, epsilon_initial = load_checkpoint(
+        checkpoint_path, shared_model, shared_optimizer
+    )
+    epsilon = epsilon_initial
+    results = []
+    for start in range(0, num_episodes, report_interval):
+        end = min(start + report_interval, num_episodes)
+        episodes_this_round = end - start
+        episodes_per_worker = episodes_this_round // num_workers
+
+        args = [
+            (
+                worker_id,
+                episodes_per_worker,
+                rom_path,
+                locations,
+                location_address,
+                device,
+                SCALE_FACTOR,
+                USE_GRAYSCALE,
+                goal_locs,
+                timeout,
+                shared_model.state_dict(),
+                epsilon,
+                negative_keywords,
+                positive_keywords,
+                default_reward,
+                phase,
+            )
+            for worker_id in range(num_workers)
+        ]
+
+        with Pool(num_workers) as pool:
+            partial_results = pool.starmap(run_episode, args)
+        results.extend(partial_results)
+
+        # Aggregate and report results after every 'report_interval' episodes
+        aggregate_results(results, shared_memory, shared_optimizer)
+        print(f"Results after {start + report_interval} episodes: {results}")
+        epsilon = max(epsilon * epsilon_decay, epsilon_min)
+
+        # Save checkpoint after every 'report_interval' episodes
+        save_checkpoint(
+            {
+                "epoch": start + report_interval,
+                "state_dict": shared_model.state_dict(),
+                "optimizer": shared_optimizer.state_dict(),
+                "epsilon": epsilon,
+            },
+            checkpoint_path,
         )
-        self.model = DQN(
-            self.scaled_size[0],
-            self.scaled_size[1],
-            len(self.movements),
-            self.USE_GRAYSCALE,
-        ).to(device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.005)
-        self.memory = ReplayMemory(1000)
-        self.checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
-        self.epsilon = 0.9
-        self.start_episode = 0
-        self.load_checkpoint()
 
-    def save_checkpoint(self, state, filename="pokemon_rl_checkpoint.pth"):
-        torch.save(state, filename)
+    return results
 
-    def load_checkpoint(self):
-        # Check for latest checkpoint in checkpoints folder
-        tmp_path = self.checkpoint_path
-        if os.path.isdir("./checkpoints"):
-            checkpoints = os.listdir("./checkpoints")
-            if len(checkpoints) > 0:
-                # sort checkpoints by last modified date
-                checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
-                self.checkpoint_path = "./checkpoints/" + checkpoints[-1]
-                # Set the start episode to the number of the checkpoint
-                self.start_episode = int(self.checkpoint_path.split("_")[-1][:-4])
-        else:
-            os.mkdir("./checkpoints")
-        if os.path.isfile(self.checkpoint_path):
-            print(f"Loading checkpoint '{self.checkpoint_path}'")
-            checkpoint = torch.load(self.checkpoint_path)
-            self.model.load_state_dict(checkpoint["state_dict"])
-            self.optimizer.load_state_dict(checkpoint["optimizer"])
-            self.start_episode = checkpoint["epoch"]
-            self.epsilon = checkpoint["epsilon"]
-            self.checkpoint_path = tmp_path
-        else:
-            print(f"No checkpoint found at '{self.checkpoint_path}'")
 
-    def image_to_tensor(self, image):
-        # Check if the image is already a PIL Image; if not, convert it
-        if not isinstance(image, Image.Image):
-            image = Image.fromarray(image)
+def save_checkpoint(state, filename="pokemon_rl_checkpoint.pth"):
+    torch.save(state, filename)
 
-        # Scale the image if needed
-        if self.SCALE_FACTOR != 1:
-            image = image.resize([int(s * self.SCALE_FACTOR) for s in image.size])
 
-        # Convert to grayscale if needed
-        if self.USE_GRAYSCALE:
-            image = image.convert("L")
+def load_checkpoint(checkpoint_path, model, optimizer, epsilon):
+    start_episode = 0
+    # Check for latest checkpoint in checkpoints folder
+    tmp_path = checkpoint_path
+    if os.path.isdir("./checkpoints"):
+        checkpoints = [f for f in os.listdir("./checkpoints") if f.endswith(".pth")]
+        if len(checkpoints) > 0:
+            # sort checkpoints by last modified date
+            checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
+            checkpoint_path = "./checkpoints/" + checkpoints[-1]
+            # Set the start episode to the number of the checkpoint
+            start_episode = int(checkpoint_path.split("_")[-1][:-4])
+    else:
+        os.mkdir("./checkpoints")
+    if os.path.isfile(checkpoint_path):
+        print(f"Loading checkpoint '{checkpoint_path}'")
+        try:
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            start_episode = checkpoint["epoch"]
+            epsilon = checkpoint["epsilon"]
+        except:
+            print("Failed to load checkpoint")
+        checkpoint_path = tmp_path
+    else:
+        print(f"No checkpoint found at '{checkpoint_path}'")
 
-        # Convert the PIL image to a numpy array
-        image = np.array(image)
+    return start_episode, epsilon
 
-        # Add an extra dimension for grayscale images
-        if self.USE_GRAYSCALE:
-            image = np.expand_dims(image, axis=2)
 
-        # Convert to a PyTorch tensor, rearrange dimensions, normalize, and send to device
-        image = (
-            torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32)
-            / 255
-        )
-        image = image.to(self.device)  # Sending tensor to the specified device
+def image_to_tensor(image, SCALE_FACTOR, USE_GRAYSCALE, device):
+    # Check if the image is already a PIL Image; if not, convert it
+    if not isinstance(image, Image.Image):
+        image = Image.fromarray(image)
 
-        return image
+    # Scale the image if needed
+    if SCALE_FACTOR != 1:
+        image = image.resize([int(s * SCALE_FACTOR) for s in image.size])
 
-    def select_action(self, state):
-        if random.random() > self.epsilon:
-            with torch.no_grad():
-                return (
-                    self.model(state).max(1)[1].view(1, 1).to(self.device)
-                )  # Sending tensor to the specified device
-        else:
-            return torch.tensor(
-                [[random.randrange(len(self.movements))]],
-                dtype=torch.long,
-                device=self.device,
+    # Convert to grayscale if needed
+    if USE_GRAYSCALE:
+        image = image.convert("L")
+
+    # Convert the PIL image to a numpy array
+    image = np.array(image)
+
+    # Add an extra dimension for grayscale images
+    if USE_GRAYSCALE:
+        image = np.expand_dims(image, axis=2)
+
+    # Convert to a PyTorch tensor, rearrange dimensions, normalize, and send to device
+    image = (
+        torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32) / 255
+    )
+    image = image.to(device)  # Sending tensor to the specified device
+
+    return image
+
+
+def select_action(state, epsilon, movements, model, device):
+    if random.random() > epsilon:
+        with torch.no_grad():
+            return (
+                model(state).max(1)[1].view(1, 1).to(device)
             )  # Sending tensor to the specified device
+    else:
+        return torch.tensor(
+            [[random.randrange(len(movements))]],
+            dtype=torch.long,
+            device=device,
+        )  # Sending tensor to the specified device
 
-    def optimize_model(self, batch_size=128):
-        if len(self.memory) < batch_size:
-            return
-        transitions = self.memory.sample(batch_size)
-        batch = tuple(zip(*transitions))
 
-        state_batch = torch.cat(batch[0])
-        action_batch = torch.cat(batch[1])
-        reward_batch = torch.cat(batch[2])
+def optimize_model(batch, model, optimizer, device, gamma):
+    # Unpack the batch of experiences
+    state_batch, action_batch, reward_batch, next_state_batch, done_batch = batch
 
-        state_action_values = self.model(state_batch).gather(1, action_batch)
+    non_final_mask = ~torch.tensor(done_batch, dtype=torch.bool, device=device)
+    non_final_next_states = torch.cat(
+        [s for s, done in zip(next_state_batch, done_batch) if not done]
+    )
 
-        next_state_values = torch.zeros(
-            batch_size, device=self.device
-        )  # Tensor initialized on the specified device
-        non_final_mask = torch.tensor(
-            tuple(map(lambda s: s is not None, batch[3])),
-            dtype=torch.bool,
-            device=self.device,
-        )  # Tensor initialized on the specified device
+    state_batch = torch.cat(state_batch)
+    action_batch = torch.cat(action_batch)
+    reward_batch = torch.cat(reward_batch)
 
-        non_final_next_states = torch.cat([s for s in batch[3] if s is not None])
-        next_state_values[non_final_mask] = (
-            self.model(non_final_next_states).max(1)[0].detach()
-        )
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the columns of actions taken
+    state_action_values = model(state_batch).gather(1, action_batch.unsqueeze(-1))
 
-        expected_state_action_values = (next_state_values * 0.99) + reward_batch
+    # Compute V(s_{t+1}) for all next states.
+    next_state_values = torch.zeros(len(state_batch), device=device)
+    next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
 
-        criterion = nn.SmoothL1Loss()
-        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * gamma) + reward_batch
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
-    def rewards(self, action, loc, visited_locations, default_reward=0.01):
-        # store if has been rewarded recently
-        # if has been rewarded recently, then don't reward again
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    for param in model.parameters():
+        param.grad.data.clamp_(-1, 1)
+    optimizer.step()
 
-        total_reward = 0
-        text = self.controller.get_text_on_screen()
-        # check if any of the positive keywords are in the text
-        for keyword in self.positive_keywords:
-            if keyword in text.lower() and not self.positive_keywords[keyword]:
-                self.positive_keywords[keyword] = True
-                total_reward += default_reward
-                if DEBUG:
-                    print("Found positive keyword: ", keyword)
-            else:
-                self.positive_keywords[keyword] = False
-        # check if any of the negative keywords are in the text
-        for keyword in self.negative_keywords:
-            if keyword in text.lower() and not self.negative_keywords[keyword]:
-                self.negative_keywords[keyword] = True
-                total_reward -= default_reward
-                if DEBUG:
-                    print("Found negative keyword: ", keyword)
-            else:
-                self.negative_keywords[keyword] = False
 
-        # We should discourage start and select
-        if action == "START" or action == "SELECT":
-            total_reward -= default_reward * 2
-            if DEBUG:
-                print("Discouraging start and select")
-        # Encourage exploration
-        # if loc isn't in set then reward
-        if loc not in visited_locations:
+def rewards(
+    action,
+    loc,
+    visited_locations,
+    controller,
+    positive_keywords,
+    negative_keywords,
+    default_reward,
+):
+    # store if has been rewarded recently
+    # if has been rewarded recently, then don't reward again
+
+    total_reward = 0
+    text = controller.get_text_on_screen()
+    # check if any of the positive keywords are in the text
+    for keyword in positive_keywords:
+        if keyword in text.lower() and not positive_keywords[keyword]:
+            positive_keywords[keyword] = True
             total_reward += default_reward
-            # add loc to visited locations
-            visited_locations.add(loc)
             if DEBUG:
-                print("Encouraging exploration")
-                print("Visited locations: ", visited_locations)
+                print("Found positive keyword: ", keyword)
+
         else:
-            # Discourage  revisiting locations too much
+            positive_keywords[keyword] = False
+    # check if any of the negative keywords are in the text
+    for keyword in negative_keywords:
+        if keyword in text.lower() and not negative_keywords[keyword]:
+            negative_keywords[keyword] = True
+            total_reward -= default_reward
             if DEBUG:
-                print("Discouraging revisiting locations")
-                total_reward -= default_reward
+                print("Found negative keyword: ", keyword)
+        else:
+            negative_keywords[keyword] = False
 
+    # We should discourage start and select
+    if action == "START" or action == "SELECT":
+        total_reward -= default_reward * 2
         if DEBUG:
-            print("Total reward: ", total_reward)
-        return total_reward
+            print("Discouraging start and select")
+    # Encourage exploration
+    # if loc isn't in set then reward
+    if loc not in visited_locations:
+        total_reward += default_reward
+        # add loc to visited locations
+        visited_locations.add(loc)
+        if DEBUG:
+            print("Encouraging exploration")
+            print("Visited locations: ", visited_locations)
+    else:
+        # Discourage  revisiting locations too much
+        if DEBUG:
+            print("Discouraging revisiting locations")
+            total_reward -= default_reward
 
-    def run(self, num_episodes=1000):
-        time_per_episode = []
-        for i_episode in tqdm(
-            range(self.start_episode, num_episodes + self.start_episode)
-        ):
-            self.controller.stop()
-            self.controller = Controller(self.rom_path)
-            state = self.image_to_tensor(self.controller.screen_image())
-            visited_locations = set()
-            total_reward = 0
-            for t in count():
-                action = self.select_action(state)
-                self.controller.handleMovement(self.movements[action.item()])
-                reward = torch.tensor([-0.01], dtype=torch.float32, device=self.device)
+    if DEBUG:
+        print("Total reward: ", total_reward)
+    return total_reward
 
-                img = self.controller.screen_image()
-                loc = self.controller.get_memory_value(self.location_address)
 
-                done = False
+def aggregate_results(
+    results, memory, optimizer, model, device, gamma, batch_size, update_steps
+):
+    # Unpack results and update shared replay memory
+    for worker_experiences in results:
+        for experience in worker_experiences:
+            memory.push(*experience)
 
-                reward = self.rewards(
-                    self.movements[action.item()], loc, visited_locations
-                )
+    # Update the model based on the aggregated experiences
+    if len(memory) > batch_size:
+        for _ in range(update_steps):
+            transitions = memory.sample(batch_size)
+            batch = _transition_to_batch(transitions)
+            optimize_model(batch, model, optimizer, device, gamma)
 
-                if loc in self.locations:
-                    if self.locations[loc] == self.goal_locs[self.phase]:
-                        reward = reward + 1
-                        done = True
 
-                next_state = self.image_to_tensor(img) if not done else None
+def _transition_to_batch(transitions):
+    # Transforms a batch of transitions to separate batches of states, actions, etc.
+    batch = Transition(*zip(*transitions))
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
+    non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+    return state_batch, action_batch, reward_batch, non_final_next_states
 
-                if t > self.timeout and self.timeout != -1:
-                    reward = reward - 1
 
-                self.memory.push(
-                    state,
-                    action,
-                    torch.tensor([reward], dtype=torch.float32, device=self.device),
-                    next_state,
-                )
+def run_episode(
+    worker_id,
+    num_episodes,
+    rom_path,
+    locations,
+    location_address,
+    device,
+    SCALE_FACTOR,
+    USE_GRAYSCALE,
+    goal_locs,
+    timeout,
+    shared_model_state,
+    epsilon,
+    negative_keywords,
+    positive_keywords,
+    default_reward,
+    phase,
+):
+    controller = Controller(rom_path)
+    screen_size = controller.screen_size()
+    scaled_size = (
+        int(screen_size[0] * SCALE_FACTOR),
+        int(screen_size[1] * SCALE_FACTOR),
+    )
+    model = DQN(
+        scaled_size[0], scaled_size[1], len(controller.movements), USE_GRAYSCALE
+    ).to(device)
+    model.load_state_dict(shared_model_state)  # Load shared model state
 
-                self.optimize_model()
-                total_reward += reward
-                state = next_state
-                if done:
-                    print("----------------------------------------")
-                    print("Phase: ", self.phase)
-                    print("Phase target: ", self.goal_targets[self.phase])
-                    if i_episode > 0:
-                        print("Average time per episode: ", np.mean(time_per_episode))
-                    print("Time for this episode: ", t)
-                    print("Location: ", loc)
-                    print("Reward: ", total_reward)
-                    print("----------------------------------------")
-                    time_per_episode.append(t)
-                    break
+    time_per_episode = []
+    experiences = []
 
-            self.epsilon = max(self.epsilon * 0.99, 0.05)
+    for i_episode in range(num_episodes):
+        controller.stop()
+        controller = Controller(rom_path)
+        state = image_to_tensor(
+            controller.screen_image(), SCALE_FACTOR, USE_GRAYSCALE, device
+        )
+        visited_locations = set()
+        total_reward = 0
 
-            if i_episode % 5 == 0:
-                # save checkpoint with the i_episode
-                self.save_checkpoint(
-                    {
-                        "epoch": i_episode + 1,
-                        "state_dict": self.model.state_dict(),
-                        "optimizer": self.optimizer.state_dict(),
-                        "epsilon": self.epsilon,
-                    },
-                    filename=f"{self.checkpoint_path[:-4]}_{i_episode}.pth",
-                )
+        for t in count():
+            action = select_action(state, epsilon, model, device)
+            controller.handleMovement(controller.movements[action.item()])
+            reward = torch.tensor([-0.01], dtype=torch.float32, device=device)
+            img = controller.screen_image()
+            loc = controller.get_memory_value(location_address)
+            done = False
 
-            # if the phase is optimal, save the model and move on
-            # Ensure at least 20 episodes have been run
-            if (
-                np.mean(time_per_episode) >= self.goal_targets[self.phase]
-                and i_episode > 20
-            ):
-                self.phase += 1
-                self.save_checkpoint(
-                    {
-                        "epoch": 0,
-                        "state_dict": self.model.state_dict(),
-                        "optimizer": self.optimizer.state_dict(),
-                        "epsilon": self.epsilon,
-                    },
-                    filename="pokemon_rl_checkpoint_phase_{}.pth".format(self.phase),
-                )
+            reward_value = rewards(
+                action,
+                loc,
+                visited_locations,
+                controller,
+                positive_keywords,
+                negative_keywords,
+                default_reward,
+            )
+            reward += reward_value
+            if loc in locations and locations[loc] == goal_locs[phase]:
+                reward += 1
+                done = True
 
-                # report on phase
-                print("----------------------------------------")
-                print("Phase {} complete".format(self.phase))
-                print("Average time per episode: ", np.mean(time_per_episode))
-                print("Target reward: ", self.goal_targets[self.phase])
-                print("----------------------------------------")
+            next_state = (
+                image_to_tensor(img, SCALE_FACTOR, USE_GRAYSCALE, device)
+                if not done
+                else None
+            )
+            experiences.append(Transition(state, action, reward, next_state, done))
 
-            # check if all phases are complete
-            if self.phase == len(self.goal_targets):
-                print("All phases complete")
+            total_reward += reward.item()
+            state = next_state
+            if done or t > timeout:
                 break
 
-        torch.save(self.model.state_dict(), "./checkpoints/pokemon_rl_model_final.pth")
-        self.controller.stop(save=False)
-        # Save output of list of time per episode as csv
-        with open("time_per_episode.csv", "w") as f:
-            write = csv.writer(f)
-            write.writerow(time_per_episode)
+        time_per_episode.append(t)
+
+    return experiences
