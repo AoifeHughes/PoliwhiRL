@@ -74,7 +74,7 @@ def run_model(
     goal_locs,
     goal_targets,
     timeout,
-    num_episodes=1000,
+    num_episodes=15,
     report_interval=10,
     num_workers=None,
 ):
@@ -104,7 +104,7 @@ def run_model(
     shared_memory = ReplayMemory(1000)
     shared_optimizer = optim.Adam(shared_model.parameters(), lr=0.005)
     default_reward = 0.1
-    phase = 1
+    phase = 0
     # Load checkpoint if available
     checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
     epsilon_initial = 0.9
@@ -414,7 +414,7 @@ def run_episode(
         scaled_size[0], scaled_size[1], len(controller.movements), USE_GRAYSCALE
     ).to(device)
     model.load_state_dict(shared_model_state)  # Load shared model state
-
+    # add a random number to the timeout  
     time_per_episode = []
     experiences = []
 
