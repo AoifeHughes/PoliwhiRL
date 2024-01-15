@@ -26,7 +26,6 @@ class DQN(nn.Module):
         self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
-        print( x.shape )
         x = torch.relu(self.bn1(self.conv1(x)))
         x = torch.relu(self.bn2(self.conv2(x)))
         x = torch.relu(self.bn3(self.conv3(x)))
