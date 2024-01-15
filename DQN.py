@@ -14,10 +14,10 @@ from multiprocessing import Pool
 from itertools import count
 from collections import namedtuple
 
-Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "done"))
+Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"))
 
 
-DEBUG = True
+DEBUG = False
 
 
 class DQN(nn.Module):
@@ -73,7 +73,7 @@ def run_model(
     goal_locs,
     goal_targets,
     timeout,
-    num_episodes=1000,
+    num_episodes=20,
     report_interval=10,
     num_workers=None,
 ):
@@ -146,17 +146,16 @@ def run_model(
         ]
 
         with Pool(num_workers) as pool:
-            partial_results = pool.starmap(run_episode, args)
+            partial_results, run_times = pool.starmap(run_episode, args)
             new_experiences = sum(len(worker_result) for worker_result in partial_results)
         results.extend(partial_results)
         update_steps = max(min_update_steps, new_experiences // batch_size)
 
         # Aggregate and report results after every 'report_interval' episodes
         aggregate_results(results, shared_memory, shared_optimizer, shared_model, device, gamma, batch_size, update_steps)
-        print(f"Results after {start + report_interval} episodes: {results}")
         epsilon = max(epsilon * epsilon_decay, epsilon_min)
 
-        # Save checkpoint after every 'report_interval' episodes
+        # Save checkpoint after every 'report_interval' episodes and record number of episodes completed
         save_checkpoint(
             {
                 "epoch": start + report_interval,
@@ -164,11 +163,12 @@ def run_model(
                 "optimizer": shared_optimizer.state_dict(),
                 "epsilon": epsilon,
             },
-            checkpoint_path,
+            filename=f"./checkpoints/pokemon_rl_checkpoint_{start + report_interval}.pth",
         )
+        # Print the average run time per worker 
+        print(f"Average run time per worker: {np.mean(run_times)}")
 
     return results
-
 
 def save_checkpoint(state, filename="pokemon_rl_checkpoint.pth"):
     torch.save(state, filename)
@@ -430,6 +430,7 @@ def run_episode(
             reward += reward_value
             if loc in locations and locations[loc] == goal_locs[phase]:
                 reward += 1
+                print("done")
                 done = True
 
             next_state = (
@@ -437,13 +438,13 @@ def run_episode(
                 if not done
                 else None
             )
-            experiences.append(Transition(state, action, reward, next_state, done))
+            experiences.append(Transition(state, action, reward, next_state))
 
             total_reward += reward.item()
             state = next_state
-            if done or t > timeout:
+            if done:
                 break
 
         time_per_episode.append(t)
 
-    return experiences
+    return experiences, time_per_episode
