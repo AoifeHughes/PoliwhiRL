@@ -89,3 +89,19 @@ def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
         else:
             print(f"No checkpoint found at '{checkpoint_path}'")
         return start_episode, epsilon
+
+def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
+    # Save checkpoint
+    if not os.path.isdir(checkpoint_path):
+        os.mkdir(checkpoint_path)
+    checkpoint_path = checkpoint_path + "checkpoint_{}.pth".format(start_episode)
+    print(f"Saving checkpoint to '{checkpoint_path}'")
+    torch.save(
+        {
+            "start_episode": start_episode,
+            "state_dict": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "epsilon": epsilon,
+        },
+        checkpoint_path,
+    )
