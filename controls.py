@@ -20,11 +20,10 @@ class Controller:
         # Initialize PyBoy with the ROM in the temporary directory
         self.pyboy = PyBoy(
             temp_rom_path,
-            window_scale=1,
             debug=False,
+            window_type="headless"
         )
 
-        self.pyboy.set_emulation_speed(target_speed=0)
         self.movements = [
             "UP",
             "DOWN",
@@ -60,14 +59,16 @@ class Controller:
         }
 
     def handleMovement(self, movement, ticks_per_input=10, wait=120):
+        self.pyboy._rendering(False)
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])
             [self.pyboy.tick() for _ in range(ticks_per_input)]
             self.pyboy.send_input(self.event_dict_release[movement])
         else:
             [self.pyboy.tick() for _ in range(ticks_per_input)]
-
         [self.pyboy.tick() for _ in range(wait)]
+        self.pyboy._rendering(True)
+        self.pyboy.tick()
 
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
