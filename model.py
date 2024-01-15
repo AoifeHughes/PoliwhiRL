@@ -74,18 +74,17 @@ def run_episode(rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTO
     }
 
     episode_gradients = []
-
+    total_reward = 0
     for t in count():
         action = select_action(state, epsilon, device, movements, model)
         controller.handleMovement(movements[action.item()])
-        reward = torch.tensor([-0.01], dtype=torch.float32, device=device)
         img = controller.screen_image()
         loc = controller.get_memory_value(location_address)
         done = False
         reward = calc_rewards(
             movements[action.item()], loc, visited_locations, controller, positive_keywords, negative_keywords, max_levels, default_reward=0.01
         )
-
+        total_reward += reward
         next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE) if not done else None
 
         memory.push(
@@ -107,7 +106,7 @@ def run_episode(rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTO
             break
 
     controller.stop(save=False)
-    return episode_gradients
+    return episode_gradients, total_reward
 
 # Function to apply gradients to the model
 def apply_gradients(aggregate_gradients, model, optimizer):
@@ -119,10 +118,16 @@ def apply_gradients(aggregate_gradients, model, optimizer):
 # Run episodes in parallel and collect gradients
 def run_episodes_batch(start, end, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size):
     batch_gradients = []
+    batch_rewards = []
     for i in range(start, end):
-        episode_gradients = run_episode(rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
+        episode_gradients, episode_rewards = run_episode(rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
         batch_gradients.append(episode_gradients)
-    return batch_gradients
+        batch_rewards.append(episode_rewards)
+    return batch_gradients, batch_rewards
+
+def log_rewards(rewards):
+    # Implementation depends on how you want to log: to file, stdout, etc.
+    print(f"Average reward for batch: {np.mean(rewards)}")
 
 def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=100, episodes_per_batch=5, batch_size=128, epsilon=1.0 ):
 
@@ -133,24 +138,28 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=10
     model.share_memory()  # Prepare model for shared memory
     optimizer = optim.Adam(model.parameters(), lr=0.005)
     memory = ReplayMemory(1000)
-
-
-
+    mean_rewards = []
     # Main loop
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
         # Create a list of arguments for each batch
         batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
                       for i in range(0, num_episodes, episodes_per_batch)]
 
-        # Process the batches in parallel
-        all_batch_gradients = pool.starmap(run_episodes_batch, batch_args)
 
-        for batch_gradients in tqdm(all_batch_gradients):
+        for batch_results in tqdm(pool.starmap(run_episodes_batch, batch_args)):
+            batch_gradients, batch_rewards = batch_results
             # Aggregate gradients
             aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
 
             # Update the model
             apply_gradients(aggregate_gradients, model, optimizer)
+            mean_rewards.append(np.mean(batch_rewards))
+            log_rewards(batch_rewards)
 
     # Save final model
     torch.save(model.state_dict(), "./checkpoints/pokemon_rl_model_final.pth")
+
+    # save data 
+    with open('./checkpoints/pokemon_rl_model_final.csv', 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(mean_rewards)
