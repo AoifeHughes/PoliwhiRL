@@ -14,7 +14,8 @@ from TorchModel import DQN
 import torch.optim as optim
 from memory import location as location_address
 import multiprocessing
-from utils import document, load_checkpoint
+from utils import document, load_checkpoint, save_checkpoint
+from time import time
 
 def optimize_model(batch_size, device, memory, model, optimizer):
     if len(memory) < batch_size:
@@ -126,13 +127,10 @@ def run_episodes_batch(start, end, rom_path, model, memory, optimizer, epsilon, 
     return batch_gradients, batch_rewards
 
 def log_rewards(rewards):
-    # Implementation depends on how you want to log: to file, stdout, etc.
     print(f"Average reward for batch: {np.mean(rewards)}")
 
 
-
-
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=100, episodes_per_batch=5, batch_size=128):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=100, episodes_per_batch=5, batch_size=128):
 
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
@@ -142,28 +140,40 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=10
     optimizer = optim.Adam(model.parameters(), lr=0.005)
     memory = ReplayMemory(1000)
     # Load checkpoint if it exists
-    start_episode, epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, 0.9)
+    epsilon_max = 1.0
+    epsilon_min = 0.1
+    start_episode, init_epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, epsilon_max)
     all_rewards = []
-    # Main loop
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        # Create a list of arguments for each batch
-        batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
-                      for i in range(0, num_episodes, episodes_per_batch)]
+    start_time = time()
+    for timeout in timeouts:
+        # Main loop
+        epsilon = init_epsilon
+        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+            # calculate an array of epsilons for each episode which decay
+            # linearly from epsilon_max to epsilon_min
+            epsilons = np.linspace(epsilon_max, epsilon_min, num_episodes)
+            # Create a list of arguments for each batch
+            batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilons[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
+                        for i in range(0, num_episodes, episodes_per_batch)]
 
+            for batch_results in pool.starmap(run_episodes_batch, batch_args):
+                batch_gradients, batch_rewards = batch_results
+                # Aggregate gradients
+                aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
+                # Update the model
+                apply_gradients(aggregate_gradients, model, optimizer)
+                all_rewards.append(batch_rewards)
+                log_rewards(batch_rewards)
+                # Save checkpoint
+                save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
 
-        for batch_results in tqdm(pool.starmap(run_episodes_batch, batch_args), total=len(batch_args)):
-            batch_gradients, batch_rewards = batch_results
-            # Aggregate gradients
-            aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
-
-            # Update the model
-            apply_gradients(aggregate_gradients, model, optimizer)
-            all_rewards.append(batch_rewards)
-            log_rewards(batch_rewards)
-
+                print(f"{len(all_rewards) / num_episodes * 100}% complete")
+                elapsed_time = time() - start_time
+                print(f"Elapsed time: {elapsed_time // 3600} hours, {(elapsed_time % 3600) // 60} minutes")
+                print(f"Estimated time remaining: {elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) // 3600} hours, {(elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) % 3600) // 60} minutes")
+            
     # Save final model
-    save_params = { "model_state_dict": model.state_dict(), "optimizer_state_dict": optimizer.state_dict(), "start_episode": start_episode, "epsilon": epsilon }
-    torch.save(save_params, f"./checkpoints/pokemon_rl_model_{start_episode+num_episodes}.pth")
+    save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
 
     # save data 
     with open(f'./checkpoints/pokemon_rl_model_{start_episode+num_episodes}.csv', 'w') as f:
