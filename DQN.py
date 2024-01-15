@@ -43,6 +43,7 @@ class DQN(nn.Module):
         self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
+        print( x.shape )
         x = torch.relu(self.bn1(self.conv1(x)))
         x = torch.relu(self.bn2(self.conv2(x)))
         x = torch.relu(self.bn3(self.conv3(x)))
@@ -59,6 +60,9 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         return random.sample(self.memory, batch_size)
+    
+    def sample_variable(self, batch_size):
+        return [random.sample(self.memory, min(len(self.memory), random.randint(1, batch_size))) for _ in range(batch_size)]
 
     def __len__(self):
         return len(self.memory)
@@ -262,38 +266,55 @@ def select_action(state, epsilon, movements, model, device):
 
 
 def optimize_model(batch, model, optimizer, device, gamma):
-    state_batch, action_batch, reward_batch, next_state_batch, done_batch = batch
-
-    non_final_mask = ~torch.as_tensor(done_batch, dtype=torch.bool, device=device)
-    non_final_next_states = next_state_batch[non_final_mask]
-
-    state_batch = [torch.squeeze(state, 0) for state in state_batch]
-    state_batch = torch.stack(state_batch)
-
-    q_values = model(state_batch)
-
-    action_batch = action_batch.squeeze(-1).long()  # Adjust shape and type
-    state_action_values = q_values.gather(1, action_batch)
-
-    next_state_values = torch.zeros(len(state_batch), device=device)
-    next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
-
-    expected_state_action_values = (next_state_values * gamma) + reward_batch
-
     criterion = nn.SmoothL1Loss()
-
-    # Reshape expected_state_action_values to match state_action_values
-    # Both should be of shape [batch_size, 1]
-    expected_state_action_values = expected_state_action_values.unsqueeze(1)
-
-    # Compute loss
-    loss = criterion(state_action_values, expected_state_action_values)
-
     optimizer.zero_grad()
-    loss.backward()
-    for param in model.parameters():
-        param.grad.data.clamp_(-1, 1)
+
+    total_loss = 0.0
+    for sub_batch in batch:
+        if not sub_batch:
+            continue
+
+        state_batch, action_batch, reward_batch, next_state_batch, non_final_mask = _transition_to_batch(sub_batch, device)
+
+        if not state_batch:
+            continue
+
+        # Compute Q-values for the current states
+        state_batch = torch.stack(state_batch) if state_batch else torch.Tensor()
+        if state_batch.nelement() == 0:
+            continue
+
+        q_values = model(state_batch)
+
+        # Compute Q-values for the actions taken
+        action_batch = action_batch.squeeze(-1).long()
+        state_action_values = q_values.gather(1, action_batch.unsqueeze(-1))
+
+        # Compute V-values for the next states
+        if next_state_batch:
+            next_state_batch = torch.stack(next_state_batch)
+            next_state_values = torch.zeros(len(state_batch), device=device)
+            next_state_values[non_final_mask] = model(next_state_batch).max(1)[0].detach()
+        else:
+            next_state_values = torch.zeros(len(state_batch), device=device)
+
+        # Compute the expected Q-values
+        expected_state_action_values = (next_state_values * gamma) + reward_batch
+
+        # Compute loss
+        expected_state_action_values = expected_state_action_values.unsqueeze(1)
+        loss = criterion(state_action_values, expected_state_action_values)
+
+        # Accumulate the loss
+        total_loss += loss.item()
+        loss.backward()
+
+    # Update the model parameters
     optimizer.step()
+
+    # Return the average loss for monitoring (optional)
+    return total_loss / len(batch) if len(batch) > 0 else 0
+
 
 
 def rewards(
@@ -366,23 +387,21 @@ def aggregate_results(
     # Update the model based on the aggregated experiences
     if len(memory) > batch_size:
         for _ in range(update_steps):
-            transitions = memory.sample(batch_size)
-            batch = _transition_to_batch(transitions, device)
-            optimize_model(batch, model, optimizer, device, gamma)
+            variable_batches = memory.sample_variable(batch_size)
+            optimize_model(variable_batches, model, optimizer, device, gamma)
+
 
 
 def _transition_to_batch(transitions, device):
     batch = Transition(*zip(*transitions))
 
-    state_batch = torch.stack([s for s in batch.state if s is not None])
+    state_batch = [s.to(device) for s in batch.state if s is not None]
     action_batch = torch.tensor(batch.action, dtype=torch.long, device=device)
     reward_batch = torch.tensor(batch.reward, device=device)
-    non_final_next_states = torch.stack([s for s in batch.next_state if s is not None])
+    next_state_batch = [s.to(device) for s in batch.next_state if s is not None]
     non_final_mask = torch.tensor([s is not None for s in batch.next_state], dtype=torch.bool, device=device)
 
-    return state_batch, action_batch, reward_batch, non_final_next_states, non_final_mask
-
-
+    return state_batch, action_batch, reward_batch, next_state_batch, non_final_mask
 
 
 def run_episode(
@@ -455,6 +474,10 @@ def run_episode(
                 else None
             )
             experiences.append(Transition(state, action, reward, next_state))
+
+            # for testing randomly add another experience
+            if random.random() > 0.5:
+                experiences.append(Transition(state, action, reward, next_state))
 
             total_reward += reward.item()
             state = next_state
