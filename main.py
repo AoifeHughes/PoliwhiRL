@@ -13,7 +13,7 @@ def main():
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
     goal_locs = [locations[6], locations[4]]
-    timeout = -1
+    timeout = 300
     goal_targets = [300, 600]
     model = DQN.LearnGame(
         rom_path,
