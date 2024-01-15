@@ -223,32 +223,28 @@ def load_checkpoint(checkpoint_path, model, optimizer, epsilon):
 
 
 def image_to_tensor(image, SCALE_FACTOR, USE_GRAYSCALE, device):
-    # Check if the image is already a PIL Image; if not, convert it
+    # If image is already a tensor, just ensure it's on the correct device and return
+    if torch.is_tensor(image):
+        return image.to(device)
+
+    # If image is a NumPy array, convert it to a tensor
     if not isinstance(image, Image.Image):
         image = Image.fromarray(image)
 
-    # Scale the image if needed
     if SCALE_FACTOR != 1:
         image = image.resize([int(s * SCALE_FACTOR) for s in image.size])
 
-    # Convert to grayscale if needed
     if USE_GRAYSCALE:
         image = image.convert("L")
 
-    # Convert the PIL image to a numpy array
     image = np.array(image)
 
-    # Add an extra dimension for grayscale images
     if USE_GRAYSCALE:
         image = np.expand_dims(image, axis=2)
 
-    # Convert to a PyTorch tensor, rearrange dimensions, normalize, and send to device
-    image = (
-        torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32) / 255
-    )
-    image = image.to(device)  # Sending tensor to the specified device
+    image = torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32) / 255
+    return image.to(device)
 
-    return image
 
 
 def select_action(state, epsilon, movements, model, device):
@@ -270,6 +266,9 @@ def optimize_model(batch, model, optimizer, device, gamma):
 
     non_final_mask = ~torch.as_tensor(done_batch, dtype=torch.bool, device=device)
     non_final_next_states = next_state_batch[non_final_mask]
+
+    state_batch = [torch.squeeze(state, 0) for state in state_batch]
+    state_batch = torch.stack(state_batch)
 
     q_values = model(state_batch)
 
