@@ -124,7 +124,7 @@ def run_episodes_batch(start, end, rom_path, model, memory, optimizer, epsilon, 
         batch_gradients.append(episode_gradients)
     return batch_gradients
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=100, batch_size=128, epsilon=1.0 ):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=100, episodes_per_batch=5, batch_size=128, epsilon=1.0 ):
 
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
@@ -138,19 +138,19 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeout, num_episodes=10
 
     # Main loop
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        for i in range(0, num_episodes, batch_size):
-            batch_end = min(i + batch_size, num_episodes)
-            batch_gradients = pool.apply(run_episodes_batch, args=(i, batch_end, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size))
+        # Create a list of arguments for each batch
+        batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
+                      for i in range(0, num_episodes, episodes_per_batch)]
 
+        # Process the batches in parallel
+        all_batch_gradients = pool.starmap(run_episodes_batch, batch_args)
+
+        for batch_gradients in tqdm(all_batch_gradients):
             # Aggregate gradients
             aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
 
             # Update the model
             apply_gradients(aggregate_gradients, model, optimizer)
-
-            # Save model periodically or based on certain conditions
-            # if i % 10 == 0:
-            #     torch.save(model.state_dict(), f"./checkpoints/model_checkpoint_{i}.pth")
 
     # Save final model
     torch.save(model.state_dict(), "./checkpoints/pokemon_rl_model_final.pth")

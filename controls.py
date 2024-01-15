@@ -21,10 +21,8 @@ class Controller:
         self.pyboy = PyBoy(
             temp_rom_path,
             window_scale=1,
-            window_type="headless",
             debug=False,
             quiet=True,
-            disable_renderer=True,
         )
 
         self.pyboy.set_emulation_speed(target_speed=0)
