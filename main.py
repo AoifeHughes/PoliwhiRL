@@ -5,7 +5,6 @@ import torch
 
 def main():
     rom_path = "Pokemon - Crystal Version.gbc"
-
     device = torch.device("cpu")
     SCALE_FACTOR = 0.5
     USE_GRAYSCALE = False
