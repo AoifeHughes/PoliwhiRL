@@ -109,6 +109,7 @@ class LearnGame:
         self.checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
         self.epsilon = 0.9
         self.start_episode = 0
+        self.max_total_level = 0
         self.load_checkpoint()
 
     def save_checkpoint(self, state, filename="pokemon_rl_checkpoint.pth"):
@@ -118,7 +119,8 @@ class LearnGame:
         # Check for latest checkpoint in checkpoints folder
         tmp_path = self.checkpoint_path
         if os.path.isdir("./checkpoints"):
-            checkpoints = os.listdir("./checkpoints")
+            checkpoints = os.listdir("./checkpoints") 
+            checkpoints = [x for x in checkpoints if x.endswith(".pth")]
             if len(checkpoints) > 0:
                 # sort checkpoints by last modified date
                 checkpoints.sort(key=lambda x: os.path.getmtime("./checkpoints/" + x))
@@ -261,6 +263,15 @@ class LearnGame:
             if DEBUG:
                 print("Discouraging revisiting locations")
                 total_reward -= default_reward
+        
+        # Encourage party pokemon
+        total_level, total_hp, total_exp= self.controller.party_info()
+
+        if total_level > self.max_total_level:
+            total_reward += default_reward
+            self.max_total_level = total_level
+            if DEBUG:
+                print("Encouraging party pokemon")
 
         if DEBUG:
             print("Total reward: ", total_reward)
@@ -299,6 +310,7 @@ class LearnGame:
 
                 if t > self.timeout and self.timeout != -1:
                     reward = reward - 1
+                    done = True
 
                 self.memory.push(
                     state,
