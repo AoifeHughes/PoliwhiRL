@@ -146,7 +146,11 @@ def run_model(
         ]
 
         with Pool(num_workers) as pool:
-            partial_results, run_times = pool.starmap(run_episode, args)
+            partial_results = pool.starmap(run_episode, args)
+            # extract run times from partial results
+            run_times = [result[1] for result in partial_results]
+            # extract experiences from partial results
+            partial_results = [result[0] for result in partial_results]
             new_experiences = sum(len(worker_result) for worker_result in partial_results)
         results.extend(partial_results)
         update_steps = max(min_update_steps, new_experiences // batch_size)
@@ -447,4 +451,4 @@ def run_episode(
 
         time_per_episode.append(t)
 
-    return experiences, time_per_episode
+    return (experiences, time_per_episode)
