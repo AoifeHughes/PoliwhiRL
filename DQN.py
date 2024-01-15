@@ -340,7 +340,7 @@ class LearnGame:
             # if the phase is optimal, save the model and move on
             # Ensure at least 20 episodes have been run
             if (
-                np.mean(time_per_episode) >= self.goal_targets[self.phase]
+                np.mean(time_per_episode) <= self.goal_targets[self.phase]
                 and i_episode > 20
             ):
                 self.phase += 1
