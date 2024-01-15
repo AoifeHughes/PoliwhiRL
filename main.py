@@ -1,31 +1,17 @@
 # -*- coding: utf-8 -*-
-import model
+from model import run
 import torch
-import memory
 
 
 def main():
     rom_path = "Pokemon - Crystal Version.gbc"
 
-    location_address = memory.location
-    locations = memory.locations
     device = torch.device("cpu")
     SCALE_FACTOR = 0.5
     USE_GRAYSCALE = False
-    goal_locs = [locations[6], locations[4]]
-    timeout = 3
-    goal_targets = [300, 600]
-    model.run_model(
-        rom_path,
-        locations,
-        location_address,
-        device,
-        SCALE_FACTOR,
-        USE_GRAYSCALE,
-        goal_locs,
-        goal_targets,
-        timeout,
-    )
+    timeout = 10
+    num_episodes = 10
+    run(rom_path,  device, SCALE_FACTOR, USE_GRAYSCALE, timeout, num_episodes)
 
 
 if __name__ == "__main__":
