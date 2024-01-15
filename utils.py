@@ -2,6 +2,7 @@ from PIL import Image
 import torch 
 import random
 import numpy as np
+import os 
 
 def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
     # Check if the image is already a PIL Image; if not, convert it
@@ -44,3 +45,47 @@ def select_action(state, epsilon, device, movements, model):
             device=device,
         ) 
     
+def document(episode_id, step_id, img, button_press, reward, scale, grayscale):
+    # for each episode we want to record a image of each step
+    # as well as the button press that was made as part of the image name
+    # each run should have its own directory 
+    if not os.path.isdir("./runs"):
+        os.mkdir("./runs")
+
+    if not os.path.isdir("./runs/run_{}".format(episode_id)):
+        os.mkdir("./runs/run_{}".format(episode_id))
+    # save image 
+    if not isinstance(img, Image.Image):
+        img = Image.fromarray(img)
+    # convert image scale and grayscale if needed
+    if scale != 1:
+        img = img.resize([int(s * scale) for s in img.size])
+    if grayscale:
+        img = img.convert("L")    
+    img.save("./runs/run_{}/{}_{}_{}.png".format(episode_id, step_id, button_press, reward))
+
+
+def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
+        # Check for latest checkpoint in checkpoints folder
+
+        tmp_path = checkpoint_path
+        if os.path.isdir(checkpoint_path):
+            checkpoints = os.listdir(checkpoint_path) 
+            checkpoints = [x for x in checkpoints if x.endswith(".pth")]
+            if len(checkpoints) > 0:
+                # sort checkpoints by last modified date
+                checkpoints.sort(key=lambda x: os.path.getmtime(checkpoint_path + x))
+                checkpoint_path = checkpoint_path + checkpoints[-1]
+        else:
+            os.mkdir(checkpoint_path)
+        if os.path.isfile(checkpoint_path):
+            print(f"Loading checkpoint '{checkpoint_path}'")
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            start_episode = checkpoint["start_episode"]
+            epsilon = checkpoint["epsilon"]
+            checkpoint_path = tmp_path
+        else:
+            print(f"No checkpoint found at '{checkpoint_path}'")
+        return start_episode, epsilon

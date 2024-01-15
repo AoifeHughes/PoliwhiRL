@@ -7,9 +7,10 @@ def main():
     rom_path = "Pokemon - Crystal Version.gbc"
     device = torch.device("cpu")
     SCALE_FACTOR = 0.5
-    USE_GRAYSCALE = False
-    timeout = 50
-    num_episodes = 20
+    USE_GRAYSCALE = True
+    playtime = 1 #1 hour and each move is about 1 second
+    timeout = 60 * 60 * playtime
+    num_episodes = 500
     run(rom_path,  device, SCALE_FACTOR, USE_GRAYSCALE, timeout, num_episodes)
 
 
