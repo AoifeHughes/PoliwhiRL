@@ -67,14 +67,19 @@ class Controller:
     def stop(self, save=True):
         self.pyboy.stop(save)
 
-        # Delete files with .ram extension
-        for file in glob.glob("*.ram"):
-            os.remove(file)
-
-        # Delete files with .rtc extension
-        for file in glob.glob("*.rtc"):
-            os.remove(file)
-
+        try:
+            # Delete files with .ram extension
+            for file in glob.glob("*.ram"):
+                os.remove(file)
+        except FileNotFoundError:
+            pass
+        try:
+            # Delete files with .rtc extension
+            for file in glob.glob("*.rtc"):
+                os.remove(file)
+        except FileNotFoundError:
+            pass
+        
     def get_current_location(self):
         return self.pyboy.get_memory_value(memory.location)
 
