@@ -375,13 +375,14 @@ def aggregate_results(
 def _transition_to_batch(transitions, device):
     batch = Transition(*zip(*transitions))
 
-    state_batch = torch.stack([s.squeeze(0) for s in batch.state])
-    action_batch = torch.stack([a for a in batch.action])
-    reward_batch = torch.cat([r for r in batch.reward])  # This should be a 1D tensor
-    next_state_batch = torch.stack([s.squeeze(0) for s in batch.next_state if s is not None])
-    done_batch = torch.tensor([s is None for s in batch.next_state], dtype=torch.bool, device=device)
+    state_batch = torch.stack([s for s in batch.state if s is not None])
+    action_batch = torch.tensor(batch.action, dtype=torch.long, device=device)
+    reward_batch = torch.tensor(batch.reward, device=device)
+    non_final_next_states = torch.stack([s for s in batch.next_state if s is not None])
+    non_final_mask = torch.tensor([s is not None for s in batch.next_state], dtype=torch.bool, device=device)
 
-    return state_batch, action_batch, reward_batch, next_state_batch, done_batch
+    return state_batch, action_batch, reward_batch, non_final_next_states, non_final_mask
+
 
 
 
