@@ -5,11 +5,28 @@ import os
 import memory
 import OCR
 import numpy as np
+import shutil
+import tempfile
 
 
 class Controller:
     def __init__(self, rom_path):
-        self.pyboy = PyBoy(rom_path, window_scale=1)
+        # Create a temporary directory
+        self.temp_dir = tempfile.mkdtemp()
+
+        # Copy the ROM to the temporary directory
+        temp_rom_path = shutil.copy(rom_path, self.temp_dir)
+
+        # Initialize PyBoy with the ROM in the temporary directory
+        self.pyboy = PyBoy(
+            temp_rom_path,
+            window_scale=1,
+            window_type="headless",
+            debug=False,
+            quiet=True,
+            disable_renderer=True,
+        )
+
         self.pyboy.set_emulation_speed(target_speed=0)
         self.movements = [
             "UP",
@@ -66,20 +83,8 @@ class Controller:
 
     def stop(self, save=True):
         self.pyboy.stop(save)
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-        try:
-            # Delete files with .ram extension
-            for file in glob.glob("*.ram"):
-                os.remove(file)
-        except FileNotFoundError:
-            pass
-        try:
-            # Delete files with .rtc extension
-            for file in glob.glob("*.rtc"):
-                os.remove(file)
-        except FileNotFoundError:
-            pass
-        
     def get_current_location(self):
         return self.pyboy.get_memory_value(memory.location)
 
