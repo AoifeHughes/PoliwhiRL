@@ -162,3 +162,4 @@ Pokemon*
 *.ram
 *.rtc
 *.state
+runs/*
