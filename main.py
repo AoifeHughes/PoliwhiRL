@@ -10,10 +10,10 @@ def main():
     location_address = memory.location
     locations = memory.locations
     device = torch.device("cpu")
-    SCALE_FACTOR = 1
+    SCALE_FACTOR = 0.5
     USE_GRAYSCALE = False
     goal_locs = [locations[6], locations[4]]
-    timeout = -1
+    timeout = 3
     goal_targets = [300, 600]
     DQN.run_model(
         rom_path,

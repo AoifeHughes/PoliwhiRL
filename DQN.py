@@ -13,6 +13,7 @@ import multiprocessing
 from multiprocessing import Pool
 from itertools import count
 from collections import namedtuple
+from tqdm import tqdm
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"))
 
@@ -73,7 +74,7 @@ def run_model(
     goal_locs,
     goal_targets,
     timeout,
-    num_episodes=20,
+    num_episodes=100,
     report_interval=10,
     num_workers=None,
 ):
@@ -103,7 +104,7 @@ def run_model(
     shared_memory = ReplayMemory(1000)
     shared_optimizer = optim.Adam(shared_model.parameters(), lr=0.005)
     default_reward = 0.1
-    phase = 0
+    phase = 1
     # Load checkpoint if available
     checkpoint_path = "./checkpoints/pokemon_rl_checkpoint.pth"
     epsilon_initial = 0.9
@@ -117,7 +118,7 @@ def run_model(
     epsilon = epsilon_initial
     min_update_steps = 5
     results = []
-    for start in range(0, num_episodes, report_interval):
+    for start in tqdm(range(0, num_episodes, report_interval)):
         end = min(start + report_interval, num_episodes)
         episodes_this_round = end - start
         episodes_per_worker = episodes_this_round // num_workers
@@ -140,7 +141,7 @@ def run_model(
                 positive_keywords,
                 default_reward,
                 phase,
-                movements
+                movements,
             )
             for worker_id in range(num_workers)
         ]
@@ -151,12 +152,23 @@ def run_model(
             run_times = [result[1] for result in partial_results]
             # extract experiences from partial results
             partial_results = [result[0] for result in partial_results]
-            new_experiences = sum(len(worker_result) for worker_result in partial_results)
+            new_experiences = sum(
+                len(worker_result) for worker_result in partial_results
+            )
         results.extend(partial_results)
         update_steps = max(min_update_steps, new_experiences // batch_size)
 
         # Aggregate and report results after every 'report_interval' episodes
-        aggregate_results(results, shared_memory, shared_optimizer, shared_model, device, gamma, batch_size, update_steps)
+        aggregate_results(
+            results,
+            shared_memory,
+            shared_optimizer,
+            shared_model,
+            device,
+            gamma,
+            batch_size,
+            update_steps,
+        )
         epsilon = max(epsilon * epsilon_decay, epsilon_min)
 
         # Save checkpoint after every 'report_interval' episodes and record number of episodes completed
@@ -167,12 +179,13 @@ def run_model(
                 "optimizer": shared_optimizer.state_dict(),
                 "epsilon": epsilon,
             },
-            filename=f"./checkpoints/pokemon_rl_checkpoint_{start + report_interval}.pth",
+            filename=f"./checkpoints/pokemon_rl_checkpoint_{start + report_interval + start_episode}.pth",
         )
-        # Print the average run time per worker 
+        # Print the average run time per worker
         print(f"Average run time per worker: {np.mean(run_times)}")
 
     return results
+
 
 def save_checkpoint(state, filename="pokemon_rl_checkpoint.pth"):
     torch.save(state, filename)
@@ -253,33 +266,34 @@ def select_action(state, epsilon, movements, model, device):
 
 
 def optimize_model(batch, model, optimizer, device, gamma):
-    # Unpack the batch of experiences
     state_batch, action_batch, reward_batch, next_state_batch, done_batch = batch
 
-    non_final_mask = ~torch.tensor(done_batch, dtype=torch.bool, device=device)
-    non_final_next_states = torch.cat(
-        [s for s, done in zip(next_state_batch, done_batch) if not done]
-    )
+    non_final_mask = ~torch.as_tensor(done_batch, dtype=torch.bool, device=device)
+    non_final_next_states = next_state_batch[non_final_mask]
 
-    state_batch = torch.cat(state_batch)
-    action_batch = torch.cat(action_batch)
-    reward_batch = torch.cat(reward_batch)
+    q_values = model(state_batch)
 
-    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the columns of actions taken
-    state_action_values = model(state_batch).gather(1, action_batch.unsqueeze(-1))
+    action_batch = action_batch.squeeze(-1).long()  # Adjust shape and type
+    state_action_values = q_values.gather(1, action_batch)
 
-    # Compute V(s_{t+1}) for all next states.
     next_state_values = torch.zeros(len(state_batch), device=device)
     next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
 
-    # Compute the expected Q values
     expected_state_action_values = (next_state_values * gamma) + reward_batch
 
-    # Compute Huber loss
     criterion = nn.SmoothL1Loss()
-    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
-    # Optimize the model
+    # Reshape expected_state_action_values to match state_action_values
+    # Both should be of shape [batch_size, 1]
+    expected_state_action_values = expected_state_action_values.unsqueeze(1)
+
+    # Verify and print the shapes (for debugging, can be removed later)
+    print("state_action_values shape:", state_action_values.shape)
+    print("expected_state_action_values shape:", expected_state_action_values.shape)
+
+    # Compute loss
+    loss = criterion(state_action_values, expected_state_action_values)
+
     optimizer.zero_grad()
     loss.backward()
     for param in model.parameters():
@@ -358,18 +372,28 @@ def aggregate_results(
     if len(memory) > batch_size:
         for _ in range(update_steps):
             transitions = memory.sample(batch_size)
-            batch = _transition_to_batch(transitions)
+            batch = _transition_to_batch(transitions, device)
             optimize_model(batch, model, optimizer, device, gamma)
 
 
-def _transition_to_batch(transitions):
+def _transition_to_batch(transitions, device):
     # Transforms a batch of transitions to separate batches of states, actions, etc.
     batch = Transition(*zip(*transitions))
-    state_batch = torch.cat(batch.state)
-    action_batch = torch.cat(batch.action)
-    reward_batch = torch.cat(batch.reward)
-    non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
-    return state_batch, action_batch, reward_batch, non_final_next_states
+
+    # Ensure each state is a 3D tensor (1 channel image)
+    state_batch = torch.stack(
+        [s.squeeze(0) for s in batch.state]
+    )  # Shape should be [batch_size, 1, height, width]
+    action_batch = torch.stack([a for a in batch.action])
+    reward_batch = torch.stack([r for r in batch.reward])
+    next_state_batch = torch.stack(
+        [s.squeeze(0) for s in batch.next_state if s is not None]
+    )
+    done_batch = torch.tensor(
+        [s is None for s in batch.next_state], dtype=torch.bool, device=device
+    )
+
+    return state_batch, action_batch, reward_batch, next_state_batch, done_batch
 
 
 def run_episode(
@@ -389,7 +413,7 @@ def run_episode(
     positive_keywords,
     default_reward,
     phase,
-    movements
+    movements,
 ):
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
@@ -434,7 +458,6 @@ def run_episode(
             reward += reward_value
             if loc in locations and locations[loc] == goal_locs[phase]:
                 reward += 1
-                print("done")
                 done = True
 
             next_state = (
@@ -446,7 +469,9 @@ def run_episode(
 
             total_reward += reward.item()
             state = next_state
-            if done:
+
+            if done or (timeout > 0 and t > timeout):
+                controller.stop()  # free up some memory
                 break
 
         time_per_episode.append(t)
