@@ -58,7 +58,7 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
-    def handleMovement(self, movement, ticks_per_input=10, wait=45):
+    def handleMovement(self, movement, ticks_per_input=10, wait=90):
         self.pyboy._rendering(False)
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])

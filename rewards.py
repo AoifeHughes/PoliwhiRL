@@ -21,7 +21,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, default_reward=0.01
     cur_img = np.array(cur_img.convert('L'))
     if len(imgs) > 0:
         if not is_similar(cur_img, imgs):
-            total_reward += default_reward * 5
+            total_reward += default_reward * 10
             imgs.append(cur_img)
     else:
         imgs.append(cur_img)
@@ -29,7 +29,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, default_reward=0.01
     # Encourage party pokemon
     total_level, total_hp, total_exp= controller.party_info()
     if total_level > np.sum(max_total_level):
-        total_reward += default_reward * 10
+        total_reward += default_reward * 50
         max_total_level[0] = total_level
 
     return total_reward
