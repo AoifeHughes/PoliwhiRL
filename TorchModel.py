@@ -51,7 +51,9 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         with self.lock:
-            return random.sample(list(self.memory), min(len(self.memory), batch_size))
+            memory_length = len(self.memory)
+            indices = random.sample(range(memory_length), min(memory_length, batch_size))
+            return [self.memory[i] for i in indices]
 
     def __len__(self):
         with self.lock:

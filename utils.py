@@ -59,10 +59,12 @@ def document(episode_id, step_id, img, button_press, reward, scale, grayscale, t
         img = Image.fromarray(img)
     # convert image scale and grayscale if needed
     if scale != 1:
-        img = img.resize([int(s * scale) for s in img.size])
+        scale_img = img.resize([int(s * scale) for s in img.size])
     if grayscale:
-        img = img.convert("L")    
-    img.save(f"./runs/run_{timeout}_{episode_id}/step_{step_id}_{button_press}_{reward}.png")
+        scale_img = scale_img.convert("L")    
+    scale_img.save(f"./runs/run_{timeout}_{episode_id}/step_{step_id}_{button_press}_{reward}.png")
+    img.save(f"./runs/run_{timeout}_{episode_id}/ORIGINAL_step_{step_id}_{button_press}_{reward}.png")
+
 
 
 def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
@@ -90,11 +92,11 @@ def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
             print(f"No checkpoint found at '{checkpoint_path}'")
         return start_episode, epsilon
 
-def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
+def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon, timeout):
     # Save checkpoint
     if not os.path.isdir(checkpoint_path):
         os.mkdir(checkpoint_path)
-    checkpoint_path = checkpoint_path + "checkpoint_{}.pth".format(start_episode)
+    checkpoint_path = checkpoint_path + f"checkpoint_{timeout}_{start_episode}.pth"
     print(f"Saving checkpoint to '{checkpoint_path}'")
     torch.save(
         {

@@ -61,19 +61,8 @@ def run_episode(episode_id, rom_path, model, memory, optimizer, epsilon, device,
     controller = Controller(rom_path)
     movements = controller.movements
     state = image_to_tensor(controller.screen_image(), device, SCALE_FACTOR, USE_GRAYSCALE)
-    visited_locations = set()
     total_reward = 0
     max_levels = [0]
-    positive_keywords = {"received": False, "won": False}
-    negative_keywords = {
-        "lost": False,
-        "fainted": False,
-        "save the game": False,
-        "saving": False,
-        "select": False,
-        "town map": False,
-        "text speed": False,
-    }
 
     episode_gradients = []
     total_reward = 0
@@ -102,7 +91,7 @@ def run_episode(episode_id, rom_path, model, memory, optimizer, epsilon, device,
 
         total_reward += reward
         state = next_state
-        document(episode_id, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout)
+        #document(episode_id, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout)
         if done or 0 < timeout < t:
             break
 
@@ -150,7 +139,7 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
         all_rewards[timeout] = []
         # Main loop
         epsilon = init_epsilon
-        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        with multiprocessing.Pool(processes=4) as pool:
             # calculate an array of epsilons for each episode which decay
             # linearly from epsilon_max to epsilon_min
             epsilons = np.linspace(epsilon_max, epsilon_min, num_episodes)
@@ -164,20 +153,23 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
                 if len(batch_gradients) == 0:
                     print("No gradients to aggregate!")
                 # Aggregate gradients
-                aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
+                # check contents of batch_gradients
+                aggregate_gradients = [torch.mean(torch.stack(grads), dim=0) for grads in zip(*batch_gradients) if all(isinstance(g, torch.Tensor) for g in grads)]
                 # Update the model
                 apply_gradients(aggregate_gradients, model, optimizer)
                 all_rewards[timeout].append(batch_rewards)
             log_rewards(batch_rewards)
-            # Save checkpoint
-            save_checkpoint("./checkpoints/", model, optimizer, start_episode + num_episodes, epsilon)
 
         episodes_total += len(all_rewards[timeout])
+        save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon, timeout)
+
         # save data with number of episodes completed and timeout
         with open(f"./checkpoints/all_rewards_timeout_{timeout}_episodetotal_{episodes_total}.csv", "w") as f:
             writer = csv.writer(f)
             writer.writerow(all_rewards[timeout])
+        
+        print("Time elapsed: ", time() - start_time)
             
     # Save final model
-    save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
+    save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon)
 
