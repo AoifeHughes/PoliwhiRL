@@ -45,15 +45,15 @@ def select_action(state, epsilon, device, movements, model):
             device=device,
         ) 
     
-def document(episode_id, step_id, img, button_press, reward, scale, grayscale):
+def document(episode_id, step_id, img, button_press, reward, scale, grayscale, timeout):
     # for each episode we want to record a image of each step
     # as well as the button press that was made as part of the image name
     # each run should have its own directory 
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
 
-    if not os.path.isdir("./runs/run_{}".format(episode_id)):
-        os.mkdir("./runs/run_{}".format(episode_id))
+    if not os.path.isdir(f"./runs/run_{timeout}_{episode_id}"):
+        os.mkdir(f"./runs/run_{timeout}_{episode_id}")
     # save image 
     if not isinstance(img, Image.Image):
         img = Image.fromarray(img)
@@ -62,7 +62,7 @@ def document(episode_id, step_id, img, button_press, reward, scale, grayscale):
         img = img.resize([int(s * scale) for s in img.size])
     if grayscale:
         img = img.convert("L")    
-    img.save("./runs/run_{}/{}_{}_{}.png".format(episode_id, step_id, button_press, reward))
+    img.save(f"./runs/run_{timeout}_{episode_id}/step_{step_id}_{button_press}_{reward}.png")
 
 
 def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
