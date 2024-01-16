@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch 
 from collections import deque
 import random
+from multiprocessing import Lock, Manager
+
 
 class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
@@ -35,13 +37,22 @@ class DQN(nn.Module):
 
 class ReplayMemory(object):
     def __init__(self, capacity):
-        self.memory = deque([], maxlen=capacity)
+        manager = Manager()
+        self.memory = manager.list()
+        self.lock = manager.Lock()
+        self.capacity = capacity
 
     def push(self, *args):
-        self.memory.append(args)
+        with self.lock:
+            # Ensure memory does not exceed capacity
+            if len(self.memory) >= self.capacity:
+                self.memory.pop(0)
+            self.memory.append(args)
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-    
+        with self.lock:
+            return random.sample(list(self.memory), min(len(self.memory), batch_size))
+
     def __len__(self):
-        return len(self.memory)
+        with self.lock:
+            return len(self.memory)
