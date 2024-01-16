@@ -102,7 +102,7 @@ def run_episode(episode_id, rom_path, model, memory, optimizer, epsilon, device,
 
         total_reward += reward
         state = next_state
-        document(episode_id, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE)
+        document(episode_id, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout)
         if done or 0 < timeout < t:
             break
 
