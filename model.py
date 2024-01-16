@@ -130,7 +130,7 @@ def log_rewards(rewards):
     print(f"Average reward for batch: {np.mean(rewards)}")
 
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=100, episodes_per_batch=5, batch_size=128):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=100, episodes_per_batch=5, batch_size=64):
 
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
@@ -159,18 +159,19 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
                         for i in range(0, num_episodes, episodes_per_batch)]
             for batch_results in pool.starmap(run_episodes_batch, batch_args):
                 batch_gradients, batch_rewards = batch_results
+                # remove empty gradients
+                batch_gradients = [grad for grad in batch_gradients if len(grad) > 0]
+                if len(batch_gradients) == 0:
+                    print("No gradients to aggregate!")
                 # Aggregate gradients
                 aggregate_gradients = [sum(grads) / len(grads) for grads in zip(*batch_gradients)]
                 # Update the model
                 apply_gradients(aggregate_gradients, model, optimizer)
                 all_rewards[timeout].append(batch_rewards)
-                log_rewards(batch_rewards)
-                # Save checkpoint
-                save_checkpoint("./checkpoints/", model, optimizer, start_episode, epsilon)
-                print(f"{len(all_rewards) / num_episodes * 100}% complete")
-                elapsed_time = time() - start_time
-                print(f"Elapsed time: {elapsed_time // 3600} hours, {(elapsed_time % 3600) // 60} minutes")
-                print(f"Estimated time remaining: {elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) // 3600} hours, {(elapsed_time / len(all_rewards) * (num_episodes - len(all_rewards)) % 3600) // 60} minutes")
+            log_rewards(batch_rewards)
+            # Save checkpoint
+            save_checkpoint("./checkpoints/", model, optimizer, start_episode + num_episodes, epsilon)
+
         episodes_total += len(all_rewards[timeout])
         # save data with number of episodes completed and timeout
         with open(f"./checkpoints/all_rewards_timeout_{timeout}_episodetotal_{episodes_total}.csv", "w") as f:
