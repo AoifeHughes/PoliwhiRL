@@ -45,25 +45,27 @@ def select_action(state, epsilon, device, movements, model):
             device=device,
         ) 
     
-def document(episode_id, step_id, img, button_press, reward, scale, grayscale, timeout):
+def document(episode_id, step_id, img, button_press, reward, scale, grayscale, timeout, epsilon):
     # for each episode we want to record a image of each step
     # as well as the button press that was made as part of the image name
     # each run should have its own directory 
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
-
-    if not os.path.isdir(f"./runs/run_{timeout}_{episode_id}"):
-        os.mkdir(f"./runs/run_{timeout}_{episode_id}")
+    save_dir = f"./runs/run_{timeout}_{episode_id}_{np.around(epsilon,2)}"
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
     # save image 
     if not isinstance(img, Image.Image):
         img = Image.fromarray(img)
     # convert image scale and grayscale if needed
     if scale != 1:
         scale_img = img.resize([int(s * scale) for s in img.size])
+    else:
+        scale_img = img
     if grayscale:
         scale_img = scale_img.convert("L")    
-    scale_img.save(f"./runs/run_{timeout}_{episode_id}/step_{step_id}_{button_press}_{reward}.png")
-    img.save(f"./runs/run_{timeout}_{episode_id}/ORIGINAL_step_{step_id}_{button_press}_{reward}.png")
+    scale_img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}.png")
+    img.save(f"{save_dir}/ORIGINAL_step_{step_id}_{button_press}_{np.around(reward,2)}.png")
 
 
 

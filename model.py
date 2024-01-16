@@ -16,6 +16,8 @@ from memory import location as location_address
 import multiprocessing
 from utils import document, load_checkpoint, save_checkpoint
 from time import time
+import os
+import itertools
 
 def optimize_model(batch_size, device, memory, model, optimizer):
     if len(memory) < batch_size:
@@ -68,12 +70,13 @@ def run_episode(episode_id, rom_path, model, memory, optimizer, epsilon, device,
     total_reward = 0
     imgs = []
     for t in count():
+        img_orig = controller.screen_image()
         action = select_action(state, epsilon, device, movements, model)
         controller.handleMovement(movements[action.item()])
         img = controller.screen_image()
         done = False
         reward = calc_rewards(controller, max_levels, img, imgs, default_reward=0.01
-        )
+        ) 
         total_reward += reward
         next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE) if not done else None
 
@@ -91,7 +94,7 @@ def run_episode(episode_id, rom_path, model, memory, optimizer, epsilon, device,
 
         total_reward += reward
         state = next_state
-        #document(episode_id, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout)
+        document(episode_id, t, img_orig, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout, epsilon)
         if done or 0 < timeout < t:
             break
 
@@ -106,11 +109,11 @@ def apply_gradients(aggregate_gradients, model, optimizer):
     optimizer.step()
 
 # Run episodes in parallel and collect gradients
-def run_episodes_batch(start, end, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size):
+def run_episodes_batch(i, reps, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size):
     batch_gradients = []
     batch_rewards = []
-    for i in range(start, end):
-        episode_gradients, episode_rewards = run_episode(i, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
+    for j in range(i, reps+i):
+        episode_gradients, episode_rewards = run_episode(j, rom_path, model, memory, optimizer, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
         batch_gradients.append(episode_gradients)
         batch_rewards.append(episode_rewards)
     return batch_gradients, batch_rewards
@@ -118,15 +121,19 @@ def run_episodes_batch(start, end, rom_path, model, memory, optimizer, epsilon, 
 def log_rewards(rewards):
     print(f"Average reward for batch: {np.mean(rewards)}")
 
+def chunked_iterable(iterable, size):
+    it = iter(iterable)
+    for start in range(0, len(iterable), size):
+        yield tuple(itertools.islice(it, size))
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=100, episodes_per_batch=5, batch_size=64):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=100, episodes_per_batch=5, batch_size=128):
 
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
     controller.stop()
     model = DQN(int(screen_size[0] * SCALE_FACTOR), int(screen_size[1] * SCALE_FACTOR), len(controller.movements), USE_GRAYSCALE).to(device)
     model.share_memory()  # Prepare model for shared memory
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     memory = ReplayMemory(1000)
     # Load checkpoint if it exists
     epsilon_max = 1.0
@@ -135,41 +142,51 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE,  timeouts, num_episodes=1
     all_rewards = {}
     start_time = time()
     episodes_total = 0
+    reps = os.cpu_count()
     for timeout in timeouts:
         all_rewards[timeout] = []
         # Main loop
         epsilon = init_epsilon
-        with multiprocessing.Pool(processes=4) as pool:
+        with multiprocessing.Pool(processes=os.cpu_count()) as pool:
             # calculate an array of epsilons for each episode which decay
-            # linearly from epsilon_max to epsilon_min
-            epsilons = np.linspace(epsilon_max, epsilon_min, num_episodes)
+            # exponentially from epsilon_max to epsilon_min
+            decay_rate = -np.log(epsilon_min / epsilon_max) / num_episodes*reps
+
+            # Calculate the epsilon values for each episode
+            epsilons_exponential = epsilon_max * np.exp(-decay_rate * np.arange(num_episodes*reps))
             # Create a list of arguments for each batch
-            batch_args = [(i, min(i + episodes_per_batch, num_episodes), rom_path, model, memory, optimizer, epsilons[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size)
-                        for i in range(0, num_episodes, episodes_per_batch)]
-            for batch_results in pool.starmap(run_episodes_batch, batch_args):
-                batch_gradients, batch_rewards = batch_results
-                # remove empty gradients
-                batch_gradients = [grad for grad in batch_gradients if len(grad) > 0]
-                if len(batch_gradients) == 0:
-                    print("No gradients to aggregate!")
-                # Aggregate gradients
-                # check contents of batch_gradients
-                aggregate_gradients = [torch.mean(torch.stack(grads), dim=0) for grads in zip(*batch_gradients) if all(isinstance(g, torch.Tensor) for g in grads)]
-                # Update the model
-                apply_gradients(aggregate_gradients, model, optimizer)
-                all_rewards[timeout].append(batch_rewards)
-            log_rewards(batch_rewards)
+            args = [(i, reps,
+                            rom_path, model, memory, optimizer, 
+                            epsilons_exponential[i], device, SCALE_FACTOR,
+                              USE_GRAYSCALE, timeout, batch_size)
+                            for i in range(0, num_episodes*reps, reps)]
+            
+            # split the episodes into batches and run them in parallel
+            for batch_args in tqdm(chunked_iterable(args, episodes_per_batch), total=num_episodes//episodes_per_batch):
+                for batch_results in pool.starmap(run_episodes_batch, batch_args):
+                    batch_gradients, batch_rewards = batch_results
+                    # remove empty gradients
+                    batch_gradients = [grad for grad in batch_gradients if len(grad) > 0]
+                    if len(batch_gradients) == 0:
+                        pass
+                    # Aggregate gradients
+                    # check contents of batch_gradients
+                    aggregate_gradients = [torch.mean(torch.stack(grads), dim=0) for grads in zip(*batch_gradients) if all(isinstance(g, torch.Tensor) for g in grads)]
+                    # Update the model
+                    apply_gradients(aggregate_gradients, model, optimizer)
+                    all_rewards[timeout].append(batch_rewards)
+                log_rewards(batch_rewards)
 
         episodes_total += len(all_rewards[timeout])
         save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon, timeout)
 
         # save data with number of episodes completed and timeout
-        with open(f"./checkpoints/all_rewards_timeout_{timeout}_episodetotal_{episodes_total}.csv", "w") as f:
+        with open(f"./checkpoints/all_rewards_timeout_{timeout}_episodetotal_{episodes_per_batch*episodes_total+start_episode}.csv", "w") as f:
             writer = csv.writer(f)
             writer.writerow(all_rewards[timeout])
         
         print("Time elapsed: ", time() - start_time)
             
     # Save final model
-    save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon)
+    save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon, timeout)
 
