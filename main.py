@@ -6,10 +6,10 @@ import torch
 def main():
     rom_path = "Pokemon - Crystal Version.gbc"
     device = torch.device("cpu")
-    SCALE_FACTOR = 0.25
+    SCALE_FACTOR = 0.5
     USE_GRAYSCALE = True
-    timeouts = [1000]
-    num_episodes = 50
+    timeouts = [10000]
+    num_episodes = 250
     run(rom_path,  device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes)
 
 
