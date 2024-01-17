@@ -57,15 +57,8 @@ def document(episode_id, step_id, img, button_press, reward, scale, grayscale, t
     # save image 
     if not isinstance(img, Image.Image):
         img = Image.fromarray(img)
-    # convert image scale and grayscale if needed
-    if scale != 1:
-        scale_img = img.resize([int(s * scale) for s in img.size])
-    else:
-        scale_img = img
-    if grayscale:
-        scale_img = scale_img.convert("L")    
-    scale_img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}.png")
-    img.save(f"{save_dir}/ORIGINAL_step_{step_id}_{button_press}_{np.around(reward,2)}.png")
+
+    img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}.png")
 
 
 
