@@ -8,8 +8,8 @@ def main():
     device = torch.device("cpu")
     SCALE_FACTOR = 0.5
     USE_GRAYSCALE = True
-    timeouts = [10000]
-    num_episodes = 250
+    timeouts = [500]
+    num_episodes = 1000
     run(rom_path,  device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes)
 
 

@@ -105,6 +105,14 @@ class Controller:
     def bytes_to_int(self, byte_list):
         return int.from_bytes(byte_list, byteorder="little")
 
+    def read_little_endian(self, start, end):
+        raw_bytes = []
+        for i in range(end, start - 1, -1):
+            byte = self.pyboy.get_memory_value(i)
+            raw_bytes.append(byte)
+        return raw_bytes
+
+
     def party_info(self):
         num_pokemon = self.pyboy.get_memory_value(memory.party_base)
         total_level = 0
