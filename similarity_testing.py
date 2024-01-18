@@ -3,7 +3,7 @@ import numpy as np
 from skimage.metrics import structural_similarity as ssim
 
 def compare_images_pil(image1, image2):
-    # Convert PIL images to numpy arrays
+    # Convert PIL images to numpy array
     image1_np = np.array(image1)
     image2_np = np.array(image2)
 

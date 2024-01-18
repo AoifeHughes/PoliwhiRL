@@ -36,18 +36,27 @@ class DQN(nn.Module):
 
 
 class ReplayMemory(object):
-    def __init__(self, capacity):
+    def __init__(self, capacity, n_steps=5):
         manager = Manager()
         self.memory = manager.list()
         self.lock = manager.Lock()
         self.capacity = capacity
+        self.n_steps = n_steps
+        self.temporal_buffer = []
 
     def push(self, *args):
-        with self.lock:
-            # Ensure memory does not exceed capacity
-            if len(self.memory) >= self.capacity:
-                self.memory.pop(0)
-            self.memory.append(args)
+        # Add transition to the temporal buffer
+        self.temporal_buffer.append(args)
+
+        if len(self.temporal_buffer) == self.n_steps:
+            with self.lock:
+                # Ensure memory does not exceed capacity
+                if len(self.memory) >= self.capacity:
+                    self.memory.pop(0)
+                # Push the sequence of N steps
+                self.memory.append(list(self.temporal_buffer))
+                # Reset the temporal buffer
+                self.temporal_buffer = []
 
     def sample(self, batch_size):
         with self.lock:
