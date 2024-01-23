@@ -102,3 +102,12 @@ def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon, t
         },
         checkpoint_path,
     )
+
+def save_results(results_path, episodes, results):
+    # Save results
+    if not os.path.isdir(results_path):
+        os.mkdir(results_path)
+    results_path = results_path + f"results_{episodes}.txt"
+    print(f"Saving results to '{results_path}'")
+    with open(results_path, "w") as f:
+        f.write(str(results))

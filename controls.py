@@ -17,12 +17,19 @@ class Controller:
         # Copy the ROM to the temporary directory
         temp_rom_path = shutil.copy(rom_path, self.temp_dir)
 
+        # copy other files to the temporary directory
+        for file in ['start.state', 'Pokemon - Crystal Version.gbc.ram', 'Pokemon - Crystal Version.gbc.rtc']:
+            shutil.copy(file, self.temp_dir)
+
         # Initialize PyBoy with the ROM in the temporary directory
         self.pyboy = PyBoy(
             temp_rom_path,
             debug=False,
             window_type="headless"
         )
+        self.pyboy.set_emulation_speed(0)
+        with open("start.state", "rb") as stateFile:
+            self.pyboy.load_state(stateFile)
 
         self.movements = [
             "UP",

@@ -17,7 +17,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
     # store if has been rewarded recently
     # if has been rewarded recently, then don't reward again
 
-    total_reward = -default_reward
+    total_reward = -default_reward * 5
     # cur_img = np.array(cur_img.convert('L'))
     # if len(imgs) > 0:
     #     if not is_similar(cur_img, imgs):
@@ -28,13 +28,13 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
 
     # Encourage getting out of location
     if controller.get_current_location() not in locs:
-        total_reward += default_reward * 100
+        total_reward += default_reward * 500
         locs.add(controller.get_current_location())
 
     # Encourage moving around
     cur_xy = controller.get_XY()
     if cur_xy not in xy:
-        total_reward += default_reward * 5
+        total_reward += default_reward * 10
         xy.add(cur_xy)
 
     
@@ -42,7 +42,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
     # Encourage party pokemon
     total_level, total_hp, total_exp= controller.party_info()
     if total_level > np.sum(max_total_level):
-        total_reward += default_reward * 500
+        total_reward += default_reward * 5000
         max_total_level[0] = total_level
 
     return total_reward
