@@ -5,6 +5,7 @@ from collections import deque
 import random
 from multiprocessing import Lock, Manager
 import torch.nn.functional as F
+import numpy as np
 
 class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
@@ -70,10 +71,62 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         with self.lock:
-            memory_length = len(self.memory)
-            indices = random.sample(range(memory_length), min(memory_length, batch_size))
-            return [self.memory[i] for i in indices]
+            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size)] 
 
     def __len__(self):
         with self.lock:
             return len(self.memory)
+
+
+def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.99, n_steps=5):
+
+    # Sample a batch of n-step sequences
+    sequences = memory.sample(batch_size)
+
+    # Initialize lists for states, actions, rewards, and next states
+    state_batch = []
+    action_batch = []
+    reward_batch = []
+    next_state_batch = []
+    non_final_mask = []
+
+    for sequence in sequences:
+        # Sum the rewards over the n steps, considering discounting
+        cumulative_reward = sum((GAMMA ** i) * sequence[i][2] for i in range(n_steps))
+        reward_batch.append(cumulative_reward)
+
+        # Add the first state and action and the last next state of the sequence
+        state_batch.append(sequence[0][0])
+        action_batch.append(sequence[0][1])
+        next_state = sequence[-1][3] if sequence[-1][3] is not None else None
+        next_state_batch.append(next_state)
+        non_final_mask.append(next_state is not None)
+
+    # Convert lists to tensors
+    state_batch = torch.cat(state_batch)
+    action_batch = torch.cat(action_batch)
+    reward_batch = torch.tensor(reward_batch, device=device)
+    non_final_next_states = torch.cat([s for s in next_state_batch if s is not None])
+    non_final_mask = torch.tensor(non_final_mask, device=device, dtype=torch.bool)
+
+    # Compute Q(s_t, a)
+    state_action_values = model(state_batch).gather(1, action_batch.unsqueeze(1))
+
+    # Compute V(s_{t+n}) for all next states.
+    next_state_values = torch.zeros(batch_size, device=device)
+    next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
+
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * (GAMMA ** n_steps)) + reward_batch
+
+    # Compute Huber loss
+    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
+    # Optimize the model
+    optimizer.zero_grad()
+    loss.backward()
+    for param in model.parameters():
+        param.grad.data.clamp_(-1, 1)
+    optimizer.step()
+
+    return [param.grad for param in model.parameters() if param.grad is not None]
