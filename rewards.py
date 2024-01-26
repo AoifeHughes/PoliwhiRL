@@ -17,7 +17,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
     # store if has been rewarded recently
     # if has been rewarded recently, then don't reward again
 
-    total_reward = -default_reward * 5
+    total_reward = -default_reward * 1
     # cur_img = np.array(cur_img.convert('L'))
     # if len(imgs) > 0:
     #     if not is_similar(cur_img, imgs):
