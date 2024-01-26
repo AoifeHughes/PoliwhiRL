@@ -128,5 +128,3 @@ def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.99, n_s
     for param in model.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
-
-    return [param.grad for param in model.parameters() if param.grad is not None]

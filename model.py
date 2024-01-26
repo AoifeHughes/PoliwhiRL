@@ -127,7 +127,7 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=10
     save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon_min, timeouts[-1])
 
     # Save results
-    save_results("./results/", results, 1 )
+    save_results("./results/", 1, results)
 
 
 
@@ -159,24 +159,7 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
                 batch_vals.append(batch_rewards)
 
                 # Calculate gradients for this batch
-                gradients = optimize_model(batch_size, device, memory, model, optimizer, n_steps=n_steps)  
-                for grad, collected in zip(gradients, collected_gradients):
-                    collected.append(grad)
-
-            # Aggregate gradients for all batches
-            aggregate_gradients = []
-            for grads in collected_gradients:
-                if grads:
-                    aggregate_gradients.append(torch.mean(torch.stack(grads), dim=0))
-                else:
-                    aggregate_gradients.append(None)
-
-            # Apply aggregated gradients to model
-            optimizer.zero_grad()
-            for param, grad in zip(model.parameters(), aggregate_gradients):
-                if grad is not None:
-                    param.grad = grad
-            optimizer.step()
+                optimize_model(batch_size, device, memory, model, optimizer, n_steps=n_steps)  
 
             if checkpoint:
                 save_checkpoint("./checkpoints/", model, optimizer, batch_num * episodes_per_batch, epsilon, timeout)
