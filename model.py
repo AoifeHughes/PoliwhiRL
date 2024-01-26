@@ -175,44 +175,43 @@ def chunked_iterable(iterable, size):
     for start in range(0, len(iterable), size):
         yield tuple(itertools.islice(it, size))
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=100, episodes_per_batch=os.cpu_count()-2, batch_size=128):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=100, episodes_per_batch=os.cpu_count()-2, batch_size=64):
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
     controller.stop()
     model = DQN(int(screen_size[0] * SCALE_FACTOR), int(screen_size[1] * SCALE_FACTOR), len(controller.movements), USE_GRAYSCALE).to(device)
     model.share_memory()  # Prepare model for shared memory
     optimizer = optim.Adam(model.parameters(), lr=0.005)
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(1000)
 
     # Load checkpoint if it exists
     epsilon_max = 1.0
     epsilon_min = 0.1
     start_episode, init_epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, epsilon_max)
     episodes_total = 0
-
+    nsteps=2
     # RUN PHASE 0 - not in parallel to avoid mem problems
     print("Starting Phase 0")
-    _ = run_phase(init_epsilon, 1, 1, 5, 5, batch_size*1000, 50000, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=False, n_steps=100 )
-    
-
+    for _ in range(10): 
+        _ = run_phase(init_epsilon, 1, 1, 100, 5, batch_size, 100, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=False, n_steps=nsteps )
 
     print("Phase 0 complete\n")
     print("Starting Phase 1")
 
     # RUN PHASE 1
-    results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=100, delay_learn=True)
+    results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
 
     print("Phase 1 complete\n")
     print("Starting Phase 2")
 
     # RUN PHASE 2
-    results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=100, delay_learn=True)
+    results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
 
     print("Phase 2 complete\n")
     print("Starting Phase 3")
 
     # RUN PHASE 3
-    results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=200, delay_learn=True)
+    results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
 
     print("Phase 3 complete\n")
     print("Done...")
@@ -222,7 +221,7 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=10
     save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon_min, timeouts[-1])
 
     # Save results
-    save_results(results, "./results/")
+    save_results("./results/", results, 1 )
 
 
 
@@ -236,7 +235,7 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
         epsilons_exponential = epsilon_max * np.exp(-adjusted_decay_rate * np.arange(num_episodes))
 
         args = [(i, rom_path, model, memory, optimizer, epsilons_exponential[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, batch_size, n_steps, delay_learn) for i in range(num_episodes)]
-        
+        batch_vals = []
         # Split the episodes into batches and run them in parallel
         for batch_num, batch_args in enumerate(tqdm(chunked_iterable(args, episodes_per_batch),
                                                         total=len(args)//episodes_per_batch, desc="Awaiting results...")):
@@ -249,8 +248,12 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
                 # Update the model
                 apply_gradients(aggregate_gradients, model, optimizer)
                 all_rewards.append(batch_rewards)
-
+                batch_vals.append(batch_rewards)
             if checkpoint:
                 save_checkpoint("./checkpoints/", model, optimizer, batch_num*episodes_per_batch, epsilon, timeout)
-
+                try:
+                    print(log_rewards(batch_vals))
+                except:
+                    print("Error logging rewards")
+                    print("Aoife needs to double check this!")
     return all_rewards
