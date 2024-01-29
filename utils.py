@@ -3,6 +3,7 @@ import torch
 import random
 import numpy as np
 import os 
+import matplotlib.pyplot as plt
 
 def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
     # Check if the image is already a PIL Image; if not, convert it
@@ -45,13 +46,14 @@ def select_action(state, epsilon, device, movements, model):
             device=device,
         ) 
     
-def document(episode_id, step_id, img, button_press, reward, scale, grayscale, timeout, epsilon):
+def document(episode_id, step_id, img, button_press, reward, scale, grayscale, timeout, epsilon, phase):
     # for each episode we want to record a image of each step
     # as well as the button press that was made as part of the image name
     # each run should have its own directory 
-    if not os.path.isdir("./runs"):
-        os.mkdir("./runs")
-    save_dir = f"./runs/run_{timeout}_{episode_id}_{np.around(epsilon,2)}"
+    fldr = "./runs_"+str(phase)
+    if not os.path.isdir(fldr):
+        os.mkdir(fldr)
+    save_dir = f"./{fldr}/run_{timeout}_{episode_id}_{np.around(epsilon,2)}"
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
     # save image 
@@ -92,7 +94,6 @@ def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon, t
     if not os.path.isdir(checkpoint_path):
         os.mkdir(checkpoint_path)
     checkpoint_path = checkpoint_path + f"checkpoint_{timeout}_{start_episode}.pth"
-    print(f"Saving checkpoint to '{checkpoint_path}'")
     torch.save(
         {
             "start_episode": start_episode,
@@ -111,3 +112,18 @@ def save_results(results_path, episodes, results):
     print(f"Saving results to '{results_path}'")
     with open(results_path, "w") as f:
         f.write(str(results))
+
+
+def plot_best_attempts(results_path, episodes, phase, results):
+    # Plot best attempts
+    if not os.path.isdir(results_path):
+        os.mkdir(results_path)
+    results_path = results_path + f"best_attempts_{episodes}_{phase}.png"
+    print(f"Saving plot to '{results_path}'")
+    fig, ax = plt.subplots(1, figsize=(5,5), dpi=100)
+    ax.plot(results)
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Best Attempt")
+    fig.savefig(results_path, bbox_inches="tight")
+    np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
+    plt.close(fig)

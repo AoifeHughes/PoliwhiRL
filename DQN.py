@@ -71,14 +71,14 @@ class ReplayMemory(object):
 
     def sample(self, batch_size):
         with self.lock:
-            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size)] 
+            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)] 
 
     def __len__(self):
         with self.lock:
             return len(self.memory)
 
 
-def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.99, n_steps=5):
+def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_steps=5):
 
     # Sample a batch of n-step sequences
     sequences = memory.sample(batch_size)
