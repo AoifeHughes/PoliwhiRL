@@ -164,3 +164,4 @@ runs/*
 *.png
 *.pth
 *.csv
+*.DS_Store

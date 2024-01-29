@@ -124,6 +124,7 @@ def plot_best_attempts(results_path, episodes, phase, results):
     ax.plot(results)
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Best Attempt")
-    fig.savefig(results_path, bbox_inches="tight")
+    fig.tight_layout()
+    fig.savefig(results_path)
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
     plt.close(fig)
