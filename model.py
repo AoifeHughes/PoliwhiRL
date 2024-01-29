@@ -7,7 +7,7 @@ from itertools import count
 from tqdm import tqdm
 import csv
 from controls import Controller
-from utils import image_to_tensor, select_action, save_results
+from utils import image_to_tensor, select_action, save_results, plot_best_attempts
 from rewards import calc_rewards
 from DQN import ReplayMemory
 from DQN import DQN, optimize_model
@@ -21,7 +21,7 @@ import itertools
 
 
 
-def run_episode(rom_path, model, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps=100):
+def run_episode(i, rom_path, model, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps=100, phase=0, document_mode=False):
     controller = Controller(rom_path)
     movements = controller.movements
     state = image_to_tensor(controller.screen_image(), device, SCALE_FACTOR, USE_GRAYSCALE)
@@ -38,13 +38,15 @@ def run_episode(rom_path, model, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, t
     locs = set()
     xy = set()
     imgs = []
+    # this will add the initial xy and locs so that it doesn't trigger as
+    # initial reward
+    img = controller.screen_image()
+    _ = calc_rewards(controller, max_total_level, img, imgs, xy, locs, default_reward=0.01)
 
     for t in count():
         action = select_action(state, epsilon, device, movements, model)
         controller.handleMovement(movements[action.item()])
-
         img = controller.screen_image()
-        #done = controller.is_done()  # Updated to check the terminal state from the controller
         reward = calc_rewards(controller, max_total_level, img, imgs, xy, locs, default_reward=0.01)
 
         # Convert state and action to tensors
@@ -61,6 +63,8 @@ def run_episode(rom_path, model, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, t
         total_reward += reward
         if done or 0 < timeout <= t:
             break
+        if document_mode:
+            document(i, t, img, movements[action.item()], reward, SCALE_FACTOR, USE_GRAYSCALE, timeout, epsilon, phase)
     controller.stop(save=False)
 
     return n_step_buffers, total_reward
@@ -74,53 +78,53 @@ def apply_gradients(aggregate_gradients, model, optimizer):
 
 
 def log_rewards(batch_rewards):
-    return (f"Average reward for last batch: {np.mean(batch_rewards[-1])} | Best reward average: {np.max(np.mean(batch_rewards))}")
+    return (f"Average reward for last batch: {np.mean(batch_rewards)} | Best reward: {np.max(batch_rewards)}")
 
 def chunked_iterable(iterable, size):
     it = iter(iterable)
     for start in range(0, len(iterable), size):
         yield tuple(itertools.islice(it, size))
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=100, episodes_per_batch=os.cpu_count()-2, batch_size=64):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, episodes_per_batch, batch_size, nsteps, cpus=8):
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
     controller.stop()
     model = DQN(int(screen_size[0] * SCALE_FACTOR), int(screen_size[1] * SCALE_FACTOR), len(controller.movements), USE_GRAYSCALE).to(device)
     model.share_memory()  # Prepare model for shared memory
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
-    memory = ReplayMemory(1000)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    memory = ReplayMemory(10000)
 
     # Load checkpoint if it exists
     epsilon_max = 1.0
     epsilon_min = 0.1
     start_episode, init_epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, epsilon_max)
     episodes_total = 0
-    nsteps=2
-    # RUN PHASE 0 - not in parallel to avoid mem problems
-    print("Starting Phase 0")
-    for _ in range(10): 
-        _ = run_phase(init_epsilon, 1, 1, 100, 5, batch_size, 10, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=False, n_steps=nsteps)
 
-    print("Phase 0 complete\n")
-    print("Starting Phase 1")
+    for idx, t in enumerate(timeouts):
+        print(f"Timeout: {t}")
+        if idx == 0:
+            print("Starting Phase 0")
+            _ = run_phase(init_epsilon, 1, 1, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=True, n_steps=nsteps, phase=f'0_{idx}', cpus=cpus)
 
-    # RUN PHASE 1
-    results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
+            print("Phase 0 complete\n")
+        print("Starting Phase 1")
 
-    print("Phase 1 complete\n")
-    print("Starting Phase 2")
+        # RUN PHASE 1
+        results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'1_{idx}', cpus=cpus)
+        print("Phase 1 complete\n")
+        print("Starting Phase 2")
 
-    # RUN PHASE 2
-    results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
+        # RUN PHASE 2
+        results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'2_{idx}', cpus=cpus)
 
-    print("Phase 2 complete\n")
-    print("Starting Phase 3")
+        print("Phase 2 complete\n")
+        print("Starting Phase 3")
 
-    # RUN PHASE 3
-    results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeouts[0], rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True)
+        # RUN PHASE 3
+        results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'3_{idx}', cpus=cpus)
 
-    print("Phase 3 complete\n")
-    print("Done...")
+        print("Phase 3 complete\n")
+        print("Done...")
 
 
     # Save final model
@@ -129,43 +133,50 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes=10
     # Save results
     save_results("./results/", 1, results)
 
+def eval_model(rom_path, model, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, nsteps, batch_num, phase):
+    reward = run_episode(batch_num, rom_path, model, 0, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps=nsteps, document_mode=True, phase=phase)
+    return reward
 
-
-def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeout, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=100, delay_learn=False, checkpoint=True):
+def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, timeout, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=100, delay_learn=False, checkpoint=True, phase=0, cpus=8):
     all_rewards = []
     # Main loop
     epsilon = init_epsilon
-    with multiprocessing.Pool(processes=os.cpu_count()) as pool:
-        decay_rate = -np.log(epsilon_min / epsilon_max) / num_episodes
-        adjusted_decay_rate = decay_rate / 2  # or any other factor > 1 to slow down the decay
-        epsilons_exponential = epsilon_max * np.exp(-adjusted_decay_rate * np.arange(num_episodes))
+    decay_rate = -np.log(epsilon_min / epsilon_max) / num_episodes
+    adjusted_decay_rate = decay_rate / 2  # or any other factor > 1 to slow down the decay
+    epsilons_exponential = epsilon_max * np.exp(-adjusted_decay_rate * np.arange(num_episodes))
 
-        args = [(rom_path, model, epsilons_exponential[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps) for i in range(num_episodes)]
-        batch_vals = []
-        # Split the episodes into batches and run them in parallel
-        for batch_num, batch_args in enumerate(tqdm(chunked_iterable(args, episodes_per_batch),
-                                                    total=len(args) // episodes_per_batch, desc="Awaiting results...")):
-            batch_results = pool.starmap(run_episode, batch_args)
+    args = [(i, rom_path, model, epsilons_exponential[i], device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, phase) for i in range(num_episodes)]
+    batch_vals = []
+    best_attempts = []
+    # Split the episodes into batches and run them in parallel
+    for batch_num, batch_args in enumerate(tqdm(chunked_iterable(args, episodes_per_batch),
+                                                total=len(args) // episodes_per_batch, desc="Awaiting results...")):
+        
+        try:
+            with multiprocessing.Pool(processes=cpus) as pool:
+                batch_results = pool.starmap(run_episode, batch_args)
+        except RuntimeError as e:
+            print(f"RuntimeError: {e}")
+            continue
 
-            # Initialize a list to store gradients for each parameter
-            collected_gradients = [[] for _ in model.parameters()]
+        for run_i, batch_rewards in batch_results:
+            all_rewards.append(batch_rewards)
+            batch_vals.append(batch_rewards)
+            for sequences in run_i:
+                for sequence in sequences:
+                    memory.push(*sequence)
 
-            for run_i, batch_rewards in batch_results:
-                for sequences in run_i:
-                    for sequence in sequences:
-                        memory.push(*sequence)
+        if len(memory) <= batch_size:
+            print(f"Memory size ({len(memory)}) is less than batch size ({batch_size})")
+            optimize_model(len(memory), device, memory, model, optimizer, n_steps=n_steps)  
+        else:
+            optimize_model(batch_size, device, memory, model, optimizer, n_steps=n_steps)  
 
-                all_rewards.append(batch_rewards)
-                batch_vals.append(batch_rewards)
+        if checkpoint and batch_num % 100 == 0:
+            save_checkpoint("./checkpoints/", model, optimizer, batch_num * episodes_per_batch, epsilon, timeout)
+        _, best_attempt = eval_model(rom_path, model, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, batch_num, phase)
+        best_attempts.append(best_attempt)
+            #print(f"Best attempt: {best_attempt}")
 
-                # Calculate gradients for this batch
-                optimize_model(batch_size, device, memory, model, optimizer, n_steps=n_steps)  
-
-            if checkpoint:
-                save_checkpoint("./checkpoints/", model, optimizer, batch_num * episodes_per_batch, epsilon, timeout)
-                try:
-                    print(log_rewards(batch_vals))
-                except Exception as e:
-                    print(f"Error logging rewards: {e}")
-
+    plot_best_attempts("./results/", batch_num * episodes_per_batch, phase, best_attempts)
     return all_rewards

@@ -28,7 +28,7 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
 
     # Encourage getting out of location
     if controller.get_current_location() not in locs:
-        total_reward += default_reward * 500
+        total_reward += default_reward * 50
         locs.add(controller.get_current_location())
 
     # Encourage moving around
