@@ -93,7 +93,7 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, e
     if device == torch.device("cpu"):
         model.share_memory()  # Prepare model for shared memory
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    memory = ReplayMemory(10000, n_steps=nsteps, multiCPU=True if device == torch.device("cpu") else False)
+    memory = ReplayMemory(300, n_steps=nsteps, multiCPU=True if device == torch.device("cpu") else False)
 
     # Load checkpoint if it exists
     epsilon_max = 1.0
