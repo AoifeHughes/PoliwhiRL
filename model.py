@@ -90,9 +90,10 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, e
     screen_size = controller.screen_size()
     controller.stop()
     model = DQN(int(screen_size[0] * SCALE_FACTOR), int(screen_size[1] * SCALE_FACTOR), len(controller.movements), USE_GRAYSCALE).to(device)
-    model.share_memory()  # Prepare model for shared memory
+    if device == torch.device("cpu"):
+        model.share_memory()  # Prepare model for shared memory
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(10000, n_steps=nsteps, multiCPU=True if device == torch.device("cpu") else False)
 
     # Load checkpoint if it exists
     epsilon_max = 1.0
@@ -153,8 +154,11 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
                                                 total=len(args) // episodes_per_batch, desc="Awaiting results...")):
         
         try:
-            with multiprocessing.Pool(processes=cpus) as pool:
-                batch_results = pool.starmap(run_episode, batch_args)
+            if cpus > 1:
+                with multiprocessing.Pool(processes=cpus) as pool:
+                    batch_results = pool.starmap(run_episode, batch_args)
+            else:
+                batch_results = [run_episode(*args) for args in batch_args]
         except RuntimeError as e:
             print(f"RuntimeError: {e}")
             continue
@@ -167,7 +171,6 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
                     memory.push(*sequence)
 
         if len(memory) <= batch_size:
-            print(f"Memory size ({len(memory)}) is less than batch size ({batch_size})")
             optimize_model(len(memory), device, memory, model, optimizer, n_steps=n_steps)  
         else:
             optimize_model(batch_size, device, memory, model, optimizer, n_steps=n_steps)  
@@ -176,7 +179,6 @@ def run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per
             save_checkpoint("./checkpoints/", model, optimizer, batch_num * episodes_per_batch, epsilon, timeout)
         _, best_attempt = eval_model(rom_path, model, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, batch_num, phase)
         best_attempts.append(best_attempt)
-            #print(f"Best attempt: {best_attempt}")
 
     plot_best_attempts("./results/", batch_num * episodes_per_batch, phase, best_attempts)
     return all_rewards

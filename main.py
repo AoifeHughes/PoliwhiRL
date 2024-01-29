@@ -5,12 +5,12 @@ import os
 
 def main():
     rom_path = "Pokemon - Crystal Version.gbc"
-    device = torch.device("cpu")
+    device = torch.device("mps")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
     timeouts = [10, 50, 100, 500, 1000]
-    num_episodes = 2048
-    cpus = (os.cpu_count()-1) 
+    num_episodes = 512
+    cpus = (os.cpu_count()-1) if device == torch.device("cpu") else 1
     episodes_per_batch = 1*cpus
     batch_size = 512
     nsteps = 3

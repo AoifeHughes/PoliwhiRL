@@ -46,10 +46,10 @@ class DQN(nn.Module):
         return self.fc2(x)
 
 class ReplayMemory(object):
-    def __init__(self, capacity, n_steps=5):
+    def __init__(self, capacity, n_steps=5, multiCPU=True):
         manager = Manager()
-        self.memory = manager.list()
-        self.lock = manager.Lock()
+        self.memory = manager.list() if multiCPU else []
+        self.lock = manager.Lock() if multiCPU else None
         self.capacity = capacity
         self.n_steps = n_steps
         self.temporal_buffer = []
@@ -59,7 +59,17 @@ class ReplayMemory(object):
         self.temporal_buffer.append(args)
 
         if len(self.temporal_buffer) == self.n_steps:
-            with self.lock:
+            if self.lock is not None:
+                with self.lock:
+                    # Ensure memory does not exceed capacity
+                    if len(self.memory) >= self.capacity:
+                        # pop a random element to make space
+                        self.memory.pop(random.randrange(len(self.memory)))
+                    # Push the sequence of N steps
+                    self.memory.append(list(self.temporal_buffer))
+                    # Reset the temporal buffer
+                    self.temporal_buffer = []
+            else:
                 # Ensure memory does not exceed capacity
                 if len(self.memory) >= self.capacity:
                     # pop a random element to make space
@@ -70,11 +80,17 @@ class ReplayMemory(object):
                 self.temporal_buffer = []
 
     def sample(self, batch_size):
-        with self.lock:
-            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)] 
+        if self.lock is not None:
+            with self.lock:
+                return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)] 
+        else:
+            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)]
 
     def __len__(self):
-        with self.lock:
+        if self.lock is not None:
+            with self.lock:
+                return len(self.memory)
+        else:
             return len(self.memory)
 
 
