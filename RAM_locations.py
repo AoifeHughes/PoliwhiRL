@@ -11,6 +11,8 @@ party_base = 0xDCDF
 num_pokemon = 0xDCD7
 locations = {
     6: "DownstairsPlayersHouse",
-    0: "UpstairsPlayersHouse",
+    0: "UpstairsPlayersHouse1",
+    7: "UpstairsPlayersHouse2",
     4: "OutsideStartingArea",
+    5: "ProfessorElmsLab",
 }

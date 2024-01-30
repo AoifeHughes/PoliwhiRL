@@ -21,7 +21,6 @@ def explore_episode(rom_path, timeout, nsteps):
     locs = set()
     xy = set()
     imgs = []
-    rewards = []
     max_total_level = [0]
     max_total_exp = [0]
     states = []
@@ -30,28 +29,27 @@ def explore_episode(rom_path, timeout, nsteps):
         action = random.randrange(len(movements))
         controller.handleMovement(movements[action])
         img = controller.screen_image()
-        rewards.append(
-            calc_rewards(
-                controller,
-                max_total_level,
-                img,
-                imgs,
-                xy,
-                locs,
-                max_total_exp,
-                default_reward=0.01,
-            )
+        reward = calc_rewards(
+            controller,
+            max_total_level,
+            img,
+            imgs,
+            xy,
+            locs,
+            max_total_exp,
+            default_reward=0.01,
         )
+
         states.append(controller.create_memory_state(controller))
-        if rewards[-1] > 0.1:
-            savname = f"{stored_states}_reward_{rewards[-1]}_loc_{controller.get_current_location()}_xy_{controller.get_XY()}.state"
+        if reward > 0.1:
+            savname = f"{stored_states}_reward_{reward}_loc_{controller.get_current_location()}_xy_{controller.get_XY()}.state"
             controller.store_state(states[0], savname)
             document(
                 0,
                 savname,
                 img,
                 movements[action],
-                rewards[-1],
+                reward,
                 1,
                 False,
                 timeout,
@@ -86,7 +84,7 @@ def run_episode(
     total_reward = 0
     max_total_level = [0]
     max_total_exp = 0
-    locs = set()
+    locs = set(0, 7)
     xy = set()
     imgs = []
 
