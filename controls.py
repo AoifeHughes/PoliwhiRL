@@ -10,7 +10,7 @@ import tempfile
 
 
 class Controller:
-    def __init__(self, rom_path, state_path):
+    def __init__(self, rom_path, state_path=None):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
 
@@ -23,13 +23,15 @@ class Controller:
                 "Pokemon - Crystal Version.gbc.ram",
                 "Pokemon - Crystal Version.gbc.rtc",
             ]
+            if file is not None
         ]
 
         # Initialize PyBoy with the ROM in the temporary directory
         self.pyboy = PyBoy(paths[0], debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
-        with open(paths[1], "rb") as stateFile:
-            self.pyboy.load_state(stateFile)
+        if state_path is not None:
+            with open(paths[1], "rb") as stateFile:
+                self.pyboy.load_state(stateFile)
 
         self.movements = [
             "UP",

@@ -95,6 +95,7 @@ def run(
 
 def eval_model(
     rom_path,
+    state_path,
     model,
     device,
     SCALE_FACTOR,
@@ -107,6 +108,7 @@ def eval_model(
     reward = run_episode(
         batch_num,
         rom_path,
+        state_path,
         model,
         0,
         device,
@@ -206,6 +208,7 @@ def run_phase(
             )
         _, best_attempt = eval_model(
             rom_path,
+            state_path,
             model,
             device,
             SCALE_FACTOR,
