@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 from skimage.metrics import structural_similarity as ssim
-from PIL import Image
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+
 
 def is_similar(target_image, image_list, threshold=99):
     def compare(target, other):
@@ -13,16 +14,27 @@ def is_similar(target_image, image_list, threshold=99):
 
     return any(results)
 
-def calc_rewards(controller, max_total_level, cur_img, imgs, xy, locs, max_total_exp, default_reward=0.01):
 
+def calc_rewards(
+    controller,
+    max_total_level,
+    cur_img,
+    imgs,
+    xy,
+    locs,
+    max_total_exp,
+    default_reward=0.01,
+    use_sight=False,
+):
     total_reward = -default_reward * 1
-    # cur_img = np.array(cur_img.convert('L'))
-    # if len(imgs) > 0:
-    #     if not is_similar(cur_img, imgs):
-    #         total_reward += default_reward *2
-    #         imgs.append(cur_img)
-    # else:
-    #     imgs.append(cur_img)
+    if use_sight:
+        cur_img = np.array(cur_img.convert("L"))
+        if len(imgs) > 0:
+            if not is_similar(cur_img, imgs):
+                total_reward += default_reward * 2
+                imgs.append(cur_img)
+        else:
+            imgs.append(cur_img)
 
     # Encourage getting out of location
     if controller.get_current_location() not in locs:
@@ -35,9 +47,8 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, xy, locs, max_total
         total_reward += default_reward * 10
         xy.add(cur_xy)
 
-
     # Encourage party pokemon
-    total_level, total_hp, total_exp= controller.party_info()
+    total_level, total_hp, total_exp = controller.party_info()
     if total_level > np.sum(max_total_level):
         total_reward += default_reward * 5000
         max_total_level[0] = total_level

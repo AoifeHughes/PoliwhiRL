@@ -1,11 +1,11 @@
-
+# -*- coding: utf-8 -*-
 import torch.nn as nn
-import torch 
-from collections import deque
+import torch
 import random
-from multiprocessing import Lock, Manager
+from multiprocessing import Manager
 import torch.nn.functional as F
 import numpy as np
+
 
 class DQN(nn.Module):
     def __init__(self, h, w, outputs, USE_GRAYSCALE):
@@ -18,14 +18,16 @@ class DQN(nn.Module):
         self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
         self.bn3 = nn.BatchNorm2d(64)
-        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, stride=2)  # Additional convolutional layer
+        self.conv4 = nn.Conv2d(
+            64, 64, kernel_size=3, stride=2
+        )  # Additional convolutional layer
         self.bn4 = nn.BatchNorm2d(64)
-        
+
         self._to_linear = None
         self._compute_conv_output_size(h, w)
         self.fc1 = nn.Linear(self._to_linear, 512)  # Larger fully connected layer
-        self.fc2 = nn.Linear(512, outputs)          # Additional fully connected layer
-        self.dropout = nn.Dropout(0.5)              # Dropout layer
+        self.fc2 = nn.Linear(512, outputs)  # Additional fully connected layer
+        self.dropout = nn.Dropout(0.5)  # Dropout layer
 
     def _compute_conv_output_size(self, h, w):
         x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
@@ -45,11 +47,12 @@ class DQN(nn.Module):
         x = self.dropout(x)
         return self.fc2(x)
 
+
 class ReplayMemory(object):
     def __init__(self, capacity, n_steps=5, multiCPU=True):
         manager = Manager()
         self.memory = manager.list() if multiCPU else []
-        self.lock = manager.Lock() if multiCPU else None
+        self.lock = manager.Lock() if multiCPU else DummyLock()
         self.capacity = capacity
         self.n_steps = n_steps
         self.temporal_buffer = []
@@ -59,17 +62,7 @@ class ReplayMemory(object):
         self.temporal_buffer.append(args)
 
         if len(self.temporal_buffer) == self.n_steps:
-            if self.lock is not None:
-                with self.lock:
-                    # Ensure memory does not exceed capacity
-                    if len(self.memory) >= self.capacity:
-                        # pop a random element to make space
-                        self.memory.pop(random.randrange(len(self.memory)))
-                    # Push the sequence of N steps
-                    self.memory.append(list(self.temporal_buffer))
-                    # Reset the temporal buffer
-                    self.temporal_buffer = []
-            else:
+            with self.lock:
                 # Ensure memory does not exceed capacity
                 if len(self.memory) >= self.capacity:
                     # pop a random element to make space
@@ -80,22 +73,28 @@ class ReplayMemory(object):
                 self.temporal_buffer = []
 
     def sample(self, batch_size):
-        if self.lock is not None:
-            with self.lock:
-                return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)] 
-        else:
-            return [self.memory[i] for i in np.random.choice(np.arange(len(self.memory)), batch_size, replace=False)]
+        with self.lock:
+            return [
+                self.memory[i]
+                for i in np.random.choice(
+                    np.arange(len(self.memory)), batch_size, replace=False
+                )
+            ]
 
     def __len__(self):
-        if self.lock is not None:
-            with self.lock:
-                return len(self.memory)
-        else:
+        with self.lock:
             return len(self.memory)
 
 
-def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_steps=5):
+class DummyLock:
+    def __enter__(self):
+        pass
 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_steps=5):
     # Sample a batch of n-step sequences
     sequences = memory.sample(batch_size)
 
@@ -108,7 +107,7 @@ def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_st
 
     for sequence in sequences:
         # Sum the rewards over the n steps, considering discounting
-        cumulative_reward = sum((GAMMA ** i) * sequence[i][2] for i in range(n_steps))
+        cumulative_reward = sum((GAMMA**i) * sequence[i][2] for i in range(n_steps))
         reward_batch.append(cumulative_reward)
 
         # Add the first state and action and the last next state of the sequence
@@ -133,10 +132,14 @@ def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_st
     next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
 
     # Compute the expected Q values
-    expected_state_action_values = (next_state_values * (GAMMA ** n_steps)) + reward_batch
+    expected_state_action_values = (
+        next_state_values * (GAMMA**n_steps)
+    ) + reward_batch
 
     # Compute Huber loss
-    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    loss = F.smooth_l1_loss(
+        state_action_values, expected_state_action_values.unsqueeze(1)
+    )
 
     # Optimize the model
     optimizer.zero_grad()
