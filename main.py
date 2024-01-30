@@ -8,8 +8,8 @@ def main():
     device = torch.device("cpu")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
-    timeouts = [10, 50, 100, 500, 1000]
-    num_episodes = 2048
+    timeouts = [500, 1000, 5000]
+    num_episodes = 512
     cpus = (os.cpu_count()-1) 
     episodes_per_batch = 1*cpus
     batch_size = 512

@@ -92,7 +92,7 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, e
     model = DQN(int(screen_size[0] * SCALE_FACTOR), int(screen_size[1] * SCALE_FACTOR), len(controller.movements), USE_GRAYSCALE).to(device)
     model.share_memory()  # Prepare model for shared memory
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(10000, nsteps)
 
     # Load checkpoint if it exists
     epsilon_max = 1.0
