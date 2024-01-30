@@ -8,6 +8,7 @@ frontdoor2 = (6, 7)
 received = 0xCF60
 money = 0xD84E
 party_base = 0xDCDF
+num_pokemon = 0xDCD7
 locations = {
     6: "DownstairsPlayersHouse",
     0: "UpstairsPlayersHouse",

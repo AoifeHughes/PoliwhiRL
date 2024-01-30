@@ -65,6 +65,10 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
+    def save_state(self, file):
+        self.pyboy.save_state(file)
+
+
     def handleMovement(self, movement, ticks_per_input=10, wait=180):
         self.pyboy._rendering(False)
         if movement != "PASS":
@@ -121,7 +125,7 @@ class Controller:
 
 
     def party_info(self):
-        num_pokemon = self.pyboy.get_memory_value(memory.party_base)
+        num_pokemon = self.pyboy.get_memory_value(memory.num_pokemon)
         total_level = 0
         total_hp = 0
         total_exp = 0
