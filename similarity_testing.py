@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 from PIL import Image
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
+
 
 def compare_images_pil(image1, image2):
     # Convert PIL images to numpy array
@@ -25,8 +27,9 @@ def compare_images_pil(image1, image2):
 
     return percentage_similarity
 
+
 # Example usage
-image1 = Image.open('img1.png')
-image2 = Image.open('img2.png')
+image1 = Image.open("img1.png")
+image2 = Image.open("img2.png")
 similarity_percentage = compare_images_pil(image1, image2)
 print(f"Similarity: {similarity_percentage:.2f}%")
