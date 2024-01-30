@@ -56,6 +56,7 @@ def explore_episode(rom_path, timeout, nsteps):
 def run_episode(
     i,
     rom_path,
+    state_path,
     model,
     epsilon,
     device,
@@ -66,7 +67,7 @@ def run_episode(
     phase=0,
     document_mode=False,
 ):
-    controller = Controller(rom_path)
+    controller = Controller(rom_path, state_path)
     movements = controller.movements
     initial_img = controller.screen_image()
     state = image_to_tensor(initial_img, device, SCALE_FACTOR, USE_GRAYSCALE)
@@ -76,7 +77,7 @@ def run_episode(
     total_reward = 0
     max_total_level = [0]
     max_total_exp = 0
-    locs = set(0, 7)
+    locs = set()
     xy = set()
     imgs = []
 
@@ -97,7 +98,14 @@ def run_episode(
         controller.handleMovement(movements[action.item()])
         img = controller.screen_image()
         reward = calc_rewards(
-            controller, max_total_level, img, imgs, xy, locs, default_reward=0.01
+            controller,
+            max_total_level,
+            img,
+            imgs,
+            xy,
+            locs,
+            max_total_exp,
+            default_reward=0.01,
         )
 
         action_tensor = torch.tensor([action], dtype=torch.int64, device=device)
