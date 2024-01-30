@@ -30,6 +30,7 @@ def run(
     SCALE_FACTOR,
     USE_GRAYSCALE,
     timeouts,
+    state_paths,
     num_episodes,
     episodes_per_batch,
     batch_size,
@@ -57,33 +58,34 @@ def run(
         start_episode, init_epsilon = load_checkpoint(
             "./checkpoints/", model, optimizer, 0, 1.0
         )
-        for idx, t in enumerate(timeouts):
+        for _, t in enumerate(timeouts):
             print(f"Timeout: {t}")
-
-            print(f"Starting Phase {idx}")
-            results = run_phase(
-                init_epsilon,
-                1,
-                0.1,
-                num_episodes,
-                episodes_per_batch,
-                batch_size,
-                t,
-                rom_path,
-                model,
-                memory,
-                optimizer,
-                device,
-                SCALE_FACTOR,
-                USE_GRAYSCALE,
-                nsteps,
-                delay_learn=True,
-                checkpoint=True,
-                phase=f"0_{idx}",
-                cpus=cpus,
-                start_episode=start_episode,
-            )
-            print(f"Phase {idx} complete\n")
+            for idx, state_path in enumerate(state_paths):
+                print(f"Starting Phase {idx}")
+                results = run_phase(
+                    init_epsilon,
+                    1,
+                    0.1,
+                    num_episodes,
+                    episodes_per_batch,
+                    batch_size,
+                    t,
+                    rom_path,
+                    state_path,
+                    model,
+                    memory,
+                    optimizer,
+                    device,
+                    SCALE_FACTOR,
+                    USE_GRAYSCALE,
+                    nsteps,
+                    delay_learn=True,
+                    checkpoint=True,
+                    phase=f"0_{idx}",
+                    cpus=cpus,
+                    start_episode=start_episode,
+                )
+                print(f"Phase {idx} complete\n")
 
         save_checkpoint(
             "./checkpoints/", model, optimizer, num_episodes, 0.1, timeouts[-1]
@@ -127,6 +129,7 @@ def run_phase(
     batch_size,
     timeout,
     rom_path,
+    state_path,
     model,
     memory,
     optimizer,
@@ -152,6 +155,7 @@ def run_phase(
         (
             i,
             rom_path,
+            state_path,
             model,
             epsilons_exponential[i],
             device,
