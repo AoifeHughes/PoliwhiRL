@@ -5,6 +5,7 @@ import random
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import itertools
 
 
 def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
@@ -134,3 +135,13 @@ def plot_best_attempts(results_path, episodes, phase, results):
     fig.savefig(results_path)
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
     plt.close(fig)
+
+
+def log_rewards(batch_rewards):
+    return f"Average reward for last batch: {np.mean(batch_rewards)} | Best reward: {np.max(batch_rewards)}"
+
+
+def chunked_iterable(iterable, size):
+    it = iter(iterable)
+    for _ in range(0, len(iterable), size):
+        yield tuple(itertools.islice(it, size))
