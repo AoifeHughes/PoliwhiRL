@@ -76,7 +76,7 @@ def run_episode(
     n_step_buffers = []
     total_reward = 0
     max_total_level = [0]
-    max_total_exp = 0
+    max_total_exp = [0]
     locs = set()
     xy = set()
     imgs = []
