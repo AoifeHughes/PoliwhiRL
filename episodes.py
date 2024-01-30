@@ -77,7 +77,7 @@ def run_episode(
     total_reward = 0
     max_total_level = [0]
     max_total_exp = 0
-    locs = set(0, 7)
+    locs = set()
     xy = set()
     imgs = []
 
@@ -98,7 +98,14 @@ def run_episode(
         controller.handleMovement(movements[action.item()])
         img = controller.screen_image()
         reward = calc_rewards(
-            controller, max_total_level, img, imgs, xy, locs, default_reward=0.01
+            controller,
+            max_total_level,
+            img,
+            imgs,
+            xy,
+            locs,
+            max_total_exp,
+            default_reward=0.01,
         )
 
         action_tensor = torch.tensor([action], dtype=torch.int64, device=device)
