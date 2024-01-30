@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
+import io
 from pyboy import PyBoy, WindowEvent
-import glob
 import os
-import memory
+import RAM_locations
 import OCR
 import numpy as np
 import shutil
@@ -17,12 +17,19 @@ class Controller:
         # Copy the ROM to the temporary directory
         temp_rom_path = shutil.copy(rom_path, self.temp_dir)
 
+        # copy other files to the temporary directory
+        for file in [
+            "start.state",
+            "Pokemon - Crystal Version.gbc.ram",
+            "Pokemon - Crystal Version.gbc.rtc",
+        ]:
+            shutil.copy(file, self.temp_dir)
+
         # Initialize PyBoy with the ROM in the temporary directory
-        self.pyboy = PyBoy(
-            temp_rom_path,
-            debug=False,
-            window_type="headless"
-        )
+        self.pyboy = PyBoy(temp_rom_path, debug=False, window_type="headless")
+        self.pyboy.set_emulation_speed(0)
+        with open("start.state", "rb") as stateFile:
+            self.pyboy.load_state(stateFile)
 
         self.movements = [
             "UP",
@@ -58,6 +65,9 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
+    def save_state(self, file):
+        self.pyboy.save_state(file)
+
     def handleMovement(self, movement, ticks_per_input=10, wait=180):
         self.pyboy._rendering(False)
         if movement != "PASS":
@@ -84,21 +94,23 @@ class Controller:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def get_current_location(self):
-        return self.pyboy.get_memory_value(memory.location)
+        return self.pyboy.get_memory_value(RAM_locations.location)
 
     def has_gotten_out_of_house(self):
-        return self.pyboy.get_memory_value(memory.outside_house) == 4
+        return self.pyboy.get_memory_value(RAM_locations.outside_house) == 4
 
     def player_received(self):
-        return self.pyboy.get_memory_value(memory.received)
+        return self.pyboy.get_memory_value(RAM_locations.received)
 
     def get_XY(self):
-        x_coord = self.pyboy.get_memory_value(memory.X)
-        y_coord = self.pyboy.get_memory_value(memory.Y)
+        x_coord = self.pyboy.get_memory_value(RAM_locations.X)
+        y_coord = self.pyboy.get_memory_value(RAM_locations.Y)
         return x_coord, y_coord
 
     def get_player_money(self):
-        money_bytes = [self.pyboy.get_memory_value(memory.money + i) for i in range(3)]
+        money_bytes = [
+            self.pyboy.get_memory_value(RAM_locations.money + i) for i in range(3)
+        ]
         money = self.bytes_to_int(money_bytes[::-1])
         return money
 
@@ -112,14 +124,13 @@ class Controller:
             raw_bytes.append(byte)
         return raw_bytes
 
-
     def party_info(self):
-        num_pokemon = self.pyboy.get_memory_value(memory.party_base)
+        num_pokemon = self.pyboy.get_memory_value(RAM_locations.num_pokemon)
         total_level = 0
         total_hp = 0
         total_exp = 0
         for i in range(num_pokemon):
-            base_address = memory.party_base + 0x30 * i
+            base_address = RAM_locations.party_base + 0x30 * i
             level = self.pyboy.get_memory_value(base_address + 0x1F)
             hp = np.sum(
                 self.read_little_endian(base_address + 0x22, base_address + 0x23)
@@ -138,3 +149,16 @@ class Controller:
         screen_image = self.pyboy.botsupport_manager().screen().screen_image()
         text = OCR.extract_text(OCR.preprocess_image(screen_image))
         return text
+
+    def create_memory_state(self, controller):
+        virtual_file = io.BytesIO()
+        self.save_state(virtual_file)
+        return virtual_file
+
+    def store_state(self, state, i):
+        # check states folder exists and create if not
+        state.seek(0)
+        if not os.path.isdir("./states"):
+            os.mkdir("./states")
+        with open(f"./states/state_{i}.state", "wb") as f:
+            f.write(state.read())
