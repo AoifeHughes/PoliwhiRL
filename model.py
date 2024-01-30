@@ -18,8 +18,45 @@ from utils import document, load_checkpoint, save_checkpoint
 from time import time
 import os
 import itertools
+import io
 
+def create_memory_state(controller):
+    virtual_file = io.BytesIO()
+    controller.save_state(virtual_file)
+    return virtual_file 
 
+def store_state(state, i):
+    # check states folder exists and create if not 
+    state.seek(0)
+    if not os.path.isdir("./states"):
+        os.mkdir("./states")
+    with open(f"./states/state_{i}.state", "wb") as f:
+        f.write(state.read())
+
+def explore_episode(rom_path, timeout, nsteps):
+    controller = Controller(rom_path)
+    movements = controller.movements
+    locs = set()
+    xy = set()
+    imgs = []
+    rewards = []
+    max_total_level = [0]
+    max_total_exp = [0]
+    states = []
+    stored_states = 0
+    for t in tqdm(range(timeout)):
+        action = random.randrange(len(movements))
+        controller.handleMovement(movements[action])
+        img = controller.screen_image()
+        rewards.append(calc_rewards(controller, max_total_level, img, imgs, xy, locs, max_total_exp, default_reward=0.01))
+        states.append(create_memory_state(controller))
+        if rewards[-1] > 0.1:
+            savname = f"{stored_states}_reward:{rewards[-1]}_loc:{controller.get_current_location()}_xy:{controller.get_XY()}.state"
+            store_state(states[0], savname)
+            document(0, savname, img, movements[action], rewards[-1], 1, False, timeout, 1, "explore")
+            stored_states += 1
+        if len(states) > nsteps:
+            states.pop(0)
 
 def run_episode(i, rom_path, model, epsilon, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps=100, phase=0, document_mode=False):
     controller = Controller(rom_path)
@@ -85,7 +122,7 @@ def chunked_iterable(iterable, size):
     for start in range(0, len(iterable), size):
         yield tuple(itertools.islice(it, size))
 
-def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, episodes_per_batch, batch_size, nsteps, cpus=8):
+def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, episodes_per_batch, batch_size, nsteps, cpus=8, explore_mode=False):
     controller = Controller(rom_path)
     screen_size = controller.screen_size()
     controller.stop()
@@ -100,39 +137,41 @@ def run(rom_path, device, SCALE_FACTOR, USE_GRAYSCALE, timeouts, num_episodes, e
     epsilon_min = 0.1
     start_episode, init_epsilon = load_checkpoint("./checkpoints/", model, optimizer, 0, epsilon_max)
     episodes_total = 0
+    if  explore_mode:
+        explore_episode(rom_path, timeouts[0], nsteps)
+    else:
+        for idx, t in enumerate(timeouts):
+            print(f"Timeout: {t}")
+            if idx == 0:
+                print("Starting Phase 0")
+                _ = run_phase(init_epsilon, 1, 1, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=True, n_steps=nsteps, phase=f'0_{idx}', cpus=cpus)
 
-    for idx, t in enumerate(timeouts):
-        print(f"Timeout: {t}")
-        if idx == 0:
-            print("Starting Phase 0")
-            _ = run_phase(init_epsilon, 1, 1, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, delay_learn=True, checkpoint=True, n_steps=nsteps, phase=f'0_{idx}', cpus=cpus)
+                print("Phase 0 complete\n")
+            print("Starting Phase 1")
 
-            print("Phase 0 complete\n")
-        print("Starting Phase 1")
+            # RUN PHASE 1
+            results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'1_{idx}', cpus=cpus)
+            print("Phase 1 complete\n")
+            print("Starting Phase 2")
 
-        # RUN PHASE 1
-        results = run_phase(init_epsilon, epsilon_max, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'1_{idx}', cpus=cpus)
-        print("Phase 1 complete\n")
-        print("Starting Phase 2")
+            # RUN PHASE 2
+            results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'2_{idx}', cpus=cpus)
 
-        # RUN PHASE 2
-        results = run_phase(init_epsilon, epsilon_max/2, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'2_{idx}', cpus=cpus)
+            print("Phase 2 complete\n")
+            print("Starting Phase 3")
 
-        print("Phase 2 complete\n")
-        print("Starting Phase 3")
+            # RUN PHASE 3
+            results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'3_{idx}', cpus=cpus)
 
-        # RUN PHASE 3
-        results = run_phase(init_epsilon, epsilon_max/4, epsilon_min, num_episodes, episodes_per_batch, batch_size, t, rom_path, model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps=nsteps, delay_learn=True, phase=f'3_{idx}', cpus=cpus)
-
-        print("Phase 3 complete\n")
-        print("Done...")
+            print("Phase 3 complete\n")
+            print("Done...")
 
 
-    # Save final model
-    save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon_min, timeouts[-1])
+        # Save final model
+        save_checkpoint("./checkpoints/", model, optimizer, episodes_total, epsilon_min, timeouts[-1])
 
-    # Save results
-    save_results("./results/", 1, results)
+        # Save results
+        save_results("./results/", 1, results)
 
 def eval_model(rom_path, model, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, nsteps, batch_num, phase):
     reward = run_episode(batch_num, rom_path, model, 0, device, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps=nsteps, document_mode=True, phase=phase)

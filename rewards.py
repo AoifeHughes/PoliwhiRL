@@ -13,9 +13,7 @@ def is_similar(target_image, image_list, threshold=99):
 
     return any(results)
 
-def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_reward=0.01):
-    # store if has been rewarded recently
-    # if has been rewarded recently, then don't reward again
+def calc_rewards(controller, max_total_level, cur_img, imgs, xy, locs, max_total_exp, default_reward=0.01):
 
     total_reward = -default_reward * 1
     # cur_img = np.array(cur_img.convert('L'))
@@ -37,12 +35,16 @@ def calc_rewards(controller, max_total_level, cur_img, imgs, locs, xy, default_r
         total_reward += default_reward * 10
         xy.add(cur_xy)
 
-    
 
     # Encourage party pokemon
     total_level, total_hp, total_exp= controller.party_info()
     if total_level > np.sum(max_total_level):
         total_reward += default_reward * 5000
         max_total_level[0] = total_level
+
+    # encourage max xp
+    if total_exp > np.sum(max_total_exp):
+        total_reward += default_reward * 1000
+        max_total_exp[0] = total_exp
 
     return total_reward
