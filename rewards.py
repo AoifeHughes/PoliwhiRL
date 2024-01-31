@@ -37,9 +37,9 @@ def calc_rewards(
             imgs.append(cur_img)
 
     # Encourage getting out of location
-    if controller.get_current_location() not in locs:
-        total_reward += default_reward * 50
-        locs.add(controller.get_current_location())
+    # if controller.get_current_location() not in locs:
+    #     total_reward += default_reward * 50
+    #     locs.add(controller.get_current_location())
 
     # Encourage moving around
     cur_xy = controller.get_XY()

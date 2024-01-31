@@ -53,13 +53,14 @@ def document(
     epsilon,
     phase,
 ):
-    # for each episode we want to record a image of each step
-    # as well as the button press that was made as part of the image name
-    # each run should have its own directory
-    fldr = "./runs_" + str(phase)
+
+    if not os.path.isdir("./runs"):
+        os.mkdir("./runs")
+    fldr = "./runs/" + str(phase) + "/"
+    # check if all folders and subfolders exist
     if not os.path.isdir(fldr):
         os.mkdir(fldr)
-    save_dir = f"./{fldr}/run_{timeout}_{episode_id}_{np.around(epsilon,2)}"
+    save_dir = f"./{fldr}/{timeout}_{episode_id}_{np.around(epsilon,2)}"
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
     # save image
