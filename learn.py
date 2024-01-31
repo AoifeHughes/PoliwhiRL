@@ -52,7 +52,7 @@ def run(
             model.share_memory()  # Prepare model for shared memory
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         memory = ReplayMemory(
-            300, n_steps=nsteps, multiCPU=device == torch.device("cpu")
+            10000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
         )
 
         start_episode, init_epsilon = load_checkpoint(
@@ -64,8 +64,8 @@ def run(
                 print(f"Starting Phase {idx}")
                 results = run_phase(
                     init_epsilon,
-                    1,
-                    0.1,
+                    0.9,
+                    0.9,
                     num_episodes,
                     episodes_per_batch,
                     batch_size,
@@ -81,7 +81,7 @@ def run(
                     nsteps,
                     delay_learn=True,
                     checkpoint=True,
-                    phase=f"0_{idx}",
+                    phase=f"{t}_{idx}",
                     cpus=cpus,
                     start_episode=start_episode,
                 )
@@ -188,14 +188,15 @@ def run_phase(
                 for sequence in sequences:
                     memory.push(*sequence)
 
-        optimize_model(
-            min(len(memory), batch_size),
-            device,
-            memory,
-            model,
-            optimizer,
-            n_steps=n_steps,
-        )
+        for _ in range(int(episodes_per_batch*timeout)):
+            optimize_model(
+                min(len(memory), batch_size),
+                device,
+                memory,
+                model,
+                optimizer,
+                n_steps=n_steps,
+            )
 
         if checkpoint and batch_num % 100 == 0:
             save_checkpoint(
