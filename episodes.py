@@ -54,7 +54,6 @@ def explore_episode(rom_path, timeout, nsteps):
             states.pop(0)
 
 
-
 def run_episode(
     i,
     rom_path,
@@ -103,7 +102,7 @@ def run_episode(
         action_tensor = torch.tensor([[action]], device=device)
         reward_tensor = torch.tensor([reward], device=device)
 
-        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE) 
+        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE)
 
         n_step_buffer.append((state, action_tensor, reward_tensor, next_state))
 
@@ -113,11 +112,20 @@ def run_episode(
             n_step_buffer.clear()
             # Optionally optimize the model here or after collecting more experience
             if len(memory) >= batch_size:
-                optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=n_steps)
+                optimize_model(
+                    batch_size,
+                    device,
+                    memory,
+                    primary_model,
+                    target_model,
+                    optimizer,
+                    GAMMA=0.9,
+                    n_steps=n_steps,
+                )
 
         state = next_state
         total_reward += reward
-        if (timeout and t >= timeout):
+        if timeout and t >= timeout:
             break
         if document_mode:
             document(
@@ -131,6 +139,6 @@ def run_episode(
                 phase,
             )
 
-    controller.stop(save=False) 
+    controller.stop(save=False)
 
     return total_reward

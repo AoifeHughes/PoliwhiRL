@@ -18,7 +18,7 @@ def main():
     ]
     cpus = (os.cpu_count() - 1) if device == torch.device("cpu") else 1
     episodes_per_batch = 2 * cpus
-    num_episodes = 50*cpus
+    num_episodes = 50 * cpus
     nsteps = 3
     batch_size = 32
     explore_mode = False
@@ -36,6 +36,7 @@ def main():
         cpus=cpus,
         explore_mode=explore_mode,
     )
+
 
 if __name__ == "__main__":
     main()

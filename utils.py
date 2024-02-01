@@ -53,7 +53,6 @@ def document(
     epsilon,
     phase,
 ):
-
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
     fldr = "./runs/" + str(phase) + "/"
