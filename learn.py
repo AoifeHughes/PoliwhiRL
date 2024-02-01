@@ -89,6 +89,10 @@ def run(
                     cpus=cpus,
                     start_episode=start_episode,
                 )
+                # eval model
+                eval_model(batch_size, t, rom_path, state_path, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, nsteps, f"{t}_{idx}", start_episode)
+
+
                 print(f"Phase {idx} complete\n")
                 save_checkpoint(
                     "./checkpoints/", primary_model, optimizer, num_episodes, 0.1, timeouts[-1]
@@ -98,32 +102,23 @@ def run(
 
 
 
-def eval_model(
+def eval_model(    
+    batch_size,
+    timeout,
     rom_path,
     state_path,
-    model,
+    primary_model,
+    target_model,
+    memory,
+    optimizer,
     device,
     SCALE_FACTOR,
     USE_GRAYSCALE,
-    timeout,
-    nsteps,
-    batch_num,
-    phase,
+    n_steps=100,
+    phase=0,
+    start_episode=0,
 ):
-    reward = run_episode(
-        batch_num,
-        rom_path,
-        state_path,
-        model,
-        0,
-        device,
-        SCALE_FACTOR,
-        USE_GRAYSCALE,
-        timeout,
-        n_steps=nsteps,
-        document_mode=True,
-        phase=phase,
-    )
+    reward = run_episode(0, rom_path, state_path, primary_model, target_model, 0, device, memory, optimizer, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, batch_size, phase, True)
     return reward
 
 
