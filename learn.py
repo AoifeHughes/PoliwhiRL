@@ -8,10 +8,12 @@ from utils import (
     plot_best_attempts,
     load_checkpoint,
     save_checkpoint,
-    chunked_iterable,
 )
 from episodes import run_episode, explore_episode
-from DQN import DQN, ReplayMemory, optimize_model  # Ensure optimize_model is correctly imported or defined
+from DQN import (
+    DQN,
+    ReplayMemory,
+)  # Ensure optimize_model is correctly imported or defined
 import torch.optim as optim
 import multiprocessing
 
@@ -50,7 +52,7 @@ def run(
         ).to(device)
         target_model.load_state_dict(primary_model.state_dict())
         target_model.eval()  # Set target model to evaluation mode
-        
+
         if device == torch.device("cpu"):
             primary_model.share_memory()  # Prepare model for shared memory
         optimizer = optim.Adam(primary_model.parameters(), lr=0.001)
@@ -61,15 +63,15 @@ def run(
         start_episode, init_epsilon = load_checkpoint(
             "./checkpoints/", primary_model, optimizer, 0, 1.0
         )
-        
+
         for idy, t in enumerate(timeouts):
             print(f"Timeout: {t}")
             for idx, state_path in enumerate(state_paths):
                 print(f"Starting Phase {idx}")
                 results = run_phase(
                     init_epsilon,
-                    epsilon-idy*0.1,
-                    epsilon-idy*0.1,
+                    epsilon - idy * 0.1,
+                    epsilon - idy * 0.1,
                     num_episodes,
                     episodes_per_batch,
                     batch_size,
@@ -91,11 +93,15 @@ def run(
                 )
                 print(f"Phase {idx} complete\n")
                 save_checkpoint(
-                    "./checkpoints/", primary_model, optimizer, num_episodes, 0.1, timeouts[-1]
+                    "./checkpoints/",
+                    primary_model,
+                    optimizer,
+                    num_episodes,
+                    0.1,
+                    timeouts[-1],
                 )
                 start_episode += num_episodes
                 save_results("./results/", start_episode, results)
-
 
 
 def eval_model(
@@ -153,8 +159,12 @@ def run_phase(
     all_rewards = []
     epsilons_exponential = np.linspace(epsilon_max, epsilon_min, num_episodes)
 
-    for batch_start in tqdm(range(0, num_episodes, episodes_per_batch), desc="Running batches"):
-        epsilons_batch = epsilons_exponential[batch_start:batch_start + episodes_per_batch]
+    for batch_start in tqdm(
+        range(0, num_episodes, episodes_per_batch), desc="Running batches"
+    ):
+        epsilons_batch = epsilons_exponential[
+            batch_start : batch_start + episodes_per_batch
+        ]
         batch_args = [
             (
                 i + batch_start,
@@ -174,11 +184,13 @@ def run_phase(
                 phase,
                 False,  # Assuming document_mode is False by default
             )
-            for i in range(batch_start, min(batch_start + episodes_per_batch, num_episodes))
+            for i in range(
+                batch_start, min(batch_start + episodes_per_batch, num_episodes)
+            )
         ]
 
         batch_results = run_batch(batch_args, cpus)
-        
+
         # Aggregate rewards and possibly other metrics from batch_results
         for total_reward in batch_results:
             all_rewards.append(total_reward)
@@ -190,7 +202,9 @@ def run_phase(
                 primary_model,
                 optimizer,
                 batch_start + episodes_per_batch,
-                epsilons_exponential[min(batch_start + episodes_per_batch, num_episodes - 1)],
+                epsilons_exponential[
+                    min(batch_start + episodes_per_batch, num_episodes - 1)
+                ],
                 timeout,
             )
 
@@ -203,6 +217,7 @@ def run_phase(
     )
 
     return all_rewards
+
 
 def run_batch(batch_args, cpus):
     if cpus > 1:
