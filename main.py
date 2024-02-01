@@ -9,7 +9,7 @@ def main():
     device = torch.device("cpu")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
-    timeouts = [10, 15, 20, 50, 100, 1000]
+    timeouts = [10, 15, 20, 50]
     state_paths = [
         "./states/start.state",
         "./states/outside.state",
