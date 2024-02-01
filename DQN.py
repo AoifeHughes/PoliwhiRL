@@ -27,7 +27,6 @@ class DQN(nn.Module):
         self._compute_conv_output_size(h, w)
         self.fc1 = nn.Linear(self._to_linear, 512)  # Larger fully connected layer
         self.fc2 = nn.Linear(512, outputs)  # Additional fully connected layer
-        self.dropout = nn.Dropout(0.5)  # Dropout layer
 
     def _compute_conv_output_size(self, h, w):
         x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
@@ -44,7 +43,6 @@ class DQN(nn.Module):
         x = F.relu(self.bn4(self.conv4(x)))
         x = x.reshape(x.size(0), -1)
         x = F.relu(self.fc1(x))
-        x = self.dropout(x)
         return self.fc2(x)
 
 
@@ -94,7 +92,7 @@ class DummyLock:
         pass
 
 
-def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_steps=5):
+def optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=5):
     # Sample a batch of n-step sequences
     sequences = memory.sample(batch_size)
 
@@ -107,7 +105,8 @@ def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_st
 
     for sequence in sequences:
         # Sum the rewards over the n steps, considering discounting
-        cumulative_reward = sum((GAMMA**i) * sequence[i][2] for i in range(n_steps))
+        # Rewards are clipped before summing
+        cumulative_reward = sum((GAMMA**i) * np.clip(sequence[i][2], -1, 1) for i in range(n_steps))
         reward_batch.append(cumulative_reward)
 
         # Add the first state and action and the last next state of the sequence
@@ -124,26 +123,24 @@ def optimize_model(batch_size, device, memory, model, optimizer, GAMMA=0.9, n_st
     non_final_next_states = torch.cat([s for s in next_state_batch if s is not None])
     non_final_mask = torch.tensor(non_final_mask, device=device, dtype=torch.bool)
 
-    # Compute Q(s_t, a)
-    state_action_values = model(state_batch).gather(1, action_batch.unsqueeze(1))
+    # Compute Q(s_t, a) using the primary_model
+    state_action_values = primary_model(state_batch).gather(1, action_batch.unsqueeze(1))
 
-    # Compute V(s_{t+n}) for all next states.
+    # Initialize next state values to zero
     next_state_values = torch.zeros(batch_size, device=device)
-    next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0].detach()
+    # Compute V(s_{t+n}) for all next states using the target_model
+    if sum(non_final_mask) > 0:
+        next_state_values[non_final_mask] = target_model(non_final_next_states).max(1)[0].detach()
 
     # Compute the expected Q values
-    expected_state_action_values = (
-        next_state_values * (GAMMA**n_steps)
-    ) + reward_batch
+    expected_state_action_values = (next_state_values * (GAMMA**n_steps)) + reward_batch
 
     # Compute Huber loss
-    loss = F.smooth_l1_loss(
-        state_action_values, expected_state_action_values.unsqueeze(1)
-    )
+    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
 
     # Optimize the model
     optimizer.zero_grad()
     loss.backward()
-    for param in model.parameters():
+    for param in primary_model.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
