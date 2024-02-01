@@ -84,7 +84,6 @@ def run(
                     SCALE_FACTOR,
                     USE_GRAYSCALE,
                     nsteps,
-                    delay_learn=True,
                     checkpoint=True,
                     phase=f"{t}_{idx}",
                     cpus=cpus,
@@ -181,7 +180,7 @@ def run_phase(
         batch_results = run_batch(batch_args, cpus)
         
         # Aggregate rewards and possibly other metrics from batch_results
-        for _, total_reward in batch_results:
+        for total_reward in batch_results:
             all_rewards.append(total_reward)
 
         # Save checkpoint periodically or based on other criteria
