@@ -104,35 +104,6 @@ def run(
                 save_results("./results/", start_episode, results)
 
 
-def eval_model(
-    rom_path,
-    state_path,
-    model,
-    device,
-    SCALE_FACTOR,
-    USE_GRAYSCALE,
-    timeout,
-    nsteps,
-    batch_num,
-    phase,
-):
-    reward = run_episode(
-        batch_num,
-        rom_path,
-        state_path,
-        model,
-        0,
-        device,
-        SCALE_FACTOR,
-        USE_GRAYSCALE,
-        timeout,
-        n_steps=nsteps,
-        document_mode=True,
-        phase=phase,
-    )
-    return reward
-
-
 def run_phase(
     init_epsilon,
     epsilon_max,
@@ -225,3 +196,32 @@ def run_batch(batch_args, cpus):
             return pool.starmap(run_episode, batch_args)
     else:
         return [run_episode(*args) for args in batch_args]
+
+
+def eval_model(
+    rom_path,
+    state_path,
+    model,
+    device,
+    SCALE_FACTOR,
+    USE_GRAYSCALE,
+    timeout,
+    nsteps,
+    batch_num,
+    phase,
+):
+    reward = run_episode(
+        batch_num,
+        rom_path,
+        state_path,
+        model,
+        0,
+        device,
+        SCALE_FACTOR,
+        USE_GRAYSCALE,
+        timeout,
+        n_steps=nsteps,
+        document_mode=True,
+        phase=phase,
+    )
+    return reward
