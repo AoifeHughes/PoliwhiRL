@@ -70,7 +70,7 @@ class Controller:
     def save_state(self, file):
         self.pyboy.save_state(file)
 
-    def handleMovement(self, movement, ticks_per_input=10, wait=200):
+    def handleMovement(self, movement, ticks_per_input=10, wait=480):
         self.pyboy._rendering(False)
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])
