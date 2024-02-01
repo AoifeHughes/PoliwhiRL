@@ -164,8 +164,8 @@ def run_phase(
                 SCALE_FACTOR,
                 USE_GRAYSCALE,
                 timeout,
-                n_steps,
                 batch_size,
+                n_steps,
                 phase,
                 False,  # Assuming document_mode is False by default
             )

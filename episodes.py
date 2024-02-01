@@ -69,8 +69,8 @@ def run_episode(
     USE_GRAYSCALE,
     timeout,
     batch_size,
-    n_steps=100,
-    phase=0,
+    n_steps,
+    phase,
     document_mode=False,
 ):
     controller = Controller(rom_path, state_path)
@@ -109,7 +109,7 @@ def run_episode(
 
         if len(n_step_buffer) == n_steps:
             # Add the n-step buffer to memory
-            memory.push(*zip(*n_step_buffer))
+            memory.push(n_step_buffer)
             n_step_buffer.clear()
             # Optionally optimize the model here or after collecting more experience
             if len(memory) >= batch_size:
