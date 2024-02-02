@@ -95,7 +95,7 @@ def optimize_model(batch_size, device, memory, primary_model, target_model, opti
     # each sequence is a list of [1][4]
     for sequence in sequences:
         s = sequence[0]
-        cumulative_reward = sum((GAMMA**i) * np.clip(s[i][2], -1, 1) for i in range(n_steps))
+        cumulative_reward = sum((GAMMA**i) * np.clip(s[i][2], -1, 1) for i in range(len(s)))
         reward_batch.append(cumulative_reward)
         state_batch.append(s[0][0])
         action_batch.append(s[0][1])

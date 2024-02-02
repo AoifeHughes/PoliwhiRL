@@ -53,6 +53,9 @@ def explore_episode(rom_path, timeout, nsteps):
         if len(states) > nsteps:
             states.pop(0)
 
+def soft_update(target_model, primary_model, tau=0.001):
+    for target_param, primary_param in zip(target_model.parameters(), primary_model.parameters()):
+        target_param.data.copy_(tau*primary_param.data + (1.0-tau)*target_param.data)
 
 
 def run_episode(
@@ -114,6 +117,7 @@ def run_episode(
             # Optionally optimize the model here or after collecting more experience
             if len(memory) >= batch_size:
                 optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=n_steps)
+                soft_update(target_model, primary_model, tau=0.001)
 
         state = next_state
         total_reward += reward

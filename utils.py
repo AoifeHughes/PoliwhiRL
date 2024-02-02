@@ -34,7 +34,7 @@ def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:
         with torch.no_grad():
-            return model(state).max(1)[1].view(1, 1).to(device)
+            return model(state).max(1).indices.view(1, 1)
     else:
         return torch.tensor(
             [[random.randrange(len(movements))]],
