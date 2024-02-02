@@ -2,33 +2,80 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
+import torch.nn.functional as F
 
 
 # Define the Policy Network
 class PolicyNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, action_size):
+    def __init__(self, h, w, outputs, USE_GRAYSCALE):
         super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, action_size)
-        self.softmax = nn.Softmax(dim=-1)
+        self.USE_GRAYSCALE = USE_GRAYSCALE
+        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, stride=2)
+        self.bn4 = nn.BatchNorm2d(64)
+
+        self._to_linear = None
+        self._compute_conv_output_size(h, w)
+        self.fc1 = nn.Linear(self._to_linear, 512)
+        self.fc2 = nn.Linear(512, outputs)
+
+    def _compute_conv_output_size(self, h, w):
+        x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
+        x = self.bn1(self.conv1(x))
+        x = self.bn2(self.conv2(x))
+        x = self.bn3(self.conv3(x))
+        x = self.bn4(self.conv4(x))
+        self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return self.softmax(x)
-
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        return F.softmax(self.fc2(x), dim=-1)
 
 # Define the Value Network
 class ValueNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size=1):
+    def __init__(self, h, w, USE_GRAYSCALE):
         super(ValueNetwork, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, output_size)
+        self.USE_GRAYSCALE = USE_GRAYSCALE
+        self.conv1 = nn.Conv2d(1 if USE_GRAYSCALE else 3, 16, kernel_size=5, stride=2)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, stride=2)
+        self.bn4 = nn.BatchNorm2d(64)
+
+        self._to_linear = None
+        self._compute_conv_output_size(h, w)
+        self.fc1 = nn.Linear(self._to_linear, 512)
+        self.fc2 = nn.Linear(512, 1)  # Outputs a single value for the value function
+
+    def _compute_conv_output_size(self, h, w):
+        x = torch.rand(1, 1 if self.USE_GRAYSCALE else 3, h, w)
+        x = self.bn1(self.conv1(x))
+        x = self.bn2(self.conv2(x))
+        x = self.bn3(self.conv3(x))
+        x = self.bn4(self.conv4(x))
+        self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
 
 
 def compute_returns(next_value, rewards, masks, gamma=0.99):
@@ -93,6 +140,8 @@ class PPOBuffer:
         self.rewards = []
         self.values = []
         self.is_terminals = []
+        self.returns = []
+        self.advantages = []
 
     def clear(self):
         del self.states[:]
@@ -101,6 +150,8 @@ class PPOBuffer:
         del self.rewards[:]
         del self.values[:]
         del self.is_terminals[:]
+        del self.returns[:]
+        del self.advantages[:]
 
     def add(self, state, action, log_prob, reward, value, is_terminal):
         self.states.append(state)
@@ -110,23 +161,25 @@ class PPOBuffer:
         self.values.append(value)
         self.is_terminals.append(is_terminal)
 
+    def compute_gae_and_returns(self, next_value, gamma=0.99, tau=0.95):
+        gae = 0
+        for step in reversed(range(len(self.rewards))):
+            delta = self.rewards[step] + gamma * next_value * (1 - self.is_terminals[step]) - self.values[step]
+            gae = delta + gamma * tau * (1 - self.is_terminals[step]) * gae
+            self.returns.insert(0, gae + self.values[step])
+            next_value = self.values[step]
+        self.returns = torch.tensor(self.returns, dtype=torch.float32).detach()
+        self.advantages = self.returns - torch.tensor(self.values, dtype=torch.float32).detach()
+
     def get_batch(self):
-        # Convert lists to PyTorch tensors
+        # Ensure to call compute_gae_and_returns before this to populate returns and advantages
         states_tensor = torch.stack(self.states)
-        actions_tensor = torch.stack(self.actions)
+        actions_tensor = torch.tensor(self.actions, dtype=torch.long)
         log_probs_tensor = torch.stack(self.log_probs)
-        rewards_tensor = torch.tensor(self.rewards, dtype=torch.float32)
-        values_tensor = torch.stack(self.values)
+        returns_tensor = self.returns
+        advantages_tensor = self.advantages
         is_terminals_tensor = torch.tensor(self.is_terminals, dtype=torch.float32)
 
-        # Clear buffer
-        self.clear()
+        self.clear()  # Clear buffer after getting the batch
 
-        return (
-            states_tensor,
-            actions_tensor,
-            log_probs_tensor,
-            rewards_tensor,
-            values_tensor,
-            is_terminals_tensor,
-        )
+        return states_tensor, actions_tensor, log_probs_tensor, returns_tensor, advantages_tensor, is_terminals_tensor
