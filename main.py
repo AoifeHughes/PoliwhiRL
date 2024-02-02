@@ -9,16 +9,16 @@ def main():
     device = torch.device("cpu")
     SCALE_FACTOR = 1
     USE_GRAYSCALE = False
-    timeouts = [10, 50, 100, 150, 500, 1000] 
+    timeouts = [15] 
     state_paths = [
         "./states/start.state",
         "./states/outside.state",
-        "./states/lab.state",
-        "./states/battle.state",
+        #"./states/lab.state",
+        #"./states/battle.state",
     ]
     cpus = (os.cpu_count() - 1) if device == torch.device("cpu") else 1
     episodes_per_batch = 10 * cpus
-    num_episodes = 100*cpus
+    num_episodes = 1000*cpus
     nsteps = 3
     batch_size = 32
     explore_mode = False

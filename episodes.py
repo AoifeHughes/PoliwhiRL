@@ -8,10 +8,15 @@ from rewards import calc_rewards
 import torch
 import random
 from DQN import optimize_model
+import numpy as np
 
 
-def explore_episode(rom_path, timeout, nsteps):
-    controller = Controller(rom_path)
+def explore_episode(rom_path, timeout, nsteps, state_paths=None):
+    if type(state_paths) == list:
+        state_path = np.random.choice(state_paths)
+    else:
+        state_path = None
+    controller = Controller(rom_path, state_path)
     movements = controller.movements
     locs = set()
     xy = set()
@@ -61,7 +66,7 @@ def soft_update(target_model, primary_model, tau=0.001):
 def run_episode(
     i,
     rom_path,
-    state_path,
+    state_paths,
     primary_model,
     target_model,
     epsilon,
@@ -76,6 +81,10 @@ def run_episode(
     phase,
     document_mode=False,
 ):
+    if type(state_paths) == list:
+        state_path = np.random.choice(state_paths)
+    else:
+        state_path = None
     controller = Controller(rom_path, state_path)
     movements = controller.movements
     initial_img = controller.screen_image()
