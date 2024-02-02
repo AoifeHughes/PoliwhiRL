@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from learn import run
+from DQN_run import run
 import torch
 import os
 
