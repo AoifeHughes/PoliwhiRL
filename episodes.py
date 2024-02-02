@@ -62,7 +62,6 @@ def soft_update(target_model, primary_model, tau=0.001):
     for target_param, primary_param in zip(target_model.parameters(), primary_model.parameters()):
         target_param.data.copy_(tau*primary_param.data + (1.0-tau)*target_param.data)
 
-
 def run_episode(
     i,
     rom_path,
@@ -115,7 +114,7 @@ def run_episode(
         action_tensor = torch.tensor([[action]], device=device)
         reward_tensor = torch.tensor([reward], device=device)
 
-        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE) 
+        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE)
 
         n_step_buffer.append((state, action_tensor, reward_tensor, next_state))
 
@@ -130,7 +129,7 @@ def run_episode(
 
         state = next_state
         total_reward += reward
-        if (timeout and t >= timeout):
+        if timeout and t >= timeout:
             break
         if document_mode:
             document(
@@ -144,6 +143,6 @@ def run_episode(
                 phase,
             )
 
-    controller.stop(save=False) 
+    controller.stop(save=False)
 
     return total_reward
