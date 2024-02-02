@@ -55,7 +55,7 @@ def run(
             primary_model.share_memory()  # Prepare model for shared memory
         optimizer = optim.Adam(primary_model.parameters(), lr=0.001)
         memory = ReplayMemory(
-            10000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
+            100000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
         )
         epsilon = 1
         start_episode, init_epsilon = load_checkpoint(
@@ -64,41 +64,38 @@ def run(
         
         for idy, t in enumerate(timeouts):
             print(f"Timeout: {t}")
-            for idx, state_path in enumerate(state_paths):
-                print(f"Starting Phase {idx}")
-                results = run_phase(
-                    init_epsilon,
-                    epsilon-idy*0.1,
-                    epsilon-idy*0.1,
-                    num_episodes,
-                    episodes_per_batch,
-                    batch_size,
-                    t,
-                    rom_path,
-                    state_path,
-                    primary_model,
-                    target_model,  # Pass target model to run_phase
-                    memory,
-                    optimizer,
-                    device,
-                    SCALE_FACTOR,
-                    USE_GRAYSCALE,
-                    nsteps,
-                    checkpoint=True,
-                    phase=f"{t}_{idx}",
-                    cpus=cpus,
-                    start_episode=start_episode,
-                )
-                # eval model
-                eval_model(batch_size, t, rom_path, state_path, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, nsteps, f"{t}_{idx}", start_episode)
+            results = run_phase(
+                init_epsilon,
+                epsilon-idy*0.1,
+                epsilon-idy*0.1,
+                num_episodes,
+                episodes_per_batch,
+                batch_size,
+                t,
+                rom_path,
+                state_paths,
+                primary_model,
+                target_model,  # Pass target model to run_phase
+                memory,
+                optimizer,
+                device,
+                SCALE_FACTOR,
+                USE_GRAYSCALE,
+                nsteps,
+                checkpoint=True,
+                phase=f"{t}",
+                cpus=cpus,
+                start_episode=start_episode,
+            )
+            # eval model
+            eval_model(batch_size, t, rom_path, state_paths, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, nsteps, f"{t}", start_episode)
 
 
-                print(f"Phase {idx} complete\n")
-                save_checkpoint(
-                    "./checkpoints/", primary_model, optimizer, num_episodes, 0.1, timeouts[-1]
-                )
-                start_episode += num_episodes
-                save_results("./results/", start_episode, results)
+            save_checkpoint(
+                "./checkpoints/", primary_model, optimizer, num_episodes, 0.1, timeouts[-1]
+            )
+            start_episode += num_episodes
+            save_results("./results/", start_episode, results)
 
 
 
@@ -106,7 +103,7 @@ def eval_model(
     batch_size,
     timeout,
     rom_path,
-    state_path,
+    state_paths,
     primary_model,
     target_model,
     memory,
@@ -118,7 +115,7 @@ def eval_model(
     phase=0,
     start_episode=0,
 ):
-    reward = run_episode(0, rom_path, state_path, primary_model, target_model, 0, device, memory, optimizer, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, batch_size, phase, True)
+    reward = run_episode(0, rom_path, state_paths, primary_model, target_model, 0, device, memory, optimizer, SCALE_FACTOR, USE_GRAYSCALE, timeout, n_steps, batch_size, phase, True)
     return reward
 
 
@@ -131,7 +128,7 @@ def run_phase(
     batch_size,
     timeout,
     rom_path,
-    state_path,
+    state_paths,
     primary_model,
     target_model,
     memory,
@@ -154,7 +151,7 @@ def run_phase(
             (
                 i + batch_start,
                 rom_path,
-                state_path,
+                state_paths,
                 primary_model,
                 target_model,
                 epsilons_batch[i - batch_start],
@@ -164,8 +161,8 @@ def run_phase(
                 SCALE_FACTOR,
                 USE_GRAYSCALE,
                 timeout,
-                n_steps,
                 batch_size,
+                n_steps,
                 phase,
                 False,  # Assuming document_mode is False by default
             )
