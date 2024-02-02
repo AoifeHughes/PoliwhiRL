@@ -53,23 +53,13 @@ class ReplayMemory(object):
         self.lock = manager.Lock() if multiCPU else DummyLock()
         self.capacity = capacity
         self.n_steps = n_steps
-        self.temporal_buffer = []
 
     def push(self, *args):
-        # Add transition to the temporal buffer
-        self.temporal_buffer.append(args)
-
-        if len(self.temporal_buffer) == self.n_steps:
-            with self.lock:
-                # Ensure memory does not exceed capacity
-                if len(self.memory) >= self.capacity:
-                    # pop a random element to make space
-                    self.memory.pop(random.randrange(len(self.memory)))
-                # Push the sequence of N steps
-                self.memory.append(list(self.temporal_buffer))
-                # Reset the temporal buffer
-                self.temporal_buffer = []
-
+        """Saves a transition."""
+        with self.lock:
+            self.memory.append(args)
+            if len(self.memory) > self.capacity:
+                self.memory.pop(0)          
     def sample(self, batch_size):
         with self.lock:
             return [
@@ -111,19 +101,14 @@ def optimize_model(
     reward_batch = []
     next_state_batch = []
     non_final_mask = []
-
+    # each sequence is a list of [1][4]
     for sequence in sequences:
-        # Sum the rewards over the n steps, considering discounting
-        # Rewards are clipped before summing
-        cumulative_reward = sum(
-            (GAMMA**i) * np.clip(sequence[i][2], -1, 1) for i in range(n_steps)
-        )
+        s = sequence[0]
+        cumulative_reward = sum((GAMMA**i) * np.clip(s[i][2], -1, 1) for i in range(len(s)))
         reward_batch.append(cumulative_reward)
-
-        # Add the first state and action and the last next state of the sequence
-        state_batch.append(sequence[0][0])
-        action_batch.append(sequence[0][1])
-        next_state = sequence[-1][3] if sequence[-1][3] is not None else None
+        state_batch.append(s[0][0])
+        action_batch.append(s[0][1])
+        next_state = s[-1][3] if s[-1][3] is not None else None
         next_state_batch.append(next_state)
         non_final_mask.append(next_state is not None)
 
@@ -135,9 +120,7 @@ def optimize_model(
     non_final_mask = torch.tensor(non_final_mask, device=device, dtype=torch.bool)
 
     # Compute Q(s_t, a) using the primary_model
-    state_action_values = primary_model(state_batch).gather(
-        1, action_batch.unsqueeze(1)
-    )
+    state_action_values = primary_model(state_batch).gather(1, action_batch)
 
     # Initialize next state values to zero
     next_state_values = torch.zeros(batch_size, device=device)
