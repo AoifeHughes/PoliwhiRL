@@ -8,10 +8,15 @@ from rewards import calc_rewards
 import torch
 import random
 from DQN import optimize_model
+import numpy as np
 
 
-def explore_episode(rom_path, timeout, nsteps):
-    controller = Controller(rom_path)
+def explore_episode(rom_path, timeout, nsteps, state_paths=None):
+    if type(state_paths) == list:
+        state_path = np.random.choice(state_paths)
+    else:
+        state_path = None
+    controller = Controller(rom_path, state_path)
     movements = controller.movements
     locs = set()
     xy = set()
@@ -53,12 +58,15 @@ def explore_episode(rom_path, timeout, nsteps):
         if len(states) > nsteps:
             states.pop(0)
 
+def soft_update(target_model, primary_model, tau=0.001):
+    for target_param, primary_param in zip(target_model.parameters(), primary_model.parameters()):
+        target_param.data.copy_(tau*primary_param.data + (1.0-tau)*target_param.data)
 
 
 def run_episode(
     i,
     rom_path,
-    state_path,
+    state_paths,
     primary_model,
     target_model,
     epsilon,
@@ -69,10 +77,14 @@ def run_episode(
     USE_GRAYSCALE,
     timeout,
     batch_size,
-    n_steps=100,
-    phase=0,
+    n_steps,
+    phase,
     document_mode=False,
 ):
+    if type(state_paths) == list:
+        state_path = np.random.choice(state_paths)
+    else:
+        state_path = None
     controller = Controller(rom_path, state_path)
     movements = controller.movements
     initial_img = controller.screen_image()
@@ -109,11 +121,12 @@ def run_episode(
 
         if len(n_step_buffer) == n_steps:
             # Add the n-step buffer to memory
-            memory.push(*zip(*n_step_buffer))
+            memory.push(n_step_buffer)
             n_step_buffer.clear()
             # Optionally optimize the model here or after collecting more experience
             if len(memory) >= batch_size:
                 optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=n_steps)
+                soft_update(target_model, primary_model, tau=0.001)
 
         state = next_state
         total_reward += reward
