@@ -82,7 +82,16 @@ class DummyLock:
         pass
 
 
-def optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=5):
+def optimize_model(
+    batch_size,
+    device,
+    memory,
+    primary_model,
+    target_model,
+    optimizer,
+    GAMMA=0.9,
+    n_steps=5,
+):
     # Sample a batch of n-step sequences
     sequences = memory.sample(batch_size)
 
@@ -117,13 +126,19 @@ def optimize_model(batch_size, device, memory, primary_model, target_model, opti
     next_state_values = torch.zeros(batch_size, device=device)
     # Compute V(s_{t+n}) for all next states using the target_model
     if sum(non_final_mask) > 0:
-        next_state_values[non_final_mask] = target_model(non_final_next_states).max(1)[0].detach()
+        next_state_values[non_final_mask] = (
+            target_model(non_final_next_states).max(1)[0].detach()
+        )
 
     # Compute the expected Q values
-    expected_state_action_values = (next_state_values * (GAMMA**n_steps)) + reward_batch
+    expected_state_action_values = (
+        next_state_values * (GAMMA**n_steps)
+    ) + reward_batch
 
     # Compute Huber loss
-    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    loss = F.smooth_l1_loss(
+        state_action_values, expected_state_action_values.unsqueeze(1)
+    )
 
     # Optimize the model
     optimizer.zero_grad()

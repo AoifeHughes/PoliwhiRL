@@ -13,7 +13,7 @@ def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
         image = Image.fromarray(image)
 
     if SCALE_FACTOR != 1:
-        image = image.resize([int(s * SCALE_FACTOR) for s in image.size])
+        image = image.resize([int(s * SCALE_FACTOR) for s in image.size], Image.ANTIALIAS)
 
     if USE_GRAYSCALE:
         image = image.convert("L")
@@ -21,15 +21,17 @@ def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
     image = np.array(image)
 
     if USE_GRAYSCALE:
-        image = np.expand_dims(image, axis=2)
+        # Expand dims for grayscale to ensure it has a channel dimension
+        image = np.expand_dims(image, axis=0)  # Use axis=0 to represent the channel
+    else:
+        # Permute RGB to be in channel dimension
+        image = np.transpose(image, (2, 0, 1))
 
-    image = (
-        torch.from_numpy(image).unsqueeze(0).permute(0, 3, 1, 2).to(torch.float32) / 255
-    )
+    image = torch.from_numpy(image).to(torch.float32) / 255.0
+    image = image.unsqueeze(0)  # Add the batch dimension here only
     image = image.to(device)
 
     return image
-
 
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:
@@ -53,7 +55,6 @@ def document(
     epsilon,
     phase,
 ):
-
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
     fldr = "./runs/" + str(phase) + "/"

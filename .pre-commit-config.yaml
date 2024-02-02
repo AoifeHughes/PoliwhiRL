@@ -9,7 +9,7 @@ repos:
     rev: v1.2.3
     hooks:
       - id: flake8
-        args: ['--ignore=E501,W503']  # This line ignores long line errors
+        args: ['--ignore=E501,W503,E203']  # This line ignores long line errors
       - id: check-json
       - id: check-xml
       - id: check-yaml
