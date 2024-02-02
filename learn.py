@@ -55,7 +55,7 @@ def run(
             primary_model.share_memory()  # Prepare model for shared memory
         optimizer = optim.Adam(primary_model.parameters(), lr=0.001)
         memory = ReplayMemory(
-            10000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
+            100000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
         )
         epsilon = 1
         start_episode, init_epsilon = load_checkpoint(
