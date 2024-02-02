@@ -9,7 +9,7 @@ from functools import partial
 from PPO import PPOBuffer, ppo_update, PolicyNetwork, ValueNetwork
 from rewards import calc_rewards
 import torch.optim as optim
-
+from tqdm import tqdm
 
 def run_episode_ppo(
     episode_num,
@@ -103,7 +103,8 @@ def collect_experiences(
     )
 
     with multiprocessing.Pool(processes=cpus) as pool:
-        pool.map(run_episode_partial, range(num_episodes))
+        list(tqdm(pool.imap(run_episode_partial, range(num_episodes)), total=num_episodes))
+
 
     # Now ppo_buffer contains experiences from all episodes
     return ppo_buffer
