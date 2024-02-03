@@ -33,6 +33,7 @@ class PolicyNetwork(nn.Module):
         self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
+        x = torch.squeeze(x, 1)  # Squeeze the tensor to remove the extra dimension
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
@@ -40,6 +41,7 @@ class PolicyNetwork(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         return F.softmax(self.fc2(x), dim=-1)
+
 
 # Define the Value Network
 class ValueNetwork(nn.Module):
@@ -69,13 +71,15 @@ class ValueNetwork(nn.Module):
         self._to_linear = x.view(1, -1).size(1)
 
     def forward(self, x):
+        x = torch.squeeze(x, 1)  # Squeeze the tensor to remove the extra dimension
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
         x = F.relu(self.bn4(self.conv4(x)))
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
-        return self.fc2(x)
+        return F.softmax(self.fc2(x), dim=-1)
+
 
 
 def compute_returns(next_value, rewards, masks, gamma=0.99):
@@ -129,6 +133,7 @@ def ppo_update(
     optimizer_value.zero_grad()
     value_loss.backward()
     optimizer_value.step()
+    return {'policy_loss': policy_loss.item(), 'value_loss': value_loss.item()}
 
 
 class PPOBuffer:
