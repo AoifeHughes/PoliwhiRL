@@ -101,10 +101,11 @@ def optimize_model(
     reward_batch = []
     next_state_batch = []
     non_final_mask = []
-    # each sequence is a list of [1][4]
+
     for sequence in sequences:
         s = sequence[0]
-        cumulative_reward = sum((GAMMA**i) * np.clip(s[i][2], -1, 1) for i in range(len(s)))
+        # Use torch operations for clipping and calculating cumulative reward to keep computation on the device
+        cumulative_reward = sum((GAMMA**i) * torch.clamp(s[i][2], -1, 1) for i in range(len(s)))
         reward_batch.append(cumulative_reward)
         state_batch.append(s[0][0])
         action_batch.append(s[0][1])
@@ -113,32 +114,27 @@ def optimize_model(
         non_final_mask.append(next_state is not None)
 
     # Convert lists to tensors
-    state_batch = torch.cat(state_batch)
-    action_batch = torch.cat(action_batch)
+    state_batch = torch.cat(state_batch).to(device)
+    action_batch = torch.cat(action_batch).to(device)
     reward_batch = torch.tensor(reward_batch, device=device)
-    non_final_next_states = torch.cat([s for s in next_state_batch if s is not None])
+    non_final_next_states = torch.cat([s for s in next_state_batch if s is not None]).to(device)
     non_final_mask = torch.tensor(non_final_mask, device=device, dtype=torch.bool)
 
     # Compute Q(s_t, a) using the primary_model
     state_action_values = primary_model(state_batch).gather(1, action_batch)
 
+
     # Initialize next state values to zero
     next_state_values = torch.zeros(batch_size, device=device)
     # Compute V(s_{t+n}) for all next states using the target_model
-    if sum(non_final_mask) > 0:
-        next_state_values[non_final_mask] = (
-            target_model(non_final_next_states).max(1)[0].detach()
-        )
+    if non_final_mask.sum() > 0:
+        next_state_values[non_final_mask] = target_model(non_final_next_states).max(1)[0].detach()
 
     # Compute the expected Q values
-    expected_state_action_values = (
-        next_state_values * (GAMMA**n_steps)
-    ) + reward_batch
+    expected_state_action_values = (next_state_values * (GAMMA**n_steps)) + reward_batch
 
     # Compute Huber loss
-    loss = F.smooth_l1_loss(
-        state_action_values, expected_state_action_values.unsqueeze(1)
-    )
+    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
 
     # Optimize the model
     optimizer.zero_grad()
