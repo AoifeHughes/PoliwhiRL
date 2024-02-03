@@ -13,7 +13,7 @@ def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
         image = Image.fromarray(image)
 
     if SCALE_FACTOR != 1:
-        image = image.resize([int(s * SCALE_FACTOR) for s in image.size], Image.ANTIALIAS)
+        image = image.resize([int(s * SCALE_FACTOR) for s in image.size])
 
     if USE_GRAYSCALE:
         image = image.convert("L")
@@ -129,6 +129,7 @@ def plot_best_attempts(results_path, episodes, phase, results):
         os.mkdir(results_path)
     results_path = results_path + f"best_attempts_{episodes}_{phase}.png"
     print(f"Saving plot to '{results_path}'")
+    
     fig, ax = plt.subplots(1, figsize=(5, 5), dpi=100)
     ax.plot(results)
     ax.set_xlabel("Episode #")

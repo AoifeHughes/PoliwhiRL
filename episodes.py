@@ -120,12 +120,13 @@ def run_episode(
 
         if len(n_step_buffer) == n_steps:
             # Add the n-step buffer to memory
-            memory.push(n_step_buffer)
+            memory.push(n_step_buffer.copy())
             n_step_buffer.clear()
             # Optionally optimize the model here or after collecting more experience
             if len(memory) >= batch_size:
                 optimize_model(batch_size, device, memory, primary_model, target_model, optimizer, GAMMA=0.9, n_steps=n_steps)
-                soft_update(target_model, primary_model, tau=0.001)
+                if i%10 == 0:
+                    soft_update(target_model, primary_model, tau=0.001)
 
         state = next_state
         total_reward += reward
@@ -144,5 +145,5 @@ def run_episode(
             )
 
     controller.stop(save=False)
-
+    print(f"Episode {i} finished after {t} timesteps with reward {total_reward}")
     return total_reward
