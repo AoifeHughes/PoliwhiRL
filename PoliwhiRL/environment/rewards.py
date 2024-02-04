@@ -17,24 +17,18 @@ def is_similar(target_image, image_list, threshold=99):
 
 def calc_rewards(
     controller,
-    max_total_level,
-    cur_img,
-    imgs,
-    xy,
-    locs,
-    max_total_exp,
     default_reward=0.01,
     use_sight=True,
 ):
     total_reward = -default_reward * 1
     if use_sight:
-        cur_img = np.array(cur_img.convert("L"))
-        if len(imgs) > 0:
-            if not is_similar(cur_img, imgs):
+        cur_img = np.array(controller.screen_image().convert("L"))
+        if len(controller.imgs) > 0:
+            if not is_similar(cur_img, controller.imgs):
                 total_reward += default_reward * 2
-                imgs.append(cur_img)
+                controller.imgs.append(cur_img)
         else:
-            imgs.append(cur_img)
+            controller.imgs.append(cur_img)
 
     # Encourage getting out of location
     # if controller.get_current_location() not in locs:
@@ -43,19 +37,19 @@ def calc_rewards(
 
     # Encourage moving around
     cur_xy = controller.get_XY()
-    if cur_xy not in xy:
+    if cur_xy not in controller.xy:
         total_reward += default_reward * 10
-        xy.add(cur_xy)
+        controller.xy.add(cur_xy)
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
-    if total_level > np.sum(max_total_level):
+    if total_level > np.sum(controller.max_total_level):
         total_reward += default_reward * 100
-        max_total_level[0] = total_level
+        controller.max_total_level = total_level
 
     # encourage max xp
-    if total_exp > np.sum(max_total_exp):
+    if total_exp > np.sum(controller.max_total_exp):
         total_reward += default_reward * 100
-        max_total_exp[0] = total_exp
+        controller.max_total_exp = total_exp
 
     return total_reward
