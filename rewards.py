@@ -24,7 +24,7 @@ def calc_rewards(
     locs,
     max_total_exp,
     default_reward=0.01,
-    use_sight=True,
+    use_sight=False,
 ):
     total_reward = -default_reward * 1
     if use_sight:

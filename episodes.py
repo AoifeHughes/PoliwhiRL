@@ -145,5 +145,4 @@ def run_episode(
             )
 
     controller.stop(save=False)
-    print(f"Episode {i} finished after {t} timesteps with reward {total_reward}")
     return total_reward

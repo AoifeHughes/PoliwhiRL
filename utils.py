@@ -130,7 +130,7 @@ def plot_best_attempts(results_path, episodes, phase, results):
     results_path = results_path + f"best_attempts_{episodes}_{phase}.png"
     print(f"Saving plot to '{results_path}'")
     
-    fig, ax = plt.subplots(1, figsize=(5, 5), dpi=100)
+    fig, ax = plt.subplots(1, figsize=(10, 5), dpi=100)
     ax.plot(results)
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Best Attempt")

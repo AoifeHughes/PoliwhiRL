@@ -54,7 +54,7 @@ def run(
             primary_model.share_memory()  # Prepare model for shared memory
         optimizer = optim.Adam(primary_model.parameters(), lr=0.001)
         memory = ReplayMemory(
-            100000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
+            10000, n_steps=nsteps, multiCPU=device == torch.device("cpu")
         )
         epsilon = 1
         start_episode, init_epsilon = load_checkpoint(
@@ -63,7 +63,7 @@ def run(
         
         for idy, t in enumerate(timeouts):
             print(f"Timeout: {t}")
-            results = run_phase(
+            results, best_attempts = run_phase(
                 init_epsilon,
                 1,
                 0.1,
@@ -87,7 +87,7 @@ def run(
                 start_episode=start_episode,
             )
             # eval model
-            eval_model(batch_size, t, rom_path, state_paths, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, nsteps, f"{t}", start_episode)
+            #eval_model(batch_size, t, rom_path, state_paths, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, nsteps, f"{t}", start_episode)
 
 
             save_checkpoint(
@@ -142,6 +142,7 @@ def run_phase(
     start_episode=0,
 ):
     all_rewards = []
+    best_attempts = []
     epsilons_exponential = np.linspace(epsilon_max, epsilon_min, num_episodes)
 
     for batch_start in tqdm(range(0, num_episodes, episodes_per_batch), desc="Running batches"):
@@ -174,6 +175,10 @@ def run_phase(
         for total_reward in batch_results:
             all_rewards.append(total_reward)
 
+        best_attempt = eval_model(batch_size, timeout, rom_path, state_paths, primary_model, target_model, memory, optimizer, device, SCALE_FACTOR, USE_GRAYSCALE, n_steps, f"{batch_start}", start_episode)
+        best_attempts.append(best_attempt)
+        
+
         # Save checkpoint periodically or based on other criteria
         if checkpoint and (batch_start + episodes_per_batch) % 100 == 0:
             save_checkpoint(
@@ -184,16 +189,23 @@ def run_phase(
                 epsilons_exponential[min(batch_start + episodes_per_batch, num_episodes - 1)],
                 timeout,
             )
+            plot_best_attempts(
+                "./results/",
+                start_episode + num_episodes,
+                batch_start + episodes_per_batch,
+                best_attempts,
+            )
+        
 
     # Optional: plot best attempts or other metrics collected during the phase
     plot_best_attempts(
         "./results/",
         start_episode + num_episodes,
         phase,
-        all_rewards,
+        best_attempts,
     )
 
-    return all_rewards
+    return all_rewards, best_attempts
 
 def run_batch(batch_args, cpus):
     if cpus > 1:

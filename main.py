@@ -6,20 +6,20 @@ import os
 
 def main():
     rom_path = "Pokemon - Crystal Version.gbc"
-    device = torch.device("mps")
-    SCALE_FACTOR = 0.5
-    USE_GRAYSCALE = True
-    timeouts = [15] 
+    device = torch.device("cpu")
+    SCALE_FACTOR = 1
+    USE_GRAYSCALE = False
+    timeouts = [100] 
     state_paths = [
         "./states/start.state",
-        #"./states/outside.state",
-        #"./states/lab.state",
-        #"./states/battle.state",
+        # "./states/outside.state",
+        # "./states/lab.state",
+        # "./states/battle.state",
     ]
     cpus = (os.cpu_count() - 1) if device == torch.device("cpu") else 1
-    episodes_per_batch = 2 * cpus
-    num_episodes = 5000 * cpus
-    nsteps = 3
+    episodes_per_batch = 1 * cpus
+    num_episodes = 10000 * cpus
+    nsteps = 10
     batch_size = 16
     explore_mode = False
     run(
