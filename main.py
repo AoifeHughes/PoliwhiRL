@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-from DQN_run import run
+from PoliwhiRL.models.DQN.DQN_run import run
 import torch
 import os
 
 
 def main():
-    rom_path = "Pokemon - Crystal Version.gbc"
+    rom_path = "./emu_files/Pokemon - Crystal Version.gbc"
     device = torch.device("mps")
     SCALE_FACTOR = 0.5
     USE_GRAYSCALE = True
     timeouts = [15] 
     state_paths = [
-        "./states/start.state",
+        "./emu_files/states/start.state",
         #"./states/outside.state",
         #"./states/lab.state",
         #"./states/battle.state",
