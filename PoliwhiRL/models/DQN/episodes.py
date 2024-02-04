@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-from utils import image_to_tensor, select_action
+from PoliwhiRL.utils.utils import image_to_tensor, select_action
 from tqdm import tqdm
 from itertools import count
-from controls import Controller
-from utils import document
-from rewards import calc_rewards
+from PoliwhiRL.environment.controls import Controller
+from PoliwhiRL.utils.utils import document
+from PoliwhiRL.environment.rewards import calc_rewards
 import torch
 import random
-from DQN import optimize_model
+from PoliwhiRL.models.DQN.DQN import optimize_model
 import numpy as np
 
 

@@ -2,15 +2,15 @@
 import numpy as np
 import torch
 from tqdm import tqdm
-from controls import Controller
-from utils import (
+from PoliwhiRL.environment.controls import Controller
+from PoliwhiRL.utils.utils import (
     save_results,
     plot_best_attempts,
     load_checkpoint,
     save_checkpoint,
 )
-from episodes import run_episode, explore_episode
-from DQN import DQN, ReplayMemory, optimize_model  # Ensure optimize_model is correctly imported or defined
+from PoliwhiRL.models.DQN.episodes import run_episode, explore_episode
+from PoliwhiRL.models.DQN.DQN import DQN, ReplayMemory
 import torch.optim as optim
 import multiprocessing
 
