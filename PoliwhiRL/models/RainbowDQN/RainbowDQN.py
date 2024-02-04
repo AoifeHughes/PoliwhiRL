@@ -8,7 +8,7 @@ import numpy as np
 import random
 from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.environment.controls import Controller
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.NoisyLinear import NoisyLinear
 
@@ -82,6 +82,7 @@ def run(
     num_episodes,
     batch_size,
     checkpoint_path="rainbow_checkpoint.pth.tar",
+    record=True
 ):
     env = Controller(rom_path, state_path, timeout=episode_length)
     gamma = 0.99  # Discount factor for future rewards
@@ -113,8 +114,7 @@ def run(
         policy_net.load_state_dict(checkpoint["policy_net_state_dict"])
         target_net.load_state_dict(checkpoint["target_net_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        # Assuming the replay buffer can be saved and loaded correctly
-        # This might require custom handling depending on its implementation
+
         replay_buffer.load_state(checkpoint["replay_buffer"])
         # Load any other parameters you've saved
     else:
@@ -180,6 +180,10 @@ def run(
             f"Episode: {episode}, Total Reward: {total_reward}, Average Loss: {np.mean(losses) if losses else 0}"
         )
         rewards.append(total_reward)
+
+        # document every 100 or last episode
+        if record and (episode % 100 == 0 or episode == num_episodes - 1):
+            env.record(episode, epsilon, "Rainbow")
 
     plot_best_attempts("./rewards/", episode, "Rainbow DQN", rewards)
     # Save checkpoint at the end

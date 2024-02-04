@@ -8,7 +8,7 @@ import numpy as np
 import shutil
 import tempfile
 from PoliwhiRL.environment.rewards import calc_rewards
-
+from PoliwhiRL.utils.utils import document
 
 class Controller:
     def __init__(self, rom_path, state_path=None, timeout=100):
@@ -79,6 +79,8 @@ class Controller:
         self.xy = set()
         self.imgs = []
         self.steps = 0
+        self.reward = 0
+        self.button = None
 
     def random_move(self):
         return np.random.choice(self.action_space)
@@ -92,6 +94,8 @@ class Controller:
         self.xy = set()
         self.imgs = []
         self.steps = 0
+        self.reward = 0
+        self.button = None
         return self.screen_image()
 
     def save_state(self, file):
@@ -110,9 +114,10 @@ class Controller:
         self.pyboy._rendering(True)
         self.pyboy.tick()
         next_state = self.screen_image()
-        reward = calc_rewards(self)
+        self.reward = calc_rewards(self)
         self.steps += 1
-        return next_state, reward, True if self.steps == self.timeout else False
+        self.button = movement
+        return next_state, self.reward, True if self.steps == self.timeout else False
 
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
@@ -196,3 +201,6 @@ class Controller:
             os.mkdir("./states")
         with open(f"./states/state_{i}.state", "wb") as f:
             f.write(state.read())
+
+    def record(self, ep, e, name):
+        document(ep, self.steps, self.screen_image(), self.button, self.reward, self.timeout, e, name)

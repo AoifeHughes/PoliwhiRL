@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 
-from PoliwhiRL.models.RainbowDQN.RainbowDQN_run import run
-import torch
-import os
+from PoliwhiRL.models.RainbowDQN.RainbowDQN import run
+from torch import device 
 
 
 def main():
-    run()
+
+    rom_path = "./emu_files/Pokemon - Crystal Version.gbc"
+    state_path = "./emu_files/states/start.state"
+    episode_length = 10
+    d = device("mps")
+    num_episodes = 1000 
+    batch_size = 32
+
+    run(rom_path, state_path, episode_length, d, num_episodes, batch_size)
 
 
 if __name__ == "__main__":
