@@ -69,7 +69,7 @@ def run(checkpoint_path="rainbow_checkpoint.pth.tar"):
             # Epsilon-greedy action selection
             if random.random() > epsilon:
                 with torch.no_grad():
-                    state_t = torch.FloatTensor(state).unsqueeze(0).to(device)
+                    state_t = state.unsqueeze(0).to(device)
                     q_values = policy_net(state_t)
                     action = q_values.max(1)[1].item()
             else:
@@ -117,28 +117,28 @@ def beta_by_frame(frame_idx):
 def epsilon_by_frame(frame_idx):
     return epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1. * frame_idx / epsilon_decay)
 
-def compute_td_error(batch, policy_net, target_net, gamma=0.99):
-    states, actions, rewards, next_states, dones = batch
+def compute_td_error(experience, policy_net, target_net, gamma=0.99):
+    state, action, reward, next_state, done = experience
     
-    # Convert data directly to tensors on the specified device
-    states = torch.tensor(states, dtype=torch.float, device=device)
-    next_states = torch.tensor(next_states, dtype=torch.float, device=device)
-    actions = torch.tensor(actions, dtype=torch.long, device=device)
-    rewards = torch.tensor(rewards, dtype=torch.float, device=device)
-    dones = torch.tensor(dones, dtype=torch.bool, device=device)
+    # Ensure tensors are on the correct device and add batch dimension since dealing with single experience
+    state = state.to(device).unsqueeze(0)  # Add batch dimension
+    next_state = next_state.to(device).unsqueeze(0)  # Add batch dimension
+    action = torch.tensor([action], device=device, dtype=torch.long)
+    reward = torch.tensor([reward], device=device, dtype=torch.float)
+    done = torch.tensor([done], device=device, dtype=torch.bool)
     
     # Compute current Q values: Q(s, a)
-    current_q_values = policy_net(states).gather(1, actions.unsqueeze(-1)).squeeze(-1)
+    current_q_values = policy_net(state).gather(1, action.unsqueeze(-1)).squeeze(-1)
     
     # Compute next Q values from target network
     with torch.no_grad():
-        next_state_values = target_net(next_states).max(1)[0]
-        next_state_values[dones] = 0.0  # Zero-out terminal states
-        expected_q_values = rewards + gamma * next_state_values
+        next_state_values = target_net(next_state).max(1)[0].detach()
+        next_state_values[done] = 0.0  # Zero-out terminal states
+        expected_q_values = reward + gamma * next_state_values
 
     # TD error
-    td_error = expected_q_values - current_q_values
-    return td_error.abs().cpu().numpy()  # Return absolute TD error as numpy array
+    td_error = (expected_q_values - current_q_values).abs()
+    return td_error.item()  # Return absolute TD error as scalar
 
 
 def optimize_model(beta):
