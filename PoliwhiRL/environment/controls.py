@@ -9,6 +9,7 @@ import shutil
 import tempfile
 from PoliwhiRL.environment.rewards import calc_rewards
 
+
 class Controller:
     def __init__(self, rom_path, state_path=None, timeout=100):
         # Create a temporary directory
@@ -35,17 +36,19 @@ class Controller:
             with open(self.paths[1], "rb") as stateFile:
                 self.pyboy.load_state(stateFile)
 
-        self.action_space_buttons = np.array([
-            "UP",
-            "DOWN",
-            "LEFT",
-            "RIGHT",
-            "A",
-            "B",
-            "START",
-            "SELECT",
-            "PASS",
-        ])
+        self.action_space_buttons = np.array(
+            [
+                "UP",
+                "DOWN",
+                "LEFT",
+                "RIGHT",
+                "A",
+                "B",
+                "START",
+                "SELECT",
+                "PASS",
+            ]
+        )
         self.action_space = np.arange(len(self.action_space_buttons))
 
         self.event_dict_press = {
@@ -75,13 +78,14 @@ class Controller:
         self.locs = set()
         self.xy = set()
         self.imgs = []
-        steps = 0
+        self.steps = 0
+
     def random_move(self):
         return np.random.choice(self.action_space)
 
     def reset(self):
         with open(self.paths[1], "rb") as stateFile:
-                self.pyboy.load_state(stateFile)
+            self.pyboy.load_state(stateFile)
         self.max_total_level = 0
         self.max_total_exp = 0
         self.locs = set()
