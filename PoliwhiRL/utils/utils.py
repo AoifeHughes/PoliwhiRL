@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import itertools
 
 
-def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
+def image_to_tensor(image, device, SCALE_FACTOR=1, USE_GRAYSCALE=False):
     if not isinstance(image, Image.Image):
         image = Image.fromarray(image)
 
@@ -28,7 +28,6 @@ def image_to_tensor(image, device, SCALE_FACTOR=0.5, USE_GRAYSCALE=False):
         image = np.transpose(image, (2, 0, 1))
 
     image = torch.from_numpy(image).to(torch.float32) / 255.0
-    image = image.unsqueeze(0)  # Add the batch dimension here only
     image = image.to(device)
 
     return image

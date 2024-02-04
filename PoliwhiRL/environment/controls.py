@@ -2,38 +2,40 @@
 import io
 from pyboy import PyBoy, WindowEvent
 import os
-import RAM_locations
-import OCR
+import PoliwhiRL.environment.RAM_locations as RAM_locations
+import PoliwhiRL.utils.OCR as OCR
 import numpy as np
 import shutil
 import tempfile
-
+from PoliwhiRL.environment.rewards import calc_rewards
 
 class Controller:
-    def __init__(self, rom_path, state_path=None):
+    def __init__(self, rom_path, state_path=None, timeout=100):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
-
+        rom_root = os.path.dirname(rom_path)
+        self.state_path = state_path
+        self.timeout = timeout
         # copy other files to the temporary directory
-        paths = [
+        self.paths = [
             shutil.copy(file, self.temp_dir)
             for file in [
                 rom_path,
-                state_path,
-                "Pokemon - Crystal Version.gbc.ram",
-                "Pokemon - Crystal Version.gbc.rtc",
+                self.state_path,
+                f"{rom_root}/Pokemon - Crystal Version.gbc.ram",
+                f"{rom_root}/Pokemon - Crystal Version.gbc.rtc",
             ]
             if file is not None
         ]
 
         # Initialize PyBoy with the ROM in the temporary directory
-        self.pyboy = PyBoy(paths[0], debug=False, window_type="headless")
+        self.pyboy = PyBoy(self.paths[0], debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
-        if state_path is not None:
-            with open(paths[1], "rb") as stateFile:
+        if self.state_path is not None:
+            with open(self.paths[1], "rb") as stateFile:
                 self.pyboy.load_state(stateFile)
 
-        self.movements = [
+        self.action_space_buttons = np.array([
             "UP",
             "DOWN",
             "LEFT",
@@ -43,7 +45,8 @@ class Controller:
             "START",
             "SELECT",
             "PASS",
-        ]
+        ])
+        self.action_space = np.arange(len(self.action_space_buttons))
 
         self.event_dict_press = {
             "UP": WindowEvent.PRESS_ARROW_UP,
@@ -67,11 +70,32 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
+        self.max_total_level = 0
+        self.max_total_exp = 0
+        self.locs = set()
+        self.xy = set()
+        self.imgs = []
+        steps = 0
+    def random_move(self):
+        return np.random.choice(self.action_space)
+
+    def reset(self):
+        with open(self.paths[1], "rb") as stateFile:
+                self.pyboy.load_state(stateFile)
+        self.max_total_level = 0
+        self.max_total_exp = 0
+        self.locs = set()
+        self.xy = set()
+        self.imgs = []
+        self.steps = 0
+        return self.screen_image()
+
     def save_state(self, file):
         self.pyboy.save_state(file)
 
-    def handleMovement(self, movement, ticks_per_input=10, wait=480):
+    def step(self, movement, ticks_per_input=10, wait=480):
         self.pyboy._rendering(False)
+        movement = self.action_space_buttons[movement]
         if movement != "PASS":
             self.pyboy.send_input(self.event_dict_press[movement])
             [self.pyboy.tick() for _ in range(ticks_per_input)]
@@ -81,6 +105,10 @@ class Controller:
         [self.pyboy.tick() for _ in range(wait)]
         self.pyboy._rendering(True)
         self.pyboy.tick()
+        next_state = self.screen_image()
+        reward = calc_rewards(self)
+        self.steps += 1
+        return next_state, reward, True if self.steps == self.timeout else False
 
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
