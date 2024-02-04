@@ -2,12 +2,12 @@
 import torch
 from itertools import count
 from torch.distributions import Categorical
-from PoliwhiRL.env.controls import Controller  # Ensure this is your actual controller
+from PoliwhiRL.environment.controls import Controller  # Ensure this is your actual controller
 from PoliwhiRL.utils.utils import image_to_tensor
 import multiprocessing
 from functools import partial
 from PPO import PPOBuffer, ppo_update, PolicyNetwork, ValueNetwork
-from PoliwhiRL.env.rewards import calc_rewards
+from PoliwhiRL.environment.rewards import calc_rewards
 import torch.optim as optim
 from tqdm import tqdm
 
