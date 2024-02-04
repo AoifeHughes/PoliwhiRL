@@ -41,6 +41,7 @@ class PolicyNetwork(nn.Module):
         x = F.relu(self.fc1(x))
         return F.softmax(self.fc2(x), dim=-1)
 
+
 # Define the Value Network
 class ValueNetwork(nn.Module):
     def __init__(self, h, w, USE_GRAYSCALE):
@@ -164,12 +165,18 @@ class PPOBuffer:
     def compute_gae_and_returns(self, next_value, gamma=0.99, tau=0.95):
         gae = 0
         for step in reversed(range(len(self.rewards))):
-            delta = self.rewards[step] + gamma * next_value * (1 - self.is_terminals[step]) - self.values[step]
+            delta = (
+                self.rewards[step]
+                + gamma * next_value * (1 - self.is_terminals[step])
+                - self.values[step]
+            )
             gae = delta + gamma * tau * (1 - self.is_terminals[step]) * gae
             self.returns.insert(0, gae + self.values[step])
             next_value = self.values[step]
         self.returns = torch.tensor(self.returns, dtype=torch.float32).detach()
-        self.advantages = self.returns - torch.tensor(self.values, dtype=torch.float32).detach()
+        self.advantages = (
+            self.returns - torch.tensor(self.values, dtype=torch.float32).detach()
+        )
 
     def get_batch(self):
         # Ensure to call compute_gae_and_returns before this to populate returns and advantages
@@ -182,4 +189,11 @@ class PPOBuffer:
 
         self.clear()  # Clear buffer after getting the batch
 
-        return states_tensor, actions_tensor, log_probs_tensor, returns_tensor, advantages_tensor, is_terminals_tensor
+        return (
+            states_tensor,
+            actions_tensor,
+            log_probs_tensor,
+            returns_tensor,
+            advantages_tensor,
+            is_terminals_tensor,
+        )

@@ -32,6 +32,7 @@ def image_to_tensor(image, device, SCALE_FACTOR=1, USE_GRAYSCALE=False):
 
     return image
 
+
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:
         with torch.no_grad():
@@ -128,7 +129,7 @@ def plot_best_attempts(results_path, episodes, phase, results):
         os.mkdir(results_path)
     results_path = results_path + f"best_attempts_{episodes}_{phase}.png"
     print(f"Saving plot to '{results_path}'")
-    
+
     fig, ax = plt.subplots(1, figsize=(5, 5), dpi=100)
     ax.plot(results)
     ax.set_xlabel("Episode #")

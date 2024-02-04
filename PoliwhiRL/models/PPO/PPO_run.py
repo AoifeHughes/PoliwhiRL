@@ -2,7 +2,9 @@
 import torch
 from itertools import count
 from torch.distributions import Categorical
-from PoliwhiRL.environment.controls import Controller  # Ensure this is your actual controller
+from PoliwhiRL.environment.controls import (
+    Controller,
+)  # Ensure this is your actual controller
 from PoliwhiRL.utils.utils import image_to_tensor
 import multiprocessing
 from functools import partial
@@ -10,6 +12,7 @@ from PPO import PPOBuffer, ppo_update, PolicyNetwork, ValueNetwork
 from PoliwhiRL.environment.rewards import calc_rewards
 import torch.optim as optim
 from tqdm import tqdm
+
 
 def run_episode_ppo(
     episode_num,
@@ -56,13 +59,9 @@ def run_episode_ppo(
             locs,
             max_total_exp,
             default_reward=0.01,
-        )  
-        next_state = image_to_tensor(
-            img, device, SCALE_FACTOR, USE_GRAYSCALE
         )
-        is_terminal = float(
-            t + 1 == timeout
-        )  
+        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE)
+        is_terminal = float(t + 1 == timeout)
 
         # Store experiences in PPOBuffer
         ppo_buffer.add(state, action, m.log_prob(action), reward, value, is_terminal)
@@ -103,8 +102,11 @@ def collect_experiences(
     )
 
     with multiprocessing.Pool(processes=cpus) as pool:
-        list(tqdm(pool.imap(run_episode_partial, range(num_episodes)), total=num_episodes))
-
+        list(
+            tqdm(
+                pool.imap(run_episode_partial, range(num_episodes)), total=num_episodes
+            )
+        )
 
     # Now ppo_buffer contains experiences from all episodes
     return ppo_buffer
@@ -130,7 +132,7 @@ def ppo_train(
     for state_path in state_paths:
         # Collect experiences
         ppo_buffer = PPOBuffer()
-        
+
         # Define a partial function for multiprocessing
         run_episode_partial = partial(
             run_episode_ppo,
@@ -146,15 +148,17 @@ def ppo_train(
             gamma=gamma,  # Note: These are not used inside run_episode_ppo directly but could be if adjusting the function
             tau=tau,
         )
-        
+
         with multiprocessing.Pool(processes=cpus) as pool:
             pool.map(run_episode_partial, range(num_episodes))
 
         # After collecting experiences, compute GAE and returns before updating
         # Assuming there's a method to get the last state's value or setting it to 0 if terminal
         # This part might need adjustment based on how you handle episode ends and next state value
-        last_value = 0  # This should be replaced with an actual value computation if necessary
-        
+        last_value = (
+            0  # This should be replaced with an actual value computation if necessary
+        )
+
         ppo_buffer.compute_gae_and_returns(last_value, gamma=gamma, tau=tau)
 
         # Get batches for training
@@ -183,6 +187,7 @@ def ppo_train(
 
         # Optional: Log training progress, save models, etc.
 
+
 def run_training(
     rom_path,
     state_paths,  # This should be a list
@@ -197,12 +202,15 @@ def run_training(
     gamma=0.99,
     tau=0.95,
 ):
-
     controller = Controller(rom_path)
     screen_height, screen_width = controller.screen_size()
-    screen_height, screen_width = int(screen_height * SCALE_FACTOR), int(screen_width * SCALE_FACTOR)
+    screen_height, screen_width = int(screen_height * SCALE_FACTOR), int(
+        screen_width * SCALE_FACTOR
+    )
 
-    policy_net = PolicyNetwork(screen_height, screen_width, action_size, USE_GRAYSCALE).to(device)
+    policy_net = PolicyNetwork(
+        screen_height, screen_width, action_size, USE_GRAYSCALE
+    ).to(device)
     value_net = ValueNetwork(screen_height, screen_width, USE_GRAYSCALE).to(device)
 
     optimizer_policy = optim.Adam(policy_net.parameters(), lr=1e-3)
@@ -227,22 +235,23 @@ def run_training(
         tau=tau,
     )
 
-
     torch.save(policy_net.state_dict(), "policy_net.pth")
     torch.save(value_net.state_dict(), "value_net.pth")
+
 
 def run(
     rom_path="Pokemon - Crystal Version.gbc",
     device="cpu",
     SCALE_FACTOR=1,
     USE_GRAYSCALE=False,
-    state_paths=["./states/start.state"],  # This should be a list to accommodate multiple paths
+    state_paths=[
+        "./states/start.state"
+    ],  # This should be a list to accommodate multiple paths
     num_episodes=100,
     episodes_per_batch=20,
     timeout=1000,
-    cpus=4
+    cpus=4,
 ):
-
     # Run training with adjusted parameters
     run_training(
         rom_path=rom_path,
@@ -257,6 +266,6 @@ def run(
         device=device,
     )
 
+
 if __name__ == "__main__":
     run()
-
