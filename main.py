@@ -2,7 +2,6 @@
 
 from PoliwhiRL.models.RainbowDQN.RainbowDQN import run as run_rainbow
 from PoliwhiRL.models.DQN.DQN import run as run_dqn
-from PoliwhiRL.models.PPO.PPO import run as run_ppo
 from torch import device
 import argparse
 
