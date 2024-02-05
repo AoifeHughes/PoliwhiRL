@@ -41,8 +41,10 @@ def calc_rewards(
     # Encourage moving around
     cur_xy = controller.get_XY()
     if cur_xy not in controller.xy:
-        total_reward += default_reward * 10
+        total_reward += default_reward * 2
         controller.xy.add(cur_xy)
+        controller.extend_timeout(1)
+
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
