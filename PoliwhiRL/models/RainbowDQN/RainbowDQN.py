@@ -81,7 +81,7 @@ def run(
     device,
     num_episodes,
     batch_size,
-    checkpoint_path="rainbow_checkpoint.pth.tar",
+    checkpoint_path="rainbow_checkpoint.pth",
     record=True
 ):
     env = Controller(rom_path, state_path, timeout=episode_length)
@@ -107,7 +107,7 @@ def run(
     optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
     replay_buffer = PrioritizedReplayBuffer(capacity, alpha)
 
-    checkpoint = load_checkpoint(checkpoint_path)
+    checkpoint = load_checkpoint(checkpoint_path, device)
     if checkpoint is not None:
         start_episode = checkpoint["episode"] + 1  # Continue from next episode
         frame_idx = checkpoint["frame_idx"]
@@ -115,12 +115,12 @@ def run(
         target_net.load_state_dict(checkpoint["target_net_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-        replay_buffer.load_state(checkpoint["replay_buffer"])
+        replay_buffer.load_state_dict(checkpoint["replay_buffer"])
         # Load any other parameters you've saved
     else:
         start_episode = 0
     rewards = []
-    for episode in tqdm(range(start_episode, num_episodes)):
+    for episode in tqdm(range(start_episode, start_episode+num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
 
@@ -173,19 +173,22 @@ def run(
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
 
+                    # document every 100 or last episode
+            if record and (episode % 100 == 0 or episode == num_episodes - 1):
+                env.record(episode, epsilon, "Rainbow")
+
+
             if done:
                 break
-
-        print(
-            f"Episode: {episode}, Total Reward: {total_reward}, Average Loss: {np.mean(losses) if losses else 0}"
-        )
         rewards.append(total_reward)
+        # Plot rewards
+        if episode % 10 == 0:
+            plot_best_attempts("./results/", episode, f"Rainbow DQN_{episode}", rewards)
 
-        # document every 100 or last episode
-        if record and (episode % 100 == 0 or episode == num_episodes - 1):
-            env.record(episode, epsilon, "Rainbow")
 
-    plot_best_attempts("./rewards/", episode, "Rainbow DQN", rewards)
+
+
+    plot_best_attempts("./results/", episode, "Rainbow DQN", rewards)
     # Save checkpoint at the end
     save_checkpoint(
         {
@@ -296,6 +299,8 @@ def optimize_model(
 
 def save_checkpoint(state, filename="checkpoint.pth.tar"):
     """Saves the current state of training."""
+    if not os.path.exists(os.path.dirname(filename)):
+        os.makedirs(os.path.dirname(filename))
     torch.save(state, filename)
     print(f"Checkpoint saved to {filename}")
 
