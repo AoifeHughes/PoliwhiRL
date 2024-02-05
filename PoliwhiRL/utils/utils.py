@@ -54,6 +54,7 @@ def document(
     timeout,
     epsilon,
     phase,
+    location
 ):
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
@@ -68,7 +69,7 @@ def document(
     if not isinstance(img, Image.Image):
         img = Image.fromarray(img)
 
-    img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}.png")
+    img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}_{location}.png")
 
 
 def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
@@ -118,7 +119,6 @@ def save_results(results_path, episodes, results):
     if not os.path.isdir(results_path):
         os.mkdir(results_path)
     results_path = results_path + f"results_{episodes}.txt"
-    print(f"Saving results to '{results_path}'")
     with open(results_path, "w") as f:
         f.write(str(results))
 
@@ -128,7 +128,6 @@ def plot_best_attempts(results_path, episodes, phase, results):
     if not os.path.isdir(results_path):
         os.mkdir(results_path)
     results_path = os.path.join(results_path, f"best_attempts_{episodes}_{phase}.png")
-    print(f"Saving plot to '{results_path}'")
 
     # Calculate cumulative mean
     cum_mean = np.cumsum(results) / np.arange(1, len(results) + 1)

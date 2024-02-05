@@ -25,6 +25,7 @@ class Controller:
         self.ogTimeout = timeout
         self.timeout = timeout
         self.timeoutcap = timeout * 100
+        self.frames_per_loc = {i: 0 for i in range(256)}
         # copy other files to the temporary directory
         self.paths = [
             shutil.copy(file, self.temp_dir)
@@ -169,10 +170,14 @@ class Controller:
         self.steps += 1
         self.button = movement
         self.buttons.append(movement)
+        self.frames_per_loc[self.get_current_location()] = self.frames_per_loc[self.get_current_location()] + 1 
         return next_state, self.reward, True if self.steps == self.timeout else False
 
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
+
+    def get_frames_in_current_location(self):
+        return self.frames_per_loc[self.get_current_location()] 
 
     def extend_timeout(self, time):
         if self.timeout < self.timeoutcap:
@@ -268,6 +273,7 @@ class Controller:
             self.timeoutcap,
             e,
             name,
+            self.get_current_location()
         )
 
     def close(self):

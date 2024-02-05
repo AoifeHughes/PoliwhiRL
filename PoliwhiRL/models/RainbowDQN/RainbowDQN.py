@@ -131,8 +131,10 @@ def run(
         state = image_to_tensor(state, device)
 
         total_reward = 0
+        ep_len = 0
         while True:
             frame_idx += 1
+            #frame_loc_idx = env.get_frames_in_current_location()
             epsilon = epsilon_by_frame(
                 frame_idx, epsilon_start, epsilon_final, epsilon_decay
             )
@@ -184,6 +186,7 @@ def run(
                 env.record(episode, 1, "Rainbow")
             if done:
                 break
+            ep_len += 1
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
             plot_best_attempts("./results/", '', f"Rainbow DQN_latest", rewards)
