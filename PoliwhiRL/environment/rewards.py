@@ -1,19 +1,6 @@
 # -*- coding: utf-8 -*-
-from skimage.metrics import structural_similarity as ssim
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor
 from PoliwhiRL.environment.RAM_locations import locations
-
-
-def is_similar(target_image, image_list, threshold=99):
-    def compare(target, other):
-        similarity_index = ssim(target, other)
-        return similarity_index * 100 >= threshold
-
-    with ThreadPoolExecutor() as executor:
-        results = executor.map(lambda img: compare(target_image, img), image_list)
-
-    return any(results)
 
 
 def calc_rewards(
@@ -22,14 +9,10 @@ def calc_rewards(
     use_sight=False,
 ):
     total_reward = -default_reward * 1
+
     if use_sight:
-        cur_img = np.array(controller.screen_image().convert("L"))
-        if len(controller.imgs) > 0:
-            if not is_similar(cur_img, controller.imgs):
-                total_reward += default_reward * 2
-                controller.imgs.append(cur_img)
-        else:
-            controller.imgs.append(cur_img)
+        if controller.is_new_vision():
+            total_reward += default_reward * 2
 
     # Encourage getting out of location
     if controller.get_current_location() not in controller.locs:
