@@ -84,10 +84,20 @@ def run(
     num_episodes,
     batch_size,
     checkpoint_path="rainbow_checkpoint.pth",
+    use_sight=False,
+    parallel=False,
 ):
+    if parallel:
+        raise NotImplementedError(
+            "Parallel training not yet implemented for Rainbow DQN"
+        )
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
-        rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json"
+        rom_path,
+        state_path,
+        timeout=episode_length,
+        log_path="./logs/rainbow_env.json",
+        use_sight=use_sight,
     )
     gamma = 0.99
     alpha = 0.6
@@ -131,8 +141,10 @@ def run(
         state = image_to_tensor(state, device)
 
         total_reward = 0
+        ep_len = 0
         while True:
             frame_idx += 1
+            # frame_loc_idx = env.get_frames_in_current_location()
             epsilon = epsilon_by_frame(
                 frame_idx, epsilon_start, epsilon_final, epsilon_decay
             )
@@ -184,10 +196,10 @@ def run(
                 env.record(episode, 1, "Rainbow")
             if done:
                 break
+            ep_len += 1
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
-            plot_best_attempts("./results/", '', f"Rainbow DQN_latest", rewards)
-
+            plot_best_attempts("./results/", "", "Rainbow DQN_latest", rewards)
 
     total_time = time.time() - start_time  # Total training time
     env.close()
