@@ -8,7 +8,7 @@ import numpy as np
 import random
 from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.environment.controls import Controller
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.NoisyLinear import NoisyLinear
 
@@ -88,7 +88,7 @@ def run(
     gamma = 0.99  # Discount factor for future rewards
     alpha = 0.6  # Alpha value for PER
     beta_start = 0.4  # Initial value for beta
-    beta_frames = 10000  # Number of frames over which beta will be annealed to 1
+    beta_frames = 1000  # Number of frames over which beta will be annealed to 1
     frame_idx = 0  # Frame count for beta annealing
     epsilon_start = 1.0  # Starting value of epsilon
     epsilon_final = 0.01  # Final value of epsilon
@@ -175,15 +175,14 @@ def run(
 
                     # document every 100 or last episode
             if record and (episode % 100 == 0 or episode == num_episodes - 1):
-                env.record(episode, epsilon, "Rainbow")
-
+                env.record(episode, 1, "Rainbow")
 
             if done:
                 break
         rewards.append(total_reward)
         # Plot rewards
-        if episode % 10 == 0:
-            plot_best_attempts("./results/", episode, f"Rainbow DQN_latest", rewards)
+        if episode % 100 == 0 and episode > 0:
+            plot_best_attempts("./results/", '', f"Rainbow DQN_latest", rewards)
 
 
 

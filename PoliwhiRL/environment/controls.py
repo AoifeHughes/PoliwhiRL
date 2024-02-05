@@ -17,6 +17,7 @@ class Controller:
         rom_root = os.path.dirname(rom_path)
         self.state_path = state_path
         self.timeout = timeout
+        self.timeoutcap = timeout*100
         # copy other files to the temporary directory
         self.paths = [
             shutil.copy(file, self.temp_dir)
@@ -122,6 +123,10 @@ class Controller:
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
 
+    def extend_timeout(self, time):
+        if self.timeout < self.timeoutcap:
+            self.timeout += time
+
     def get_memory_value(self, address):
         return self.pyboy.get_memory_value(address)
 
@@ -203,4 +208,4 @@ class Controller:
             f.write(state.read())
 
     def record(self, ep, e, name):
-        document(ep, self.steps, self.screen_image(), self.button, self.reward, self.timeout, e, name)
+        document(ep, self.steps, self.screen_image(), self.button, self.reward, self.timeoutcap, e, name)
