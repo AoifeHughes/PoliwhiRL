@@ -9,16 +9,22 @@ import shutil
 import tempfile
 from PoliwhiRL.environment.rewards import calc_rewards
 from PoliwhiRL.utils.utils import document
+import time
+import json
+
 
 class Controller:
-    def __init__(self, rom_path, state_path=None, timeout=100):
+    def __init__(
+        self, rom_path, state_path=None, timeout=100, log_path="./logs/log.txt"
+    ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
         rom_root = os.path.dirname(rom_path)
+        self.log_path = log_path
         self.state_path = state_path
         self.ogTimeout = timeout
         self.timeout = timeout
-        self.timeoutcap = timeout*100
+        self.timeoutcap = timeout * 100
         # copy other files to the temporary directory
         self.paths = [
             shutil.copy(file, self.temp_dir)
@@ -35,7 +41,7 @@ class Controller:
         self.pyboy = PyBoy(self.paths[0], debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
         if self.state_path is not None:
-            with open(self.paths[1], "rb") as stateFile:
+            with open(self.state_path, "rb") as stateFile:
                 self.pyboy.load_state(stateFile)
 
         self.action_space_buttons = np.array(
@@ -83,11 +89,47 @@ class Controller:
         self.steps = 0
         self.reward = 0
         self.button = None
+        self.buttons = []
+        self.rewards = []
+        self.runs_data = {}
+        self.run = 0
+        self.run_time = time.time()
 
     def random_move(self):
         return np.random.choice(self.action_space)
 
+    def log_info_on_reset(self):
+        self.runs_data[self.run] = {
+            "visited_locations": len(self.locs),
+            "visited_xy": len(self.xy),
+            "max_total_level": self.max_total_level,
+            "max_total_exp": self.max_total_exp,
+            "steps": self.steps,
+            "rewards": self.rewards,
+            "buttons": self.buttons,
+            "state_file": self.state_path,
+            "rom_path": self.paths[0],
+            "timeout": self.timeout,
+            "timeoutcap": self.timeoutcap,
+            "run_time": time.time() - self.run_time,
+        }
+
+    def write_log(self, filepath):
+        if not os.path.isdir(os.path.dirname(filepath)):
+            os.mkdir(os.path.dirname(filepath))
+
+        with open(filepath, "w") as f:
+            json.dump(self.runs_data, f, indent=4)
+
+    def set_state(self, statefile):
+        # check if it exists already in the temp directory
+        if os.path.isfile(statefile):
+            self.state_path = statefile
+        else:
+            self.state_path = shutil.copy(statefile, self.temp_dir)
+
     def reset(self):
+        self.log_info_on_reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.max_total_level = 0
@@ -97,9 +139,13 @@ class Controller:
         self.imgs = []
         self.reward = 0
         self.button = None
-        self.step(len(self.action_space)-1) # pass
+        self.step(len(self.action_space) - 1)  # pass
         self.steps = 0
         self.timeout = self.ogTimeout
+        self.buttons = []
+        self.rewards = []
+        self.run += 1
+        self.run_time = time.time()
         return self.screen_image()
 
     def save_state(self, file):
@@ -119,8 +165,10 @@ class Controller:
         self.pyboy.tick()
         next_state = self.screen_image()
         self.reward = calc_rewards(self)
+        self.rewards.append(self.reward)
         self.steps += 1
         self.button = movement
+        self.buttons.append(movement)
         return next_state, self.reward, True if self.steps == self.timeout else False
 
     def screen_image(self):
@@ -211,4 +259,21 @@ class Controller:
             f.write(state.read())
 
     def record(self, ep, e, name):
-        document(ep, self.steps, self.screen_image(), self.button, self.reward, self.timeoutcap, e, name)
+        document(
+            ep,
+            self.steps,
+            self.screen_image(),
+            self.button,
+            self.reward,
+            self.timeoutcap,
+            e,
+            name,
+        )
+
+    def close(self):
+        self.pyboy.stop()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        if not os.path.isdir(os.path.dirname(self.log_path)):
+            os.mkdir(os.path.dirname(self.log_path))
+        self.write_log(self.log_path)
+        print(f"Environment log written to {self.log_path}")
