@@ -1,5 +1,7 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 from multiprocessing import Manager
+
 
 class ReplayMemory(object):
     def __init__(self, capacity, n_steps=5, multiCPU=True):
@@ -14,7 +16,8 @@ class ReplayMemory(object):
         with self.lock:
             self.memory.append(args)
             if len(self.memory) > self.capacity:
-                self.memory.pop(0)          
+                self.memory.pop(0)
+
     def sample(self, batch_size):
         with self.lock:
             return [

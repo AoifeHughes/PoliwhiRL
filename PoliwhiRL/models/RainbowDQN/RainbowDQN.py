@@ -8,10 +8,10 @@ import numpy as np
 import random
 from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.environment.controls import Controller
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.NoisyLinear import NoisyLinear
-import time 
+import time
 import json
 
 
@@ -84,10 +84,12 @@ def run(
     num_episodes,
     batch_size,
     checkpoint_path="rainbow_checkpoint.pth",
-    record=True
+    record=True,
 ):
     start_time = time.time()  # For computational efficiency tracking
-    env = Controller(rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json")
+    env = Controller(
+        rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json"
+    )
     gamma = 0.99
     alpha = 0.6
     beta_start = 0.4
@@ -130,10 +132,11 @@ def run(
         state = image_to_tensor(state, device)
 
         total_reward = 0
-        episode_start_time = time.time()  # For tracking time per episode
         while True:
             frame_idx += 1
-            epsilon = epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay)
+            epsilon = epsilon_by_frame(
+                frame_idx, epsilon_start, epsilon_final, epsilon_decay
+            )
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(frame_idx, beta_start, beta_frames)
             beta_values.append(beta)  # Log beta value
@@ -182,7 +185,6 @@ def run(
             if done:
                 break
         rewards.append(total_reward)
-       
 
     total_time = time.time() - start_time  # Total training time
     env.close()
@@ -198,12 +200,13 @@ def run(
     }
 
     # Save logged data to file
-    # check folder exists and create 
+    # check folder exists and create
     if not os.path.isdir("./logs"):
         os.mkdir("./logs")
     with open("./logs/training_log.json", "w") as outfile:
         json.dump(log_data, outfile, indent=4)
-    print(f"Training log saved to ./logs/training_log.json")
+    print("Training log saved to ./logs/training_log.json")
+
 
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
