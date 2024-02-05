@@ -33,7 +33,7 @@ def calc_rewards(
     # Encourage getting out of location
     if controller.get_current_location() not in controller.locs:
         controller.locs.add(controller.get_current_location())
-        if controller.get_current_location in locations:
+        if controller.get_current_location() in locations:
             total_reward += default_reward * 50
             controller.extend_timeout(50)
 
