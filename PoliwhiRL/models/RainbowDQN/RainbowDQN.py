@@ -183,7 +183,7 @@ def run(
         rewards.append(total_reward)
         # Plot rewards
         if episode % 10 == 0:
-            plot_best_attempts("./results/", episode, f"Rainbow DQN_{episode}", rewards)
+            plot_best_attempts("./results/", episode, f"Rainbow DQN_latest", rewards)
 
 
 
