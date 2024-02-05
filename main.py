@@ -10,10 +10,10 @@ def main():
     state_path = "./emu_files/states/start.state"
     episode_length = 10
     d = device("mps")
-    num_episodes = 1000 
+    num_episodes = 1000
     batch_size = 32
-
-    run(rom_path, state_path, episode_length, d, num_episodes, batch_size)
+    checkpoint = "./checkpoints/RainbowDQN.pth"
+    run(rom_path, state_path, episode_length, d, num_episodes, batch_size, checkpoint)
 
 
 if __name__ == "__main__":
