@@ -46,15 +46,7 @@ def select_action(state, epsilon, device, movements, model):
 
 
 def document(
-    episode_id,
-    step_id,
-    img,
-    button_press,
-    reward,
-    timeout,
-    epsilon,
-    phase,
-    location
+    episode_id, step_id, img, button_press, reward, timeout, epsilon, phase, location
 ):
     if not os.path.isdir("./runs"):
         os.mkdir("./runs")
@@ -69,7 +61,9 @@ def document(
     if not isinstance(img, Image.Image):
         img = Image.fromarray(img)
 
-    img.save(f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}_{location}.png")
+    img.save(
+        f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}_{location}.png"
+    )
 
 
 def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):

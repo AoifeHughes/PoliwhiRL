@@ -11,11 +11,17 @@ from PoliwhiRL.environment.rewards import calc_rewards
 from PoliwhiRL.utils.utils import document
 import time
 import json
+from PoliwhiRL.environment.ImageMemory import ImageMemory
 
 
 class Controller:
     def __init__(
-        self, rom_path, state_path=None, timeout=100, log_path="./logs/log.txt"
+        self,
+        rom_path,
+        state_path=None,
+        timeout=100,
+        log_path="./logs/log.json",
+        use_sight=False,
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -26,6 +32,7 @@ class Controller:
         self.timeout = timeout
         self.timeoutcap = timeout * 100
         self.frames_per_loc = {i: 0 for i in range(256)}
+        self.use_sight = use_sight
         # copy other files to the temporary directory
         self.paths = [
             shutil.copy(file, self.temp_dir)
@@ -86,10 +93,11 @@ class Controller:
         self.max_total_exp = 0
         self.locs = set()
         self.xy = set()
-        self.imgs = []
         self.steps = 0
         self.reward = 0
         self.button = None
+        # handle image storage
+        self.imgs = ImageMemory()
         self.buttons = []
         self.rewards = []
         self.runs_data = {}
@@ -101,6 +109,8 @@ class Controller:
 
     def log_info_on_reset(self):
         self.runs_data[self.run] = {
+            "used_sight": self.use_sight,
+            "num_images_seen": self.imgs.num_images(),
             "visited_locations": len(self.locs),
             "visited_xy": len(self.xy),
             "max_total_level": self.max_total_level,
@@ -114,6 +124,9 @@ class Controller:
             "timeoutcap": self.timeoutcap,
             "run_time": time.time() - self.run_time,
         }
+
+    def is_new_vision(self):
+        return self.imgs.check_and_store_image(self.screen_image())[0]
 
     def write_log(self, filepath):
         if not os.path.isdir(os.path.dirname(filepath)):
@@ -131,13 +144,13 @@ class Controller:
 
     def reset(self):
         self.log_info_on_reset()
+        self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.max_total_level = 0
         self.max_total_exp = 0
         self.locs = set()
         self.xy = set()
-        self.imgs = []
         self.reward = 0
         self.button = None
         self.step(len(self.action_space) - 1)  # pass
@@ -165,19 +178,22 @@ class Controller:
         self.pyboy._rendering(True)
         self.pyboy.tick()
         next_state = self.screen_image()
-        self.reward = calc_rewards(self)
+        self.reward = calc_rewards(self, use_sight=self.use_sight)
         self.rewards.append(self.reward)
         self.steps += 1
         self.button = movement
         self.buttons.append(movement)
-        self.frames_per_loc[self.get_current_location()] = self.frames_per_loc[self.get_current_location()] + 1 
-        return next_state, self.reward, True if self.steps == self.timeout else False
+        self.frames_per_loc[self.get_current_location()] = (
+            self.frames_per_loc[self.get_current_location()] + 1
+        )
+        self.done = True if self.steps == self.timeout else False
+        return next_state, self.reward, self.done
 
     def screen_image(self):
         return self.pyboy.botsupport_manager().screen().screen_image()
 
     def get_frames_in_current_location(self):
-        return self.frames_per_loc[self.get_current_location()] 
+        return self.frames_per_loc[self.get_current_location()]
 
     def extend_timeout(self, time):
         if self.timeout < self.timeoutcap:
@@ -273,7 +289,7 @@ class Controller:
             self.timeoutcap,
             e,
             name,
-            self.get_current_location()
+            self.get_current_location(),
         )
 
     def close(self):
