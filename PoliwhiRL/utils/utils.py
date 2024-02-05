@@ -135,19 +135,19 @@ def plot_best_attempts(results_path, episodes, phase, results):
 
     # Create plot
     fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
-    ax.plot(cum_mean, label='Cumulative Mean', color='blue', linewidth=2)
+    ax.plot(cum_mean, label="Cumulative Mean", color="blue", linewidth=2)
 
-    ax.set_title('Performance Over Episodes')
-    ax.set_xlabel('Episode #')
-    ax.set_ylabel('Average Reward')
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax.set_title("Performance Over Episodes")
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Average Reward")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
     ax.legend()
 
     fig.tight_layout()
 
     fig.savefig(results_path)
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
-    
+
     plt.close(fig)
 
 

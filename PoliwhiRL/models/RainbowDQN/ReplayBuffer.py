@@ -11,7 +11,9 @@ class PrioritizedReplayBuffer:
         self.priorities = np.zeros((capacity,), dtype=np.float32)  # Store priorities
 
     def add(self, state, action, reward, next_state, done, error):
-        max_prio = self.priorities.max() if self.buffer else 1.0  # Max priority for new entry
+        max_prio = (
+            self.priorities.max() if self.buffer else 1.0
+        )  # Max priority for new entry
         if len(self.buffer) < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
         else:
@@ -24,7 +26,7 @@ class PrioritizedReplayBuffer:
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[:self.pos]
+            prios = self.priorities[: self.pos]
 
         probs = prios**self.alpha
         probs /= probs.sum()
@@ -48,16 +50,18 @@ class PrioritizedReplayBuffer:
 
     def state_dict(self):
         """Returns a state dictionary for checkpointing."""
-        return {'capacity': self.capacity,
-                'alpha': self.alpha,
-                'buffer': self.buffer,
-                'pos': self.pos,
-                'priorities': self.priorities}
+        return {
+            "capacity": self.capacity,
+            "alpha": self.alpha,
+            "buffer": self.buffer,
+            "pos": self.pos,
+            "priorities": self.priorities,
+        }
 
     def load_state_dict(self, state_dict):
         """Loads the buffer's state from a state dictionary."""
-        self.capacity = state_dict['capacity']
-        self.alpha = state_dict['alpha']
-        self.buffer = state_dict['buffer']
-        self.pos = state_dict['pos']
-        self.priorities = state_dict['priorities']
+        self.capacity = state_dict["capacity"]
+        self.alpha = state_dict["alpha"]
+        self.buffer = state_dict["buffer"]
+        self.pos = state_dict["pos"]
+        self.priorities = state_dict["priorities"]
