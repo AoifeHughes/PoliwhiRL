@@ -8,7 +8,7 @@ import numpy as np
 import random
 from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.environment.controls import Controller
-from PoliwhiRL.utils.utils import image_to_tensor
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.NoisyLinear import NoisyLinear
 import time
@@ -84,7 +84,6 @@ def run(
     num_episodes,
     batch_size,
     checkpoint_path="rainbow_checkpoint.pth",
-    record=True,
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -181,10 +180,14 @@ def run(
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
-
+            if episode % 100 == 0 or episode == num_episodes - 1:
+                env.record(episode, 1, "Rainbow")
             if done:
                 break
         rewards.append(total_reward)
+        if episode % 100 == 0 and episode > 0:
+            plot_best_attempts("./results/", '', f"Rainbow DQN_latest", rewards)
+
 
     total_time = time.time() - start_time  # Total training time
     env.close()
