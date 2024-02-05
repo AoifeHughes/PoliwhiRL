@@ -124,19 +124,30 @@ def save_results(results_path, episodes, results):
 
 
 def plot_best_attempts(results_path, episodes, phase, results):
-    # Plot best attempts
+    # Ensure the results directory exists
     if not os.path.isdir(results_path):
         os.mkdir(results_path)
-    results_path = results_path + f"best_attempts_{episodes}_{phase}.png"
+    results_path = os.path.join(results_path, f"best_attempts_{episodes}_{phase}.png")
     print(f"Saving plot to '{results_path}'")
 
-    fig, ax = plt.subplots(1, figsize=(5, 5), dpi=100)
-    ax.plot(results)
-    ax.set_xlabel("Episode #")
-    ax.set_ylabel("Best Attempt")
+    # Calculate cumulative mean
+    cum_mean = np.cumsum(results) / np.arange(1, len(results) + 1)
+
+    # Create plot
+    fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
+    ax.plot(cum_mean, label='Cumulative Mean', color='blue', linewidth=2)
+
+    ax.set_title('Performance Over Episodes')
+    ax.set_xlabel('Episode #')
+    ax.set_ylabel('Average Reward')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax.legend()
+
     fig.tight_layout()
+
     fig.savefig(results_path)
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
+    
     plt.close(fig)
 
 
