@@ -16,6 +16,7 @@ class Controller:
         self.temp_dir = tempfile.mkdtemp()
         rom_root = os.path.dirname(rom_path)
         self.state_path = state_path
+        self.ogTimeout = timeout
         self.timeout = timeout
         self.timeoutcap = timeout*100
         # copy other files to the temporary directory
@@ -94,10 +95,11 @@ class Controller:
         self.locs = set()
         self.xy = set()
         self.imgs = []
-        self.steps = 0
         self.reward = 0
         self.button = None
         self.step(len(self.action_space)-1) # pass
+        self.steps = 0
+        self.timeout = self.ogTimeout
         return self.screen_image()
 
     def save_state(self, file):
