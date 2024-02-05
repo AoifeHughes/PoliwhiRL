@@ -42,8 +42,8 @@ def main():
     batch_size = args.batch_size
     checkpoint = args.checkpoint
     sight = args.sight
-    parallel = True
-    erase = True
+    parallel = args.parallel
+    erase = args.erase
 
 
     if erase:
