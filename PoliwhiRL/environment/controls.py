@@ -97,6 +97,7 @@ class Controller:
         self.steps = 0
         self.reward = 0
         self.button = None
+        self.step(len(self.action_space)-1) # pass
         return self.screen_image()
 
     def save_state(self, file):

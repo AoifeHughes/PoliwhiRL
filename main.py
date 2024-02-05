@@ -8,7 +8,7 @@ def main():
 
     rom_path = "./emu_files/Pokemon - Crystal Version.gbc"
     state_path = "./emu_files/states/start.state"
-    episode_length = 10
+    episode_length = 5
     d = device("mps")
     num_episodes = 10000
     batch_size = 32
