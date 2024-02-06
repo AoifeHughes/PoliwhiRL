@@ -138,3 +138,4 @@ runs/*
 *DS_Store
 states/*
 *.txt
+*.json

@@ -295,7 +295,9 @@ class Controller:
     def close(self):
         self.pyboy.stop()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-        if not os.path.isdir(os.path.dirname(self.log_path)):
-            os.mkdir(os.path.dirname(self.log_path))
+        try:
+            if not os.path.isdir(os.path.dirname(self.log_path)):
+                os.mkdir(os.path.dirname(self.log_path))
+        except:
+            pass
         self.write_log(self.log_path)
-        print(f"Environment log written to {self.log_path}")

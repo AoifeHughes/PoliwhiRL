@@ -1,19 +1,22 @@
+# -*- coding: utf-8 -*-
 import hashlib
 from skimage.metrics import structural_similarity as ssim
 import cv2
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 
+
 class ImageMemory:
     def __init__(self, max_images=1000):
         self.max_images = max_images  # Maximum number of images to store
         self.images = {}  # Stores images in memory, mapped by hash
         self.image_order = []  # Track order of images for removing oldest
-        self.feature_index = NearestNeighbors(n_neighbors=1, algorithm='auto')  # For nearest neighbors searches
+        self.feature_index = NearestNeighbors(
+            n_neighbors=1, algorithm="auto"
+        )  # For nearest neighbors searches
         self.features = []  # Stored features for all images
         self.ids = []  # Image identifiers corresponding to features
         self._reset_state()
-
 
     def _hash_image(self, image):
         """Generate a hash for an image."""
@@ -28,7 +31,9 @@ class ImageMemory:
         """Check if a similar image exists; store the new image in memory if not."""
         target_features = self._compute_features(target_image)
         if len(self.features) > 0:
-            distances, indices = self.feature_index.kneighbors([target_features], n_neighbors=1)
+            distances, indices = self.feature_index.kneighbors(
+                [target_features], n_neighbors=1
+            )
             if distances[0][0] < threshold:
                 # Found a similar image, return its identifier
                 target_hash = self.ids[indices[0][0]]
@@ -38,7 +43,7 @@ class ImageMemory:
         if len(self.images) >= self.max_images:
             oldest_hash = self.image_order.pop(0)  # Remove the oldest image reference
             self.images.pop(oldest_hash)  # Remove the oldest image from storage
- 
+
         # No similar image found, add new image to storage
         target_hash = self._hash_image(target_image)
         self.images[target_hash] = target_image  # Store image in memory
@@ -64,7 +69,7 @@ class ImageMemory:
         self.features = []
         self.ids = []
         # Reinitialize the nearest neighbors index with no data
-        self.feature_index = NearestNeighbors(n_neighbors=1, algorithm='auto')
+        self.feature_index = NearestNeighbors(n_neighbors=1, algorithm="auto")
 
     def reset(self):
         """Public method to reset the object state for reuse."""
