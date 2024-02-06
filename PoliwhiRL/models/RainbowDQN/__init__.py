@@ -12,7 +12,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.models.RainbowDQN.SingleRainbow import run as run_single
 from PoliwhiRL.models.RainbowDQN.DoubleRainbow import run as run_rainbow_parallel
-
+from PoliwhiRL.utils.utils import plot_best_attempts
 
 
 def run(
@@ -142,6 +142,9 @@ def run(
     with open("./logs/training_log.json", "w") as outfile:
         json.dump(log_data, outfile, indent=4)
     print("Training log saved to ./logs/training_log.json")
+
+    # Plot results 
+    plot_best_attempts("./logs/", num_episodes, f"RainbowDQN_{run_parallel}", rewards)
 
     # Save checkpoint
     save_checkpoint(
