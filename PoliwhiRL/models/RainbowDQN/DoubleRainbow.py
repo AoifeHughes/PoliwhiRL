@@ -8,6 +8,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     beta_by_frame,
     epsilon_by_frame,
+    save_checkpoint
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
@@ -152,6 +153,8 @@ def run(
     replay_buffer,
     losses,
     rewards,
+    checkpoint_interval,
+    checkpoint_path
 ):
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -186,6 +189,20 @@ def run(
         memories += new_memories
         rewards.extend(new_results)
         losses.extend(new_losses)
+
+        if run % checkpoint_interval == 0:
+            save_checkpoint(
+        {
+            "episode": (run + 1) * num_workers * runs_per_worker,
+            "frame_idx": memories,
+            "policy_net_state_dict": policy_net.state_dict(),
+            "target_net_state_dict": target_net.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "replay_buffer": replay_buffer.state_dict(),
+        },
+        filename=checkpoint_path,
+    )
+
 
     return losses, rewards, memories
 
