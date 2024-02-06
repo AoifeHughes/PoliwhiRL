@@ -1,7 +1,7 @@
+# -*- coding: utf-8 -*-
 import os
 import torch.optim as optim
 import torch
-import numpy as np
 import random
 import time
 import json
@@ -9,9 +9,16 @@ from tqdm import tqdm
 from PoliwhiRL.environment.controls import Controller
 from PoliwhiRL.models.RainbowDQN.RainbowDQN import RainbowDQN
 from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
-from PoliwhiRL.models.RainbowDQN.utils import compute_td_error, optimize_model, save_checkpoint, load_checkpoint
+from PoliwhiRL.models.RainbowDQN.utils import (
+    compute_td_error,
+    optimize_model,
+    save_checkpoint,
+    load_checkpoint,
+)
 from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.models.RainbowDQN.DoubleRainbow import run as run_rainbow_parallel
+
 
 
 def run(
@@ -22,10 +29,15 @@ def run(
     num_episodes,
     batch_size,
     checkpoint_path="rainbow_checkpoint.pth",
+    run_parallel=False,
+    sight=False,
+    runs_per_worker=100,
+    num_workers=8,
+    memories=0
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
-        rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json"
+        rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json", use_sight=sight
     )
     gamma = 0.99
     alpha = 0.6
@@ -64,6 +76,63 @@ def run(
     else:
         start_episode = 0
 
+
+    if not run_parallel:
+        run_single(
+            start_episode,
+            num_episodes,
+            env,
+            device,
+            policy_net,
+            target_net,
+            optimizer,
+            replay_buffer,
+            checkpoint_path,
+            frame_idx,
+            epsilon_start,
+            epsilon_final,
+            epsilon_decay,
+            beta_start,
+            beta_frames,
+            batch_size,
+            gamma,
+            update_target_every,
+            losses,
+            epsilon_values,
+            beta_values,
+            td_errors,
+            rewards,
+            start_time,
+        )
+    else:
+        run_rainbow_parallel(
+            rom_path,
+            state_path,
+            episode_length,
+            device,
+            num_episodes,
+            batch_size,
+            sight, 
+            runs_per_worker,
+            num_workers,
+            memories,
+            epsilon_start,
+            epsilon_final,
+            epsilon_decay,
+            beta_start,
+            beta_frames,
+            gamma,
+            update_target_every,
+            policy_net,
+            target_net,
+            optimizer,
+            replay_buffer,
+            losses, 
+            rewards
+        )
+
+
+def run_single(start_episode, num_episodes, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, start_time):
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -72,7 +141,7 @@ def run(
         ep_len = 0
         while True:
             frame_idx += 1
-            #frame_loc_idx = env.get_frames_in_current_location()
+            # frame_loc_idx = env.get_frames_in_current_location()
             epsilon = epsilon_by_frame(
                 frame_idx, epsilon_start, epsilon_final, epsilon_decay
             )
@@ -127,8 +196,7 @@ def run(
             ep_len += 1
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
-            plot_best_attempts("./results/", '', f"Rainbow DQN_latest", rewards)
-
+            plot_best_attempts("./results/", "", f"Rainbow DQN_latest", rewards)
 
     total_time = time.time() - start_time  # Total training time
     env.close()
@@ -159,7 +227,7 @@ def run(
             "policy_net_state_dict": policy_net.state_dict(),
             "target_net_state_dict": target_net.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
-            "replay_buffer": replay_buffer.state_dict()
+            "replay_buffer": replay_buffer.state_dict(),
         },
         filename=checkpoint_path,
     )
