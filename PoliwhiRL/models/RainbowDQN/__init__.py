@@ -44,7 +44,7 @@ def run(
     frame_idx = 0
     epsilon_start = 1.0
     epsilon_final = 0.01
-    epsilon_decay = 30000
+    epsilon_decay = 300000
     learning_rate = 1e-4
     capacity = 10000
     update_target_every = 1000
@@ -147,7 +147,7 @@ def run(
     print("Training log saved to ./logs/training_log.json")
 
     # Plot results
-    plot_best_attempts("./logs/", num_episodes, f"RainbowDQN_{run_parallel}", rewards)
+    plot_best_attempts("./results/", num_episodes, f"RainbowDQN_{run_parallel}_final", rewards)
 
     # Save checkpoint
     save_checkpoint(

@@ -19,7 +19,10 @@ def calc_rewards(
         controller.locs.add(controller.get_current_location())
         if controller.get_current_location() in locations:
             total_reward += default_reward * 50
-            controller.extend_timeout(50)
+            controller.extend_timeout(100)
+        else:
+            total_reward += default_reward * 10
+            controller.extend_timeout(10)
 
     # Encourage moving around
     cur_xy = controller.get_XY()
@@ -39,5 +42,8 @@ def calc_rewards(
         total_reward += default_reward * 100
         controller.max_total_exp = total_exp
         controller.extend_timeout(100)
+
+    if total_reward > 0:
+        controller.extend_timeout(1) # Encourage exploration
 
     return total_reward
