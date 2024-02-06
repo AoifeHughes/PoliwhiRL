@@ -7,7 +7,7 @@ command="python main.py --model explore --episode_length 10000 --num_episodes 1"
 state_dir="./emu_files/states/"
 
 # Maximum number of instances to run concurrently
-max_instances=4
+max_instances=1
 
 # Function to run the command with optional 'sight' and the specified 'state_path'
 run_command() {
