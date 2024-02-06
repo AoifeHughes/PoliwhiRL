@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from multiprocessing import Pool 
+from multiprocessing import Pool
 import torch
 import random
 from tqdm import tqdm
@@ -7,7 +7,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     compute_td_error,
     optimize_model,
     beta_by_frame,
-    epsilon_by_frame
+    epsilon_by_frame,
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
@@ -29,7 +29,7 @@ def worker(
     target_net,
     device,
     num_episodes,
-    document_every=100
+    document_every=100,
 ):
     local_env = Controller(
         rom_path,
@@ -56,9 +56,7 @@ def worker(
                 frame_idx, epsilon_start, epsilon_final, epsilon_decay
             )
             epsilon_values.append(epsilon)
-            beta = beta_by_frame(
-                frame_idx, beta_start, beta_frames
-            )  
+            beta = beta_by_frame(frame_idx, beta_start, beta_frames)
             if random.random() > epsilon:
                 with torch.no_grad():
                     state_t = state.unsqueeze(0).to(device)
@@ -82,7 +80,7 @@ def worker(
             )
             episode_experiences.append(
                 (state, action, reward, next_state, done, beta, td_error)
-            )  
+            )
             if episode % document_every == 0:
                 local_env.record(episode, 1, f"double_rainbow_env_{worker_id}")
             state = next_state
@@ -93,7 +91,6 @@ def worker(
 
     local_env.close()
     return experiences, rewards, td_errors, frame_idxs, epsilon_values
-
 
 
 def aggregate_and_update_model(
@@ -138,7 +135,7 @@ def run(
     device,
     num_episodes,
     batch_size,
-    sight, 
+    sight,
     runs_per_worker,
     num_workers,
     memories,
@@ -153,12 +150,14 @@ def run(
     target_net,
     optimizer,
     replay_buffer,
-    losses, 
-    rewards
+    losses,
+    rewards,
 ):
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
-        raise ValueError("Not enough episodes to run the model. Increase num_episodes or decrease num_workers and runs_per_worker.")
+        raise ValueError(
+            "Not enough episodes to run the model. Increase num_episodes or decrease num_workers and runs_per_worker."
+        )
     for run in tqdm(range(batches_to_run), desc="Running..."):
         new_results, new_losses, new_memories = run_batch(
             run,
@@ -189,6 +188,7 @@ def run(
         losses.extend(new_losses)
 
     return losses, rewards, memories
+
 
 def run_batch(
     batch_n,
@@ -232,12 +232,10 @@ def run_batch(
             target_net,
             device,
             num_episodes,
-
-
         )
         for i in range(num_workers)
     ]
-    
+
     # Initialize a multiprocessing pool
     with Pool(processes=num_workers) as pool:
         results = pool.starmap(worker, args_list)
@@ -245,13 +243,19 @@ def run_batch(
     # Process the results returned from the workers
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
     for result in results:
-        worker_experiences, worker_rewards, worker_td_errors, worker_frame_idxs, worker_epsilon_values = result
+        (
+            worker_experiences,
+            worker_rewards,
+            worker_td_errors,
+            worker_frame_idxs,
+            worker_epsilon_values,
+        ) = result
         experiences.extend(worker_experiences)
         rewards.extend(worker_rewards)
         td_errors.extend(worker_td_errors)
         frame_idxs.extend(worker_frame_idxs)
         epsilon_values.extend(worker_epsilon_values)
-    
+
     memories_processed = memories + len(experiences)
     if len(experiences) > 0:
         loss, memories_processed = aggregate_and_update_model(
@@ -267,6 +271,8 @@ def run_batch(
             memories_processed,
         )
         if loss is not None:
-            losses.extend(loss)  # Assuming aggregate_and_update_model returns a list of losses
+            losses.extend(
+                loss
+            )  # Assuming aggregate_and_update_model returns a list of losses
 
     return rewards, losses, memories_processed

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
-from PoliwhiRL.models.DQN.DQN import run as run_dqn
 from PoliwhiRL.environment.explore import explore
 from torch import device
 import os
@@ -74,7 +73,8 @@ def main():
             sight,
             runs_per_worker,
             num_workers,
-            0)
+            0,
+        )
     elif args.model == "DQN":
         raise NotImplementedError
     elif args.model == "PPO":

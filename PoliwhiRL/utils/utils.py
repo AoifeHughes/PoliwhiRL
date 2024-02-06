@@ -52,7 +52,7 @@ def document(
         if not os.path.isdir("./runs"):
             os.mkdir("./runs")
     except Exception as e:
-        pass
+        print(e)
     fldr = "./runs/" + str(phase) + "/"
     # check if all folders and subfolders exist
     if not os.path.isdir(fldr):

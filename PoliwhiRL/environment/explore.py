@@ -2,7 +2,6 @@
 from PoliwhiRL.environment.controls import Controller as environment
 from os.path import basename
 from tqdm import tqdm
-import multiprocessing as mp
 
 
 def explore(

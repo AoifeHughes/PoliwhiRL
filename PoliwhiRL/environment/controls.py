@@ -298,6 +298,6 @@ class Controller:
         try:
             if not os.path.isdir(os.path.dirname(self.log_path)):
                 os.mkdir(os.path.dirname(self.log_path))
-        except:
-            pass
+        except Exception as e:
+            print(e)
         self.write_log(self.log_path)
