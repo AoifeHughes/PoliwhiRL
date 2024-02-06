@@ -13,9 +13,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     compute_td_error,
     optimize_model,
     beta_by_frame,
-    epsilon_by_frame,
-    load_checkpoint,
-    save_checkpoint,
+    epsilon_by_frame
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, save_results
 from PoliwhiRL.environment.controls import Controller
@@ -98,12 +96,13 @@ def worker(
             if episode % document_every == 0:
                 local_env.record(episode, 1, f"double_rainbow_env_{worker_id}")
             state = next_state
-
         # After episode ends, put all experiences and metrics in their respective queues
         experience_queue.put(episode_experiences)
         td_error_queue.put(episode_td_errors)
         reward_queue.put(total_reward)
         frame_idx_queue.put(frame_idx)
+    local_env.close()
+
 
 
 def aggregate_and_update_model(
@@ -116,7 +115,7 @@ def aggregate_and_update_model(
     batch_size,
     gamma,
     update_target_every,
-    memories_processed ,
+    memories_processed,
 ):
     losses = []
     for experience in experiences:
@@ -166,9 +165,11 @@ def run(
     losses, 
     rewards
 ):
-    
-    for run in tqdm(range(num_episodes // (num_workers * runs_per_worker)), desc="Running..."):
-        r, losses, total_memories = run_batch(
+    batches_to_run = num_episodes // (num_workers * runs_per_worker)
+    if batches_to_run == 0:
+        raise ValueError("Not enough episodes to run the model. Increase num_episodes or decrease num_workers and runs_per_worker.")
+    for run in tqdm(range(batches_to_run), desc="Running..."):
+        new_results, new_losses, new_memories = run_batch(
             run,
             num_workers,
             rom_path,
@@ -192,10 +193,11 @@ def run(
             update_target_every,
             losses,
         )
-        memories += total_memories
-        rewards.extend(r)
+        memories += new_memories
+        rewards.extend(new_results)
+        losses.extend(new_losses)
 
-
+    return losses, rewards, memories
 
 def run_batch(
     batch_n,
@@ -229,7 +231,6 @@ def run_batch(
     processes = []
     frame_start = memories
     for i in range(num_workers):
-        num_episodes_per_worker = num_episodes // num_workers
         p = mp.Process(
             target=worker,
             args=(
@@ -247,7 +248,7 @@ def run_batch(
                 policy_net,
                 target_net,
                 device,
-                num_episodes_per_worker,
+                num_episodes,
                 experience_queue,
                 td_error_queue,
                 reward_queue,
@@ -260,7 +261,6 @@ def run_batch(
 
     for p in processes:
         p.join()
-
     experiences = []
     while not experience_queue.empty():
         experiences.extend(experience_queue.get())
