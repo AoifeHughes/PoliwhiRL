@@ -298,4 +298,3 @@ class Controller:
         if not os.path.isdir(os.path.dirname(self.log_path)):
             os.mkdir(os.path.dirname(self.log_path))
         self.write_log(self.log_path)
-        print(f"Environment log written to {self.log_path}")

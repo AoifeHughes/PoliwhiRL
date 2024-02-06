@@ -13,7 +13,6 @@ def calc_rewards(
     if use_sight:
         if controller.is_new_vision():
             total_reward += default_reward * 2
-            controller.extend_timeout(2)
 
     # Encourage getting out of location
     if controller.get_current_location() not in controller.locs:
@@ -27,7 +26,6 @@ def calc_rewards(
     if cur_xy not in controller.xy:
         total_reward += default_reward * 2
         controller.xy.add(cur_xy)
-        controller.extend_timeout(1)
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
