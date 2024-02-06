@@ -15,4 +15,6 @@ locations = {
     # 7: "UpstairsPlayersHouse2",
     4: "OutsideStartingArea",
     5: "ProfessorElmsLab",
+    8: "NPC_house1",
+    9: "NPC_house2",
 }

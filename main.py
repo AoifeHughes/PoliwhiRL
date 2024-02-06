@@ -16,9 +16,9 @@ def parse_args():
     parser.add_argument(
         "--state_path", type=str, default="./emu_files/states/start.state"
     )
-    parser.add_argument("--episode_length", type=int, default=5)
+    parser.add_argument("--episode_length", type=int, default=25)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--num_episodes", type=int, default=1000)
+    parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
         "--checkpoint", type=str, default="./checkpoints/RainbowDQN.pth"
@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--erase", action="store_true")
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--runs_per_worker", type=int, default=4)
-    parser.add_argument("--num_workers", type=int, default=8)
+    parser.add_argument("--num_workers", type=int, default=6)
     return parser.parse_args()
 
 
