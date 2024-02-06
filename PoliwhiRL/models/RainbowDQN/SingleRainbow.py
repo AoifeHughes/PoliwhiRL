@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from PoliwhiRL.models.RainbowDQN.utils import compute_td_error, optimize_model
+from PoliwhiRL.models.RainbowDQN.utils import compute_td_error, optimize_model, save_checkpoint
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
@@ -31,7 +31,7 @@ def run(
     beta_values,
     td_errors,
     rewards,
-    start_time,
+    checkpoint_interval
 ):
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
@@ -97,6 +97,18 @@ def run(
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
             plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
+        if episode % checkpoint_interval == 0:
+            save_checkpoint(
+            {
+                "episode": num_episodes + start_episode,
+                "frame_idx": frame_idx,
+                "policy_net_state_dict": policy_net.state_dict(),
+                "target_net_state_dict": target_net.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "replay_buffer": replay_buffer.state_dict(),
+            },
+            filename=checkpoint_path,
+        )
 
     env.close()
 

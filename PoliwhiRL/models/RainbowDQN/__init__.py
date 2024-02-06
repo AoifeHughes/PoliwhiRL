@@ -28,6 +28,7 @@ def run(
     runs_per_worker=100,
     num_workers=8,
     memories=0,
+    checkpoint_interval=100
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -99,7 +100,7 @@ def run(
             beta_values,
             td_errors,
             rewards,
-            start_time,
+            checkpoint_interval
         )
     else:
         losses, rewards, memories = run_rainbow_parallel(
@@ -126,6 +127,8 @@ def run(
             replay_buffer,
             losses,
             rewards,
+            checkpoint_interval,
+            checkpoint_path
         )
     total_time = time.time() - start_time  # Total training time
     # Prepare logging data
