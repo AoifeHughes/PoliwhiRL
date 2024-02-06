@@ -1,5 +1,7 @@
 # PoliwhiRL README
 
+![PoliwhiRL](./images/logo.png)
+
 ## Overview
 PoliwhiRL is a Reinforcement Learning library designed for sprite-based 2-D Pokémon games. It provides a framework for experimenting with different RL algorithms to interact with Pokémon games in an emulated environment.
 
