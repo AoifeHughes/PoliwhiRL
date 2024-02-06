@@ -1,6 +1,8 @@
-import torch 
-import os 
+# -*- coding: utf-8 -*-
+import torch
+import os
 import numpy as np
+
 
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
@@ -100,7 +102,6 @@ def save_checkpoint(state, filename="checkpoint.pth.tar"):
     if not os.path.exists(os.path.dirname(filename)):
         os.makedirs(os.path.dirname(filename))
     torch.save(state, filename)
-    print(f"Checkpoint saved to {filename}")
 
 
 def load_checkpoint(filename="checkpoint.pth.tar", device="cpu"):

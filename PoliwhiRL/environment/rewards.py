@@ -13,6 +13,7 @@ def calc_rewards(
     if use_sight:
         if controller.is_new_vision():
             total_reward += default_reward * 2
+            controller.extend_timeout(2)
 
     # Encourage getting out of location
     if controller.get_current_location() not in controller.locs:
