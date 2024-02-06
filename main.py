@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from PoliwhiRL.models.RainbowDQN.RainbowDQN import run as run_rainbow
+from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.DQN.DQN import run as run_dqn
 from PoliwhiRL.environment.explore import explore
 from torch import device
@@ -18,8 +18,8 @@ def parse_args():
         "--state_path", type=str, default="./emu_files/states/start.state"
     )
     parser.add_argument("--episode_length", type=int, default=5)
-    parser.add_argument("--device", type=str, default="mps")
-    parser.add_argument("--num_episodes", type=int, default=10000)
+    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--num_episodes", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
         "--checkpoint", type=str, default="./checkpoints/RainbowDQN.pth"
@@ -28,6 +28,8 @@ def parse_args():
     parser.add_argument("--sight", action="store_true")
     parser.add_argument("--erase", action="store_true")
     parser.add_argument("--parallel", action="store_true")
+    parser.add_argument("--runs_per_worker", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=8)
     return parser.parse_args()
 
 
@@ -43,8 +45,8 @@ def main():
     sight = args.sight
     parallel = args.parallel
     erase = args.erase
-
-    print(sight)
+    runs_per_worker = args.runs_per_worker
+    num_workers = args.num_workers
 
     if erase:
         print("Erasing all logs, checkpoints, runs, and results")
@@ -54,7 +56,13 @@ def main():
                 shutil.rmtree(f)
 
     if args.model == "RainbowDQN":
-        run_rainbow(
+        if parallel:
+            if d != device("cpu"):
+                print(
+                    "Parallel RainbowDQN only supports CPU devices. Switching to CPU."
+                )
+                d = device("cpu")
+        rainbow(
             rom_path,
             state_path,
             episode_length,
@@ -62,9 +70,11 @@ def main():
             num_episodes,
             batch_size,
             checkpoint,
-            sight,
             parallel,
-        )
+            sight,
+            runs_per_worker,
+            num_workers,
+            0)
     elif args.model == "DQN":
         raise NotImplementedError
     elif args.model == "PPO":
