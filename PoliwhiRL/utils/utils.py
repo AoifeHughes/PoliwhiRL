@@ -48,8 +48,11 @@ def select_action(state, epsilon, device, movements, model):
 def document(
     episode_id, step_id, img, button_press, reward, timeout, epsilon, phase, location
 ):
-    if not os.path.isdir("./runs"):
-        os.mkdir("./runs")
+    try:
+        if not os.path.isdir("./runs"):
+            os.mkdir("./runs")
+    except Exception as e:
+        pass
     fldr = "./runs/" + str(phase) + "/"
     # check if all folders and subfolders exist
     if not os.path.isdir(fldr):
