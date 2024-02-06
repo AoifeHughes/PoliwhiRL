@@ -1,13 +1,38 @@
-from PoliwhiRL.models.RainbowDQN.utils import (
-    compute_td_error,
-    optimize_model)
+# -*- coding: utf-8 -*-
+from PoliwhiRL.models.RainbowDQN.utils import compute_td_error, optimize_model
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
 import random
 import torch
 
-def run(start_episode, num_episodes, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, start_time):
+
+def run(
+    start_episode,
+    num_episodes,
+    env,
+    device,
+    policy_net,
+    target_net,
+    optimizer,
+    replay_buffer,
+    checkpoint_path,
+    frame_idx,
+    epsilon_start,
+    epsilon_final,
+    epsilon_decay,
+    beta_start,
+    beta_frames,
+    batch_size,
+    gamma,
+    update_target_every,
+    losses,
+    epsilon_values,
+    beta_values,
+    td_errors,
+    rewards,
+    start_time,
+):
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -71,7 +96,7 @@ def run(start_episode, num_episodes, env, device, policy_net, target_net, optimi
             ep_len += 1
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
-            plot_best_attempts("./results/", "", f"Rainbow DQN_latest", rewards)
+            plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
 
     env.close()
 

@@ -27,11 +27,15 @@ def run(
     sight=False,
     runs_per_worker=100,
     num_workers=8,
-    memories=0
+    memories=0,
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
-        rom_path, state_path, timeout=episode_length, log_path="./logs/rainbow_env.json", use_sight=sight
+        rom_path,
+        state_path,
+        timeout=episode_length,
+        log_path="./logs/rainbow_env.json",
+        use_sight=sight,
     )
     gamma = 0.99
     alpha = 0.6
@@ -70,7 +74,6 @@ def run(
     else:
         start_episode = 0
 
-
     if not run_parallel:
         losses, rewards, memories = run_single(
             start_episode,
@@ -99,14 +102,14 @@ def run(
             start_time,
         )
     else:
-       losses, rewards, memories = run_rainbow_parallel(
+        losses, rewards, memories = run_rainbow_parallel(
             rom_path,
             state_path,
             episode_length,
             device,
             num_episodes,
             batch_size,
-            sight, 
+            sight,
             runs_per_worker,
             num_workers,
             memories,
@@ -121,11 +124,11 @@ def run(
             target_net,
             optimizer,
             replay_buffer,
-            losses, 
-            rewards
+            losses,
+            rewards,
         )
     total_time = time.time() - start_time  # Total training time
-     # Prepare logging data
+    # Prepare logging data
     log_data = {
         "total_time": total_time,
         "average_reward": sum(rewards) / len(rewards),
@@ -143,13 +146,13 @@ def run(
         json.dump(log_data, outfile, indent=4)
     print("Training log saved to ./logs/training_log.json")
 
-    # Plot results 
+    # Plot results
     plot_best_attempts("./logs/", num_episodes, f"RainbowDQN_{run_parallel}", rewards)
 
     # Save checkpoint
     save_checkpoint(
         {
-            "episode": num_episodes+start_episode,
+            "episode": num_episodes + start_episode,
             "frame_idx": frame_idx,
             "policy_net_state_dict": policy_net.state_dict(),
             "target_net_state_dict": target_net.state_dict(),
@@ -158,6 +161,3 @@ def run(
         },
         filename=checkpoint_path,
     )
-
-
-
