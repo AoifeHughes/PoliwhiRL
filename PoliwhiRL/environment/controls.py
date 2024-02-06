@@ -259,7 +259,7 @@ class Controller:
             total_level += level
             total_hp += hp
             total_exp += exp
-        return total_level, total_hp, total_exp
+        return int(total_level), int(total_hp), int(total_exp)
 
     def get_text_on_screen(self):
         screen_image = self.pyboy.botsupport_manager().screen().screen_image()
