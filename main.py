@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument("--erase", action="store_true")
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--runs_per_worker", type=int, default=4)
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=8)
     return parser.parse_args()
 
 

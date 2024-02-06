@@ -1,21 +1,15 @@
 # -*- coding: utf-8 -*-
-import multiprocessing as mp
+from multiprocessing import Pool 
 import torch
-import torch.optim as optim
-import os
 import random
-import numpy as np
-import time
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.RainbowDQN import RainbowDQN
-from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.models.RainbowDQN.utils import (
     compute_td_error,
     optimize_model,
     beta_by_frame,
     epsilon_by_frame
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, save_results
+from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
 
 
@@ -35,11 +29,6 @@ def worker(
     target_net,
     device,
     num_episodes,
-    experience_queue,
-    td_error_queue,
-    reward_queue,
-    frame_idx_queue,
-    epsilon_values_queue,
     document_every=100
 ):
     local_env = Controller(
@@ -49,6 +38,8 @@ def worker(
         log_path=f"./logs/double_rainbow_env_{worker_id}.json",
         use_sight=sight,
     )
+    experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
+
     frame_idx = frame_start
     # Create a local instance of the environment
     for episode in range(num_episodes):
@@ -57,7 +48,6 @@ def worker(
         total_reward = 0
         episode_td_errors = []
         episode_experiences = []
-        frame_idxs = []
         done = False
         while not done:
             frame_idx += 1
@@ -65,7 +55,7 @@ def worker(
             epsilon = epsilon_by_frame(
                 frame_idx, epsilon_start, epsilon_final, epsilon_decay
             )
-            epsilon_values_queue.put(epsilon)
+            epsilon_values.append(epsilon)
             beta = beta_by_frame(
                 frame_idx, beta_start, beta_frames
             )  
@@ -97,11 +87,12 @@ def worker(
                 local_env.record(episode, 1, f"double_rainbow_env_{worker_id}")
             state = next_state
         # After episode ends, put all experiences and metrics in their respective queues
-        experience_queue.put(episode_experiences)
-        td_error_queue.put(episode_td_errors)
-        reward_queue.put(total_reward)
-        frame_idx_queue.put(frame_idx)
+        experiences.extend(episode_experiences)
+        rewards.append(total_reward)
+        td_errors.extend(episode_td_errors)
+
     local_env.close()
+    return experiences, rewards, td_errors, frame_idxs, epsilon_values
 
 
 
@@ -223,65 +214,44 @@ def run_batch(
     update_target_every=1000,
     losses=[],
 ):
-    experience_queue = mp.Queue()
-    td_error_queue = mp.Queue()
-    reward_queue = mp.Queue()
-    frame_idx_queue = mp.Queue()
-    epsilon_values_queue = mp.Queue()
-    processes = []
-    frame_start = memories
-    for i in range(num_workers):
-        p = mp.Process(
-            target=worker,
-            args=(
-                num_workers*batch_n+i,
-                rom_path,
-                state_path,
-                episode_length,
-                sight,
-                frame_start,
-                epsilon_start,
-                epsilon_final,
-                epsilon_decay,
-                beta_start,
-                beta_frames,
-                policy_net,
-                target_net,
-                device,
-                num_episodes,
-                experience_queue,
-                td_error_queue,
-                reward_queue,
-                frame_idx_queue,
-                epsilon_values_queue,
-            ),
+    # Prepare arguments for each worker function call
+    args_list = [
+        (
+            num_workers * batch_n + i,
+            rom_path,
+            state_path,
+            episode_length,
+            sight,
+            memories,
+            epsilon_start,
+            epsilon_final,
+            epsilon_decay,
+            beta_start,
+            beta_frames,
+            policy_net,
+            target_net,
+            device,
+            num_episodes,
+
+
         )
-        p.start()
-        processes.append(p)
+        for i in range(num_workers)
+    ]
+    
+    # Initialize a multiprocessing pool
+    with Pool(processes=num_workers) as pool:
+        results = pool.starmap(worker, args_list)
 
-    for p in processes:
-        p.join()
-    experiences = []
-    while not experience_queue.empty():
-        experiences.extend(experience_queue.get())
-
-    td_errors = []
-    while not td_error_queue.empty():
-        td_errors.extend(td_error_queue.get())
-
-    rewards = []
-    while not reward_queue.empty():
-        rewards.append(reward_queue.get())
-
-    frame_idxs = []
-    while not frame_idx_queue.empty():
-        frame_idxs.append(frame_idx_queue.get())
-
-    epsilon_values = []
-    while not epsilon_values_queue.empty():
-        epsilon_values.append(epsilon_values_queue.get())
-
-    loss = None
+    # Process the results returned from the workers
+    experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
+    for result in results:
+        worker_experiences, worker_rewards, worker_td_errors, worker_frame_idxs, worker_epsilon_values = result
+        experiences.extend(worker_experiences)
+        rewards.extend(worker_rewards)
+        td_errors.extend(worker_td_errors)
+        frame_idxs.extend(worker_frame_idxs)
+        epsilon_values.extend(worker_epsilon_values)
+    
     memories_processed = memories + len(experiences)
     if len(experiences) > 0:
         loss, memories_processed = aggregate_and_update_model(
@@ -297,8 +267,6 @@ def run_batch(
             memories_processed,
         )
         if loss is not None:
-            losses.append(loss)
-    else:
-        loss = None
+            losses.extend(loss)  # Assuming aggregate_and_update_model returns a list of losses
 
     return rewards, losses, memories_processed
