@@ -1,0 +1,1 @@
+python main.py --erase --device mps --model RainbowDQN --checkpoint_interval 1000 --epsilon_by_location --num_episodes 10000 --sight
