@@ -28,7 +28,8 @@ def run(
     runs_per_worker=100,
     num_workers=8,
     memories=0,
-    checkpoint_interval=100
+    checkpoint_interval=100,
+    epsilon_by_location=False,
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -100,7 +101,8 @@ def run(
             beta_values,
             td_errors,
             rewards,
-            checkpoint_interval
+            checkpoint_interval,
+            epsilon_by_location,
         )
     else:
         losses, rewards, memories = run_rainbow_parallel(
@@ -128,7 +130,8 @@ def run(
             losses,
             rewards,
             checkpoint_interval,
-            checkpoint_path
+            checkpoint_path,
+            epsilon_by_location,
         )
     total_time = time.time() - start_time  # Total training time
     # Prepare logging data
@@ -150,7 +153,9 @@ def run(
     print("Training log saved to ./logs/training_log.json")
 
     # Plot results
-    plot_best_attempts("./results/", num_episodes, f"RainbowDQN_{run_parallel}_final", rewards)
+    plot_best_attempts(
+        "./results/", num_episodes, f"RainbowDQN_{run_parallel}_final", rewards
+    )
 
     # Save checkpoint
     save_checkpoint(

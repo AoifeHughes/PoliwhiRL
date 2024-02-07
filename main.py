@@ -29,6 +29,8 @@ def parse_args():
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--runs_per_worker", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=6)
+    parser.add_argument("--checkpoint_interval", type=int, default=100)
+    parser.add_argument("--epsilon_by_location", action="store_true")
     return parser.parse_args()
 
 
@@ -46,6 +48,8 @@ def main():
     erase = args.erase
     runs_per_worker = args.runs_per_worker
     num_workers = args.num_workers
+    checkpoint_interval = args.checkpoint_interval
+    epsilon_by_location = args.epsilon_by_location
 
     if erase:
         print("Erasing all logs, checkpoints, runs, and results")
@@ -74,6 +78,8 @@ def main():
             runs_per_worker,
             num_workers,
             0,
+            checkpoint_interval,
+            epsilon_by_location,
         )
     elif args.model == "DQN":
         raise NotImplementedError

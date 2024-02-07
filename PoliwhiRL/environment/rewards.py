@@ -44,6 +44,6 @@ def calc_rewards(
         controller.extend_timeout(100)
 
     if total_reward > 0:
-        controller.extend_timeout(1) # Encourage exploration
+        controller.extend_timeout(1)  # Encourage exploration
 
     return total_reward

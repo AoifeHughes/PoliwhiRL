@@ -8,7 +8,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     beta_by_frame,
     epsilon_by_frame,
-    save_checkpoint
+    save_checkpoint,
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
@@ -30,7 +30,9 @@ def worker(
     target_net,
     device,
     num_episodes,
-    document_every=100,
+    document_every,
+    frames_in_loc,
+    epsilon_by_location,
 ):
     local_env = Controller(
         rom_path,
@@ -42,7 +44,6 @@ def worker(
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
     frame_idx = frame_start
-    # Create a local instance of the environment
     for episode in range(num_episodes):
         state = local_env.reset()
         state = image_to_tensor(state, device)
@@ -52,12 +53,24 @@ def worker(
         done = False
         while not done:
             frame_idx += 1
+            frames_in_loc[local_env.get_current_location()] += 1
             frame_idxs.append(frame_idx)
             epsilon = epsilon_by_frame(
-                frame_idx, epsilon_start, epsilon_final, epsilon_decay
+                frames_in_loc[local_env.get_current_location()]
+                if epsilon_by_location
+                else frame_idx,
+                epsilon_start,
+                epsilon_final,
+                epsilon_decay,
             )
             epsilon_values.append(epsilon)
-            beta = beta_by_frame(frame_idx, beta_start, beta_frames)
+            beta = beta_by_frame(
+                frames_in_loc[local_env.get_current_location()]
+                if epsilon_by_location
+                else frame_idx,
+                beta_start,
+                beta_frames,
+            )
             if random.random() > epsilon:
                 with torch.no_grad():
                     state_t = state.unsqueeze(0).to(device)
@@ -154,8 +167,11 @@ def run(
     losses,
     rewards,
     checkpoint_interval,
-    checkpoint_path
+    checkpoint_path,
+    epsilon_by_location,
 ):
+    frames_in_loc = {i: 0 for i in range(255)}
+
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
         raise ValueError(
@@ -185,6 +201,8 @@ def run(
             gamma,
             update_target_every,
             losses,
+            frames_in_loc,
+            epsilon_by_location,
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -192,17 +210,16 @@ def run(
 
         if run % checkpoint_interval == 0:
             save_checkpoint(
-        {
-            "episode": (run + 1) * num_workers * runs_per_worker,
-            "frame_idx": memories,
-            "policy_net_state_dict": policy_net.state_dict(),
-            "target_net_state_dict": target_net.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "replay_buffer": replay_buffer.state_dict(),
-        },
-        filename=checkpoint_path,
-    )
-
+                {
+                    "episode": (run + 1) * num_workers * runs_per_worker,
+                    "frame_idx": memories,
+                    "policy_net_state_dict": policy_net.state_dict(),
+                    "target_net_state_dict": target_net.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "replay_buffer": replay_buffer.state_dict(),
+                },
+                filename=checkpoint_path,
+            )
 
     return losses, rewards, memories
 
@@ -221,15 +238,18 @@ def run_batch(
     target_net,
     optimizer,
     replay_buffer,
-    sight=False,
-    epsilon_start=1.0,
-    epsilon_final=0.01,
-    epsilon_decay=30000,
-    beta_start=0.4,
-    beta_frames=1000,
-    gamma=0.99,
-    update_target_every=1000,
-    losses=[],
+    sight,
+    epsilon_start,
+    epsilon_final,
+    epsilon_decay,
+    beta_start,
+    beta_frames,
+    gamma,
+    update_target_every,
+    losses,
+    frames_in_loc,
+    epsilon_by_location,
+    document_every=100,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -249,6 +269,9 @@ def run_batch(
             target_net,
             device,
             num_episodes,
+            document_every,
+            frames_in_loc,
+            epsilon_by_location,
         )
         for i in range(num_workers)
     ]

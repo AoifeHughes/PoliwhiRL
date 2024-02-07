@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-from PoliwhiRL.models.RainbowDQN.utils import compute_td_error, optimize_model, save_checkpoint
+from PoliwhiRL.models.RainbowDQN.utils import (
+    compute_td_error,
+    optimize_model,
+    save_checkpoint,
+)
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
@@ -31,8 +35,10 @@ def run(
     beta_values,
     td_errors,
     rewards,
-    checkpoint_interval
+    checkpoint_interval,
+    epsilon_by_location,
 ):
+    frames_in_loc = {i: 0 for i in range(255)}
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -41,12 +47,23 @@ def run(
         ep_len = 0
         while True:
             frame_idx += 1
-            # frame_loc_idx = env.get_frames_in_current_location()
+            frames_in_loc[env.get_current_location()] += 1
             epsilon = epsilon_by_frame(
-                frame_idx, epsilon_start, epsilon_final, epsilon_decay
+                frames_in_loc[env.get_current_location()]
+                if epsilon_by_location
+                else frame_idx,
+                epsilon_start,
+                epsilon_final,
+                epsilon_decay,
             )
             epsilon_values.append(epsilon)  # Log epsilon value
-            beta = beta_by_frame(frame_idx, beta_start, beta_frames)
+            beta = beta_by_frame(
+                frames_in_loc[env.get_current_location()]
+                if epsilon_by_location
+                else frame_idx,
+                beta_start,
+                beta_frames,
+            )
             beta_values.append(beta)  # Log beta value
 
             if random.random() > epsilon:
@@ -99,16 +116,16 @@ def run(
             plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
         if episode % checkpoint_interval == 0:
             save_checkpoint(
-            {
-                "episode": num_episodes + start_episode,
-                "frame_idx": frame_idx,
-                "policy_net_state_dict": policy_net.state_dict(),
-                "target_net_state_dict": target_net.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "replay_buffer": replay_buffer.state_dict(),
-            },
-            filename=checkpoint_path,
-        )
+                {
+                    "episode": num_episodes + start_episode,
+                    "frame_idx": frame_idx,
+                    "policy_net_state_dict": policy_net.state_dict(),
+                    "target_net_state_dict": target_net.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "replay_buffer": replay_buffer.state_dict(),
+                },
+                filename=checkpoint_path,
+            )
 
     env.close()
 
