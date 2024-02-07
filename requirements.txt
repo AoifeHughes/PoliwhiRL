@@ -9,3 +9,4 @@ skimage>=0.0
 torch>=2.2.0
 tqdm>=4.65.0
 opencv-python>=4.9
+torchviz>=0.0.2
