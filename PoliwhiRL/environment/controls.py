@@ -210,7 +210,10 @@ class Controller:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def get_current_location(self):
-        return self.pyboy.get_memory_value(RAM_locations.location)
+        loc = self.pyboy.get_memory_value(RAM_locations.location)
+        if loc == 7: # starting zone is also 7 if you leave and come back
+            loc = 0
+        return loc
 
     def has_gotten_out_of_house(self):
         return self.pyboy.get_memory_value(RAM_locations.outside_house) == 4
