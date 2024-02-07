@@ -59,7 +59,7 @@ def run(
     input_shape = (3, int(screen_size[0]), int(screen_size[1]))
     policy_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
     target_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
-    visualize_model(policy_net, input_shape, "./results/RainbowDQN_model.png")
+    visualize_model(policy_net, input_shape, device, "./results/RainbowDQN_model.png")
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
