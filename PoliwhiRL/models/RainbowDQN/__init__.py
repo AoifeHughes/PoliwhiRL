@@ -46,7 +46,7 @@ def run(
     frame_idx = 0
     epsilon_start = 1.0
     epsilon_final = 0.01
-    epsilon_decay = 300000
+    epsilon_decay = 30000
     learning_rate = 1e-4
     capacity = 10000
     update_target_every = 1000
@@ -64,6 +64,7 @@ def run(
 
     optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
     replay_buffer = PrioritizedReplayBuffer(capacity, alpha)
+    frames_in_loc = {i: 0 for i in range(255)}
 
     checkpoint = load_checkpoint(checkpoint_path, device)
     if checkpoint is not None:
@@ -73,11 +74,12 @@ def run(
         target_net.load_state_dict(checkpoint["target_net_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         replay_buffer.load_state_dict(checkpoint["replay_buffer"])
+        frames_in_loc = checkpoint["frames_in_loc"]
     else:
         start_episode = 0
 
     if not run_parallel:
-        losses, rewards, memories = run_single(
+        losses, rewards, memories, frames_in_loc = run_single(
             start_episode,
             num_episodes,
             env,
@@ -103,9 +105,10 @@ def run(
             rewards,
             checkpoint_interval,
             epsilon_by_location,
+            frames_in_loc
         )
     else:
-        losses, rewards, memories = run_rainbow_parallel(
+        losses, rewards, memories, frames_in_loc = run_rainbow_parallel(
             rom_path,
             state_path,
             episode_length,
@@ -132,6 +135,7 @@ def run(
             checkpoint_interval,
             checkpoint_path,
             epsilon_by_location,
+            frames_in_loc
         )
     total_time = time.time() - start_time  # Total training time
     # Prepare logging data
@@ -166,6 +170,7 @@ def run(
             "target_net_state_dict": target_net.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "replay_buffer": replay_buffer.state_dict(),
+            "frames_in_loc": frames_in_loc
         },
         filename=checkpoint_path,
     )

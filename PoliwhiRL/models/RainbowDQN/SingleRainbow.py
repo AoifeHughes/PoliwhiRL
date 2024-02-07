@@ -37,8 +37,10 @@ def run(
     rewards,
     checkpoint_interval,
     epsilon_by_location,
+    frames_in_loc = None
 ):
-    frames_in_loc = {i: 0 for i in range(255)}
+    if frames_in_loc is None:
+        frames_in_loc = {i: 0 for i in range(255)}
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -123,10 +125,11 @@ def run(
                     "target_net_state_dict": target_net.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "replay_buffer": replay_buffer.state_dict(),
+                    "frames_in_loc": frames_in_loc
                 },
-                filename=checkpoint_path,
+                filename=f"{checkpoint_path.replace('.pth','')}_ep{episode}.pth",
             )
 
     env.close()
 
-    return losses, rewards, frame_idx
+    return losses, rewards, frame_idx, frames_in_loc
