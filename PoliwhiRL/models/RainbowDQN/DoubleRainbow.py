@@ -169,8 +169,10 @@ def run(
     checkpoint_interval,
     checkpoint_path,
     epsilon_by_location,
+    frames_in_loc = None
 ):
-    frames_in_loc = {i: 0 for i in range(255)}
+    if frames_in_loc is None:
+        frames_in_loc = {i: 0 for i in range(255)}
 
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -217,11 +219,12 @@ def run(
                     "target_net_state_dict": target_net.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "replay_buffer": replay_buffer.state_dict(),
+                    "frames_in_loc": frames_in_loc
                 },
                 filename=checkpoint_path,
             )
 
-    return losses, rewards, memories
+    return losses, rewards, memories, frames_in_loc
 
 
 def run_batch(
