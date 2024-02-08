@@ -9,6 +9,7 @@ from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.models.RainbowDQN.utils import (
     save_checkpoint,
     load_checkpoint,
+    epsilon_by_frame
 )
 from PoliwhiRL.models.RainbowDQN.SingleRainbow import run as run_single
 from PoliwhiRL.models.RainbowDQN.DoubleRainbow import run as run_rainbow_parallel
@@ -64,7 +65,9 @@ def run(
 
     optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
     replay_buffer = PrioritizedReplayBuffer(capacity, alpha)
-    frames_in_loc = {i: 0 for i in range(255)}
+    frames_in_loc = {i: 0 for i in range(256)}
+    epsilons_by_location = {i: 1.0 for i in range(256)}
+
 
     checkpoint = load_checkpoint(checkpoint_path, device)
     if checkpoint is not None:
@@ -79,7 +82,7 @@ def run(
         start_episode = 0
 
     if not run_parallel:
-        losses, rewards, memories, frames_in_loc = run_single(
+        losses, rewards, memories = run_single(
             start_episode,
             num_episodes,
             env,
@@ -105,10 +108,10 @@ def run(
             rewards,
             checkpoint_interval,
             epsilon_by_location,
-            frames_in_loc
+            frames_in_loc,
         )
     else:
-        losses, rewards, memories, frames_in_loc = run_rainbow_parallel(
+        losses, rewards, memories = run_rainbow_parallel(
             rom_path,
             state_path,
             episode_length,
@@ -135,9 +138,17 @@ def run(
             checkpoint_interval,
             checkpoint_path,
             epsilon_by_location,
-            frames_in_loc
+            frames_in_loc,
         )
     total_time = time.time() - start_time  # Total training time
+
+    # Given we know frames in location, we can calculate the exact epsilon value
+    # for each location
+    for loc in frames_in_loc:
+        epsilons_by_location[loc] = epsilon_by_frame(
+            frames_in_loc[loc], epsilon_start, epsilon_final, epsilon_decay
+        )
+
     # Prepare logging data
     log_data = {
         "total_time": total_time,
@@ -146,7 +157,11 @@ def run(
         "epsilon_values": epsilon_values,
         "beta_values": beta_values,
         "td_errors": td_errors,
+        "frames_in_loc": frames_in_loc,
+        "epsilons_by_location": epsilons_by_location
     }
+
+
 
     # Save logged data to file
     # check folder exists and create

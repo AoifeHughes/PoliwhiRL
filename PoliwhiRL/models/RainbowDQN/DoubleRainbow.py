@@ -169,10 +169,8 @@ def run(
     checkpoint_interval,
     checkpoint_path,
     epsilon_by_location,
-    frames_in_loc = None
+    frames_in_loc
 ):
-    if frames_in_loc is None:
-        frames_in_loc = {i: 0 for i in range(255)}
 
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -224,7 +222,7 @@ def run(
                 filename=checkpoint_path,
             )
 
-    return losses, rewards, memories, frames_in_loc
+    return losses, rewards, memories
 
 
 def run_batch(

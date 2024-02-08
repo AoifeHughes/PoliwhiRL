@@ -37,10 +37,9 @@ def run(
     rewards,
     checkpoint_interval,
     epsilon_by_location,
-    frames_in_loc = None
+    frames_in_loc
 ):
-    if frames_in_loc is None:
-        frames_in_loc = {i: 0 for i in range(255)}
+
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -132,4 +131,4 @@ def run(
 
     env.close()
 
-    return losses, rewards, frame_idx, frames_in_loc
+    return losses, rewards, frame_idx
