@@ -19,7 +19,7 @@ def calc_rewards(
         controller.locs.add(controller.get_current_location())
         if controller.get_current_location() in locations:
             total_reward += default_reward * 50
-            controller.extend_timeout(100)
+            controller.extend_timeout(250)
         else:
             total_reward += default_reward * 10
             controller.extend_timeout(10)

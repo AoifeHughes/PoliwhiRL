@@ -89,25 +89,15 @@ class Controller:
             "SELECT": WindowEvent.RELEASE_BUTTON_SELECT,
         }
 
-        self.max_total_level = 0
-        self.max_total_exp = 0
-        self.locs = set()
-        self.xy = set()
-        self.steps = 0
-        self.reward = 0
-        self.button = None
-        # handle image storage
-        self.imgs = ImageMemory()
-        self.buttons = []
-        self.rewards = []
-        self.runs_data = {}
-        self.run = 0
-        self.run_time = time.time()
+        self.reset(init=True)
+
 
     def random_move(self):
         return np.random.choice(self.action_space)
 
     def log_info_on_reset(self):
+       
+
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
             "num_images_seen": self.imgs.num_images(),
@@ -116,7 +106,7 @@ class Controller:
             "max_total_level": self.max_total_level,
             "max_total_exp": self.max_total_exp,
             "steps": self.steps,
-            "rewards": self.rewards,
+            "rewards_per_location": {k:v for k,v in self.rewards_per_location.items() if len(v) > 0},
             "buttons": self.buttons,
             "state_file": self.state_path,
             "rom_path": self.paths[0],
@@ -142,9 +132,15 @@ class Controller:
         else:
             self.state_path = shutil.copy(statefile, self.temp_dir)
 
-    def reset(self):
-        self.log_info_on_reset()
-        self.imgs.reset()
+    def reset(self, init=False):
+        if init:
+            self.imgs = ImageMemory()
+            self.run = 0
+            self.runs_data = {}
+
+        else:
+            self.log_info_on_reset()
+            self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.max_total_level = 0
@@ -153,13 +149,13 @@ class Controller:
         self.xy = set()
         self.reward = 0
         self.button = None
-        self.step(len(self.action_space) - 1)  # pass
+        self.rewards_per_location = {i: [] for i in range(256)}
         self.steps = 0
-        self.timeout = self.ogTimeout
         self.buttons = []
-        self.rewards = []
+        self.timeout = self.ogTimeout
         self.run += 1
         self.run_time = time.time()
+        self.step(len(self.action_space) - 1)  # pass
         return self.screen_image()
 
     def save_state(self, file):
@@ -179,7 +175,7 @@ class Controller:
         self.pyboy.tick()
         next_state = self.screen_image()
         self.reward = calc_rewards(self, use_sight=self.use_sight)
-        self.rewards.append(self.reward)
+        self.rewards_per_location[self.get_current_location()].append(self.reward)
         self.steps += 1
         self.button = movement
         self.buttons.append(movement)
