@@ -74,3 +74,12 @@ class ImageMemory:
     def reset(self):
         """Public method to reset the object state for reuse."""
         self._reset_state()
+
+    def save_image(self, image_hash, file_path):
+        """Save an image from memory to a file based on its hash."""
+        if image_hash in self.images:
+            image_data = self.images[image_hash]
+            success = cv2.imwrite(file_path, image_data)
+            return success
+        else:
+            return False
