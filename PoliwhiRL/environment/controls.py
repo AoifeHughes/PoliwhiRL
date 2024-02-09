@@ -137,12 +137,15 @@ class Controller:
             self.imgs = ImageMemory()
             self.run = 0
             self.runs_data = {}
-
         else:
             self.log_info_on_reset()
+            if len(self.locs) > 3:
+                print("Found an interesting run, saving!")
+                self.imgs.save_all_images(f"./results/good_locs{self.run}")
             self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
+
         self.max_total_level = 0
         self.max_total_exp = 0
         self.locs = set()
