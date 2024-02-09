@@ -49,7 +49,7 @@ def run(
     epsilon_final = 0.01
     epsilon_decay = 30000
     learning_rate = 1e-4
-    capacity = 10000
+    capacity = 50000
     update_target_every = 1000
     losses = []
     epsilon_values = []  # Tracking epsilon values for exploration metrics
