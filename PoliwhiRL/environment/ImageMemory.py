@@ -4,7 +4,7 @@ from skimage.metrics import structural_similarity as ssim
 import cv2
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
-
+import os
 
 class ImageMemory:
     def __init__(self, max_images=1000):
@@ -83,3 +83,18 @@ class ImageMemory:
             return success
         else:
             return False
+
+    def save_all_images(self, folder_path):
+        """Save all images stored in memory to the specified folder, maintaining the order they were added."""
+        # Check if the folder exists, if not, create it
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+        
+        for index, image_hash in enumerate(self.image_order):
+            image_data = self.images[image_hash]
+            # Format the file name to include the index for ordering
+            file_name = f"image_{index+1:04d}.jpg"  # Pad the index with zeros
+            file_path = os.path.join(folder_path, file_name)
+            success = cv2.imwrite(file_path, image_data)
+            if not success:
+                print(f"Failed to save image: {file_name}")
