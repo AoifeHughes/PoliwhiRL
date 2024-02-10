@@ -116,7 +116,7 @@ class Controller:
         }
 
     def is_new_vision(self):
-        return self.imgs.check_and_store_image(self.screen_image())[0]
+        return self.imgs.check_and_store_image(self.botsupport_manager.screen_ndarray())[0]
 
     def write_log(self, filepath):
         if not os.path.isdir(os.path.dirname(filepath)):
@@ -159,7 +159,9 @@ class Controller:
         self.run += 1
         self.run_time = time.time()
         self.step(len(self.action_space) - 1)  # pass
-        return self.screen_image()
+        return self.botsupport_manager.screen_ndarray()
+    
+    
 
     def save_state(self, file):
         self.pyboy.save_state(file)
@@ -176,7 +178,7 @@ class Controller:
         [self.pyboy.tick() for _ in range(wait)]
         self.pyboy._rendering(True)
         self.pyboy.tick()
-        next_state = self.screen_image()
+        next_state = self.botsupport_manager.screen_ndarray()
         self.reward = calc_rewards(self, use_sight=self.use_sight)
         self.rewards_per_location[self.get_current_location()].append(self.reward)
         self.steps += 1
@@ -285,7 +287,7 @@ class Controller:
         document(
             ep,
             self.steps,
-            self.screen_image(),
+            self.botsupport_manager.screen_ndarray(),
             self.button,
             self.reward,
             self.timeoutcap,

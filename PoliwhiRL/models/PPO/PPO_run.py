@@ -32,7 +32,7 @@ def run_episode_ppo(
     controller = Controller(rom_path, state_path)
     controller.handleMovement("A")  # Start the game
     state = image_to_tensor(
-        controller.screen_image(), device, SCALE_FACTOR, USE_GRAYSCALE
+        controller.screen_image(), device
     )
     locs = set()
     xy = set()
@@ -60,7 +60,7 @@ def run_episode_ppo(
             max_total_exp,
             default_reward=0.01,
         )
-        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE)
+        next_state = image_to_tensor(img, device)
         is_terminal = float(t + 1 == timeout)
 
         # Store experiences in PPOBuffer

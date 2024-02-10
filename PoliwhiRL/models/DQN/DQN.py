@@ -383,7 +383,7 @@ def run_episode(
     controller = Controller(rom_path, state_path)
     movements = controller.movements
     initial_img = controller.screen_image()
-    state = image_to_tensor(initial_img, device, SCALE_FACTOR, USE_GRAYSCALE)
+    state = image_to_tensor(initial_img, device)
     n_step_buffer = []
     total_reward = 0
     max_total_level = [0]
@@ -410,7 +410,7 @@ def run_episode(
         action_tensor = torch.tensor([[action]], device=device)
         reward_tensor = torch.tensor([reward], device=device)
 
-        next_state = image_to_tensor(img, device, SCALE_FACTOR, USE_GRAYSCALE)
+        next_state = image_to_tensor(img, device)
 
         n_step_buffer.append((state, action_tensor, reward_tensor, next_state))
 
