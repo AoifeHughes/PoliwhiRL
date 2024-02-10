@@ -27,7 +27,7 @@ def calc_rewards(
     # Encourage moving around
     cur_xy = controller.get_XY()
     if cur_xy not in controller.xy:
-        total_reward += default_reward * 2
+        total_reward += default_reward * 5
         controller.xy.add(cur_xy)
 
     # Encourage party pokemon
@@ -42,6 +42,27 @@ def calc_rewards(
         total_reward += default_reward * 100
         controller.max_total_exp = total_exp
         controller.extend_timeout(100)
+
+    if controller.pkdex_seen() > controller.max_pkmn_seen:
+        total_reward += default_reward * 100
+        controller.max_pkmn_seen = controller.pkdex_seen()
+        controller.extend_timeout(100)
+
+    if controller.pkdex_owned() > controller.max_pkmn_owned:
+        if controller.pkdex_owned() == 1:
+            #first time getting a pokemon lets allow a lot more exploration
+            controller.extend_timeout(5000)
+        total_reward += default_reward * 200
+        controller.max_pkmn_owned = controller.pkdex_owned()
+        controller.extend_timeout(200)
+
+    if controller.get_player_money() > controller.max_money:
+        total_reward += default_reward * 100
+        controller.max_money = controller.get_player_money()
+        controller.extend_timeout(100)
+    elif controller.get_player_money() < controller.max_money:
+        total_reward -= default_reward * 100
+        controller.max_money = controller.get_player_money()
 
     if total_reward > 0:
         controller.extend_timeout(1)  # Encourage exploration

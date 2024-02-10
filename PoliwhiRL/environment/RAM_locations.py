@@ -18,3 +18,5 @@ locations = {
     8: "NPC_house1",
     9: "NPC_house2",
 }
+pokedex_seen = (0xDEB9, 0xDED8)
+pokedex_owned = (0xDE99, 0xDEB8)

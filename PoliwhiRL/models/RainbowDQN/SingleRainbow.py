@@ -107,8 +107,7 @@ def run(
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
-            if episode % 100 == 0 or episode == num_episodes - 1:
-                env.record(episode, 1, "Rainbow")
+            env.record(episode, 1, "Rainbow")
             if done:
                 break
             ep_len += 1

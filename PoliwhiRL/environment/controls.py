@@ -100,7 +100,10 @@ class Controller:
 
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
+            "num_pokemon_seen": self.pkdex_seen(),
+            "num_pokemon_owned": self.pkdex_owned(),
             "num_images_seen": self.imgs.num_images(),
+            "player_money": self.get_player_money(),
             "visited_locations": len(self.locs),
             "visited_xy": len(self.xy),
             "max_total_level": self.max_total_level,
@@ -116,7 +119,7 @@ class Controller:
         }
 
     def is_new_vision(self):
-        return self.imgs.check_and_store_image(self.botsupport_manager.screen_ndarray())[0]
+        return self.imgs.check_and_store_image(self.pyboy.botsupport_manager().screen().screen_ndarray())
 
     def write_log(self, filepath):
         if not os.path.isdir(os.path.dirname(filepath)):
@@ -145,9 +148,11 @@ class Controller:
             self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
-
+        self.max_pkmn_seen = 0
+        self.max_pkmn_owned = 0
         self.max_total_level = 0
         self.max_total_exp = 0
+        self.max_money = 0
         self.locs = set()
         self.xy = set()
         self.reward = 0
@@ -159,7 +164,7 @@ class Controller:
         self.run += 1
         self.run_time = time.time()
         self.step(len(self.action_space) - 1)  # pass
-        return self.botsupport_manager.screen_ndarray()
+        return self.pyboy.botsupport_manager().screen().screen_ndarray()
     
     
 
@@ -178,7 +183,7 @@ class Controller:
         [self.pyboy.tick() for _ in range(wait)]
         self.pyboy._rendering(True)
         self.pyboy.tick()
-        next_state = self.botsupport_manager.screen_ndarray()
+        next_state = self.pyboy.botsupport_manager().screen().screen_ndarray()
         self.reward = calc_rewards(self, use_sight=self.use_sight)
         self.rewards_per_location[self.get_current_location()].append(self.reward)
         self.steps += 1
@@ -191,7 +196,7 @@ class Controller:
         return next_state, self.reward, self.done
 
     def screen_image(self):
-        return self.pyboy.botsupport_manager().screen().screen_image()
+        return self.pyboy.botsupport_manager().screen().screen_ndarray()
 
     def get_frames_in_current_location(self):
         return self.frames_per_loc[self.get_current_location()]
@@ -266,7 +271,7 @@ class Controller:
         return int(total_level), int(total_hp), int(total_exp)
 
     def get_text_on_screen(self):
-        screen_image = self.pyboy.botsupport_manager().screen().screen_image()
+        screen_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
         text = OCR.extract_text(OCR.preprocess_image(screen_image))
         return text
 
@@ -287,7 +292,7 @@ class Controller:
         document(
             ep,
             self.steps,
-            self.botsupport_manager.screen_ndarray(),
+            self.pyboy.botsupport_manager().screen().screen_ndarray(),
             self.button,
             self.reward,
             self.timeoutcap,
@@ -295,6 +300,36 @@ class Controller:
             name,
             self.get_current_location(),
         )
+
+
+    def pkdex_seen(self):
+        start_address, end_address = RAM_locations.pokedex_seen
+
+        total_seen = 0
+        for address in range(start_address, end_address + 1):
+            # Retrieve the byte value from the current address
+            byte_value = self.pyboy.get_memory_value(address)
+            
+            # Count the number of bits set to 1 (i.e., Pokémon seen) in this byte
+            while byte_value:
+                total_seen += byte_value & 1
+                byte_value >>= 1  # Right shift to process the next bit
+
+        return total_seen
+
+    def pkdex_owned(self):
+        start_address, end_address = RAM_locations.pokedex_owned
+
+        total_owned = 0
+        for address in range(start_address, end_address + 1):
+            # Retrieve the byte value from the current address
+            byte_value = self.pyboy.get_memory_value(address)
+            
+            # Count the number of bits set to 1 (i.e., Pokémon owned) in this byte
+            while byte_value:
+                total_owned += byte_value & 1
+                byte_value >>= 1
+        return total_owned
 
     def close(self):
         self.pyboy.stop()
