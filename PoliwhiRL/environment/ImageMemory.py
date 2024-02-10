@@ -92,6 +92,8 @@ class ImageMemory:
         
         for index, image_hash in enumerate(self.image_order):
             image_data = self.images[image_hash]
+            if not isinstance(image_data, np.ndarray):
+                image_data = np.array(image_data)
             # Format the file name to include the index for ordering
             file_name = f"image_{index+1:04d}.jpg"  # Pad the index with zeros
             file_path = os.path.join(folder_path, file_name)
