@@ -6,7 +6,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
+from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame, epsilon_by_frame_cyclic
 import random
 import torch
 
@@ -37,10 +37,9 @@ def run(
     rewards,
     checkpoint_interval,
     epsilon_by_location,
-    frames_in_loc = None
+    frames_in_loc
 ):
-    if frames_in_loc is None:
-        frames_in_loc = {i: 0 for i in range(255)}
+
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         state = image_to_tensor(state, device)
@@ -50,7 +49,7 @@ def run(
         while True:
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_cyclic(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
@@ -132,4 +131,4 @@ def run(
 
     env.close()
 
-    return losses, rewards, frame_idx, frames_in_loc
+    return losses, rewards, frame_idx
