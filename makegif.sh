@@ -11,7 +11,7 @@ images_directory="$1"
 output_gif="$2"
 
 # Frame rate (5 fps)
-fps=5
+fps=60
 
 # Create a temporary palette for better quality
 palette="/tmp/palette.png"

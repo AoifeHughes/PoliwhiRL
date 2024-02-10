@@ -6,7 +6,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
+from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame, epsilon_by_frame_cyclic
 import random
 import torch
 
@@ -49,7 +49,7 @@ def run(
         while True:
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_cyclic(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,

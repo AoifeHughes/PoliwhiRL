@@ -9,7 +9,8 @@ from PoliwhiRL.models.RainbowDQN.ReplayBuffer import PrioritizedReplayBuffer
 from PoliwhiRL.models.RainbowDQN.utils import (
     save_checkpoint,
     load_checkpoint,
-    epsilon_by_frame
+    epsilon_by_frame,
+    epsilon_by_frame_cyclic
 )
 from PoliwhiRL.models.RainbowDQN.SingleRainbow import run as run_single
 from PoliwhiRL.models.RainbowDQN.DoubleRainbow import run as run_rainbow_parallel
@@ -47,7 +48,7 @@ def run(
     frame_idx = 0
     epsilon_start = 1.0
     epsilon_final = 0.01
-    epsilon_decay = 250000
+    epsilon_decay = 100000
     learning_rate = 1e-4
     capacity = 50000
     update_target_every = 1000
@@ -145,7 +146,7 @@ def run(
     # Given we know frames in location, we can calculate the exact epsilon value
     # for each location
     for loc in frames_in_loc:
-        epsilons_by_location[loc] = epsilon_by_frame(
+        epsilons_by_location[loc] = epsilon_by_frame_cyclic(
             frames_in_loc[loc], epsilon_start, epsilon_final, epsilon_decay
         )
 

@@ -9,6 +9,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
     epsilon_by_frame,
     save_checkpoint,
+    epsilon_by_frame_cyclic
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
@@ -54,7 +55,7 @@ def worker(
             frame_idx += 1
             frames_in_loc[local_env.get_current_location()] += 1
             frame_idxs.append(frame_idx)
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_cyclic(
                 frames_in_loc[local_env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
