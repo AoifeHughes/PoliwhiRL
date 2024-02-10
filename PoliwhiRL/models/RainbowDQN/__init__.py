@@ -14,7 +14,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.models.RainbowDQN.SingleRainbow import run as run_single
 from PoliwhiRL.models.RainbowDQN.DoubleRainbow import run as run_rainbow_parallel
-from PoliwhiRL.utils.utils import plot_best_attempts, visualize_model
+from PoliwhiRL.utils.utils import plot_best_attempts
 
 
 def run(
@@ -61,7 +61,6 @@ def run(
     input_shape = (3, int(screen_size[0]), int(screen_size[1]))
     policy_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
     target_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
-    visualize_model(policy_net, input_shape, device, "./results/RainbowDQN_model.png")
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
@@ -80,11 +79,12 @@ def run(
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         replay_buffer.load_state_dict(checkpoint["replay_buffer"])
         frames_in_loc = checkpoint["frames_in_loc"]
+        rewards = checkpoint["rewards"]
     else:
         start_episode = 0
 
     if not run_parallel:
-        losses, rewards, memories = run_single(
+        losses, rewards_n, memories = run_single(
             start_episode,
             num_episodes,
             env,
@@ -113,7 +113,7 @@ def run(
             frames_in_loc,
         )
     else:
-        losses, rewards, memories = run_rainbow_parallel(
+        losses, rewards_n, memories = run_rainbow_parallel(
             rom_path,
             state_path,
             episode_length,
@@ -142,6 +142,11 @@ def run(
             epsilon_by_location,
             frames_in_loc,
         )
+
+    if rewards is None:
+        rewards = rewards_n
+    else:
+        rewards.extend(rewards_n)
     total_time = time.time() - start_time  # Total training time
 
     # Given we know frames in location, we can calculate the exact epsilon value
@@ -187,7 +192,8 @@ def run(
             "target_net_state_dict": target_net.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "replay_buffer": replay_buffer.state_dict(),
-            "frames_in_loc": frames_in_loc
+            "frames_in_loc": frames_in_loc,
+            "rewards": rewards
         },
         filename=checkpoint_path,
     )
