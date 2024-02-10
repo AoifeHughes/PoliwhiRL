@@ -8,24 +8,7 @@ import matplotlib.pyplot as plt
 import itertools
 
 
-def image_to_tensor(image, device, SCALE_FACTOR=1, USE_GRAYSCALE=False):
-    if not isinstance(image, Image.Image):
-        image = Image.fromarray(image)
-
-    if SCALE_FACTOR != 1:
-        image = image.resize([int(s * SCALE_FACTOR) for s in image.size])
-
-    if USE_GRAYSCALE:
-        image = image.convert("L")
-
-    image = np.array(image)
-
-    if USE_GRAYSCALE:
-        # Expand dims for grayscale to ensure it has a channel dimension
-        image = np.expand_dims(image, axis=0)  # Use axis=0 to represent the channel
-    else:
-        # Permute RGB to be in channel dimension
-        image = np.transpose(image, (2, 0, 1))
+def image_to_tensor(image, device):
 
     image = torch.from_numpy(image).to(torch.float32) / 255.0
     image = image.to(device)
