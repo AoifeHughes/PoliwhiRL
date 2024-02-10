@@ -6,6 +6,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import itertools
+from torchviz import make_dot
 
 
 def image_to_tensor(image, device):
@@ -92,6 +93,13 @@ def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon, t
         },
         checkpoint_path,
     )
+
+def visualize_model(model, input_dim, device, file_name='model_visualization'):
+    x = torch.randn(1, *input_dim).to(device)  # Create a random tensor with the input dimensions
+    y = model(x)
+    dot = make_dot(y, params=dict(model.named_parameters()))
+    dot.render(file_name, format='png')  # Saves the visualization as a PNG file
+
 
 
 def save_results(results_path, episodes, results):
