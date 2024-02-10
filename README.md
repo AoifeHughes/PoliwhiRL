@@ -2,6 +2,15 @@
 
 ![PoliwhiRL](./images/logo.png)
 
+## Legal Disclaimer
+This project is not affiliated with, endorsed, or sponsored by Nintendo, Game
+Freak, or The Pokémon Company. All Pokémon games and characters are trademarks
+of Nintendo, Game Freak, and The Pokémon Company. This project is intended for
+educational and research purposes only.
+
+All usage of The Pokemon Company International's games is done with the
+understanding that software is legally obtained and that the user has the right to use it. This project does not provide any ROMs or copyrighted materials.
+
 ## Overview
 PoliwhiRL is a Reinforcement Learning library designed for sprite-based 2-D Pokémon games. It provides a framework for experimenting with different RL algorithms to interact with Pokémon games in an emulated environment.
 
@@ -21,6 +30,8 @@ The main script `main.py` supports several command-line options to customize the
 - `--parallel`: Run the model in parallel mode.
 - `--runs_per_worker`: Number of runs per worker in parallel mode. Default is 4.
 - `--num_workers`: Number of workers for parallel execution. Default is 8.
+- `--checkpoint_interval`: Interval for saving the model checkpoint. Default is 100.
+- `--epsilon_by_location`: Enable epsilon decay by location strategy.
 
 ## Implemented Features
 - **Models**: RainbowDQN, DQN (partially implemented), and PPO (planned but not implemented).
@@ -37,4 +48,8 @@ The main script `main.py` supports several command-line options to customize the
 ## Requirements
 The library dependencies are specified in `requirements.txt`, including PyTorch, NumPy, Matplotlib, and others necessary for running the models and processing the game environment.
 
-For more details on the implementation and usage, refer to the [PoliwhiRL GitHub repository](https://github.com/AoifeHughes/PoliwhiRL)
+For more details on the implementation and usage, refer to the [PoliwhiRL GitHub
+repository](https://github.com/AoifeHughes/PoliwhiRL)
+
+## Paper
+For more details on the implementation and the results, refer to the [PoliwhiRL paper](./paper/paper.pdf).
