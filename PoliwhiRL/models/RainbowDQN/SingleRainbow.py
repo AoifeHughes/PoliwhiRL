@@ -6,7 +6,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame, epsilon_by_frame_cyclic
+from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame_cyclic
 import random
 import torch
 
@@ -107,7 +107,6 @@ def run(
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
-            env.record(episode, 1, "Rainbow")
             if done:
                 break
             ep_len += 1

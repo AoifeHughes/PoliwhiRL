@@ -7,7 +7,6 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     compute_td_error,
     optimize_model,
     beta_by_frame,
-    epsilon_by_frame,
     save_checkpoint,
     epsilon_by_frame_cyclic
 )
