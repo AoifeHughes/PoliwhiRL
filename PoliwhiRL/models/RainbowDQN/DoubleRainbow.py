@@ -9,6 +9,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
     epsilon_by_frame,
     save_checkpoint,
+    epsilon_by_frame_cyclic
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment.controls import Controller
@@ -30,7 +31,6 @@ def worker(
     target_net,
     device,
     num_episodes,
-    document_every,
     frames_in_loc,
     epsilon_by_location,
 ):
@@ -55,7 +55,7 @@ def worker(
             frame_idx += 1
             frames_in_loc[local_env.get_current_location()] += 1
             frame_idxs.append(frame_idx)
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_cyclic(
                 frames_in_loc[local_env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
@@ -95,8 +95,6 @@ def worker(
             episode_experiences.append(
                 (state, action, reward, next_state, done, beta, td_error)
             )
-            if episode % document_every == 0:
-                local_env.record(episode, 1, f"double_rainbow_env_{worker_id}")
             state = next_state
         # After episode ends, put all experiences and metrics in their respective queues
         experiences.extend(episode_experiences)
@@ -169,10 +167,8 @@ def run(
     checkpoint_interval,
     checkpoint_path,
     epsilon_by_location,
-    frames_in_loc = None
+    frames_in_loc
 ):
-    if frames_in_loc is None:
-        frames_in_loc = {i: 0 for i in range(255)}
 
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -210,7 +206,7 @@ def run(
         rewards.extend(new_results)
         losses.extend(new_losses)
 
-        if run % checkpoint_interval == 0:
+        if run % checkpoint_interval == 0 and run > 0:
             save_checkpoint(
                 {
                     "episode": (run + 1) * num_workers * runs_per_worker,
@@ -224,7 +220,7 @@ def run(
                 filename=checkpoint_path,
             )
 
-    return losses, rewards, memories, frames_in_loc
+    return losses, rewards, memories
 
 
 def run_batch(
@@ -252,7 +248,6 @@ def run_batch(
     losses,
     frames_in_loc,
     epsilon_by_location,
-    document_every=100,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -272,7 +267,6 @@ def run_batch(
             target_net,
             device,
             num_episodes,
-            document_every,
             frames_in_loc,
             epsilon_by_location,
         )
