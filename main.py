@@ -43,7 +43,7 @@ def main():
     num_episodes = args.num_episodes
     batch_size = args.batch_size
     checkpoint = args.checkpoint
-    sight = args.sight
+    sight = True #args.sight
     parallel = args.parallel
     erase = args.erase
     runs_per_worker = args.runs_per_worker
