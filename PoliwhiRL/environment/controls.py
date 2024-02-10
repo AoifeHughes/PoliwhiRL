@@ -141,7 +141,7 @@ class Controller:
             self.log_info_on_reset()
             if len(self.locs) > 3:
                 print("Found an interesting run, saving!")
-                self.imgs.save_all_images(f"./results/good_locs{self.run}")
+                self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)

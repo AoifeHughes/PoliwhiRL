@@ -35,7 +35,7 @@ def calc_rewards(
     if total_level > np.sum(controller.max_total_level):
         total_reward += default_reward * 100
         controller.max_total_level = total_level
-        controller.extend_timeout(100)
+        controller.extend_timeout(500)
 
     # encourage max xp
     if total_exp > np.sum(controller.max_total_exp):

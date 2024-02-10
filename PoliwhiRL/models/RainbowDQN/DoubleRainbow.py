@@ -30,7 +30,6 @@ def worker(
     target_net,
     device,
     num_episodes,
-    document_every,
     frames_in_loc,
     epsilon_by_location,
 ):
@@ -95,8 +94,6 @@ def worker(
             episode_experiences.append(
                 (state, action, reward, next_state, done, beta, td_error)
             )
-            if episode % document_every == 0:
-                local_env.record(episode, 1, f"double_rainbow_env_{worker_id}")
             state = next_state
         # After episode ends, put all experiences and metrics in their respective queues
         experiences.extend(episode_experiences)
@@ -208,7 +205,7 @@ def run(
         rewards.extend(new_results)
         losses.extend(new_losses)
 
-        if run % checkpoint_interval == 0:
+        if run % checkpoint_interval == 0 and run > 0:
             save_checkpoint(
                 {
                     "episode": (run + 1) * num_workers * runs_per_worker,
@@ -250,7 +247,6 @@ def run_batch(
     losses,
     frames_in_loc,
     epsilon_by_location,
-    document_every=100,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -270,7 +266,6 @@ def run_batch(
             target_net,
             device,
             num_episodes,
-            document_every,
             frames_in_loc,
             epsilon_by_location,
         )
