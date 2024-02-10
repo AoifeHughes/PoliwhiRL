@@ -148,3 +148,4 @@ states/*
 *.fdb_latexmk
 *.synctex.gz
 *.out
+*.jpg
