@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 class ImageMemory:
-    def __init__(self, max_images=3000):
+    def __init__(self, max_images=10000):
         self.max_images = max_images  # Maximum number of images to store
         self.images = {}  # Stores images in memory, mapped by hash
         self.image_order = []  # Track order of images for removing oldest
