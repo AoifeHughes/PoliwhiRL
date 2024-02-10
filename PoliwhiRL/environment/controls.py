@@ -22,6 +22,7 @@ class Controller:
         timeout=100,
         log_path="./logs/log.json",
         use_sight=False,
+        scaling_factor=0.5
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -33,6 +34,7 @@ class Controller:
         self.timeoutcap = timeout * 100
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = use_sight
+        self.scaling_factor = scaling_factor
         # copy other files to the temporary directory
         self.paths = [
             shutil.copy(file, self.temp_dir)
@@ -119,7 +121,7 @@ class Controller:
         }
 
     def is_new_vision(self):
-        return self.imgs.check_and_store_image(self.pyboy.botsupport_manager().screen().screen_ndarray())
+        return self.imgs.check_and_store_image(self.screen_image())[0]
 
     def write_log(self, filepath):
         if not os.path.isdir(os.path.dirname(filepath)):
@@ -155,16 +157,16 @@ class Controller:
         self.max_money = 0
         self.locs = set()
         self.xy = set()
+        self.rewards_per_location = {i: [] for i in range(256)}
         self.reward = 0
         self.button = None
-        self.rewards_per_location = {i: [] for i in range(256)}
         self.steps = 0
         self.buttons = []
-        self.timeout = self.ogTimeout
         self.run += 1
         self.run_time = time.time()
         self.step(len(self.action_space) - 1)  # pass
-        return self.pyboy.botsupport_manager().screen().screen_ndarray()
+        self.timeout = self.ogTimeout
+        return self.screen_image()
     
     
 
@@ -183,7 +185,7 @@ class Controller:
         [self.pyboy.tick() for _ in range(wait)]
         self.pyboy._rendering(True)
         self.pyboy.tick()
-        next_state = self.pyboy.botsupport_manager().screen().screen_ndarray()
+        next_state = self.screen_image()
         self.reward = calc_rewards(self, use_sight=self.use_sight)
         self.rewards_per_location[self.get_current_location()].append(self.reward)
         self.steps += 1
@@ -196,7 +198,22 @@ class Controller:
         return next_state, self.reward, self.done
 
     def screen_image(self):
-        return self.pyboy.botsupport_manager().screen().screen_ndarray()
+        # Original image
+        original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
+        
+        # Only resize if scaling_factor is not 1
+        if self.scaling_factor == 1.0:
+            return original_image
+        else:
+            # Calculate new size
+            original_height, original_width, num_channels = original_image.shape
+            new_height = int(original_height * self.scaling_factor)
+            new_width = int(original_width * self.scaling_factor)
+            
+            # Reshape and average to downscale the image
+            resized_image = original_image.reshape(new_height, original_height // new_height, new_width, original_width // new_width, num_channels).mean(axis=(1, 3))
+            
+            return resized_image.astype(np.uint8)
 
     def get_frames_in_current_location(self):
         return self.frames_per_loc[self.get_current_location()]
@@ -209,7 +226,7 @@ class Controller:
         return self.pyboy.get_memory_value(address)
 
     def screen_size(self):
-        return self.pyboy.botsupport_manager().screen().screen_ndarray().shape[:2]
+        return self.screen_image().shape[:2]
 
     def stop(self, save=True):
         self.pyboy.stop(save)
@@ -271,8 +288,7 @@ class Controller:
         return int(total_level), int(total_hp), int(total_exp)
 
     def get_text_on_screen(self):
-        screen_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
-        text = OCR.extract_text(OCR.preprocess_image(screen_image))
+        text = OCR.extract_text(OCR.preprocess_image(self.screen_image()))
         return text
 
     def create_memory_state(self, controller):
@@ -292,7 +308,7 @@ class Controller:
         document(
             ep,
             self.steps,
-            self.pyboy.botsupport_manager().screen().screen_ndarray(),
+            self.screen_image(),
             self.button,
             self.reward,
             self.timeoutcap,
