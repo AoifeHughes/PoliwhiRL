@@ -1,35 +1,37 @@
-# -*- coding: utf-8 -*-
-from PIL import Image
-import numpy as np
+import sys
 from skimage.metrics import structural_similarity as ssim
+import cv2
+import numpy as np
 
-
-def compare_images_pil(image1, image2):
-    # Convert PIL images to numpy array
-    image1_np = np.array(image1)
-    image2_np = np.array(image2)
-
-    # Convert images to grayscale if they are not
-    if image1_np.ndim == 3:
-        image1_np = image1_np.mean(axis=2)
-    if image2_np.ndim == 3:
-        image2_np = image2_np.mean(axis=2)
-
-    # Resize images to match sizes if they're different
-    if image1_np.shape != image2_np.shape:
-        image2_np = np.array(image2.resize(image1.size))
-
-    # Compute SSIM between the two images
-    similarity_index = ssim(image1_np, image2_np)
-
+def compute_uniqueness_score(img1_path, img2_path):
+    # Load the images
+    img1 = cv2.imread(img1_path)
+    img2 = cv2.imread(img2_path)
+    
+    # Convert images to grayscale
+    img1_gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    
+    # Ensure images are the same size
+    img1_gray = cv2.resize(img1_gray, (img2_gray.shape[1], img2_gray.shape[0]))
+    
+    # Compute SSIM between two images
+    similarity = ssim(img1_gray, img2_gray)
+    
+    # Convert similarity to uniqueness
+    uniqueness = 1 - similarity  # Directly invert similarity
+    
     # Convert to percentage
-    percentage_similarity = similarity_index * 100
+    uniqueness_percentage = uniqueness * 100
+    
+    return uniqueness_percentage
 
-    return percentage_similarity
-
-
-# Example usage
-image1 = Image.open("img1.png")
-image2 = Image.open("img2.png")
-similarity_percentage = compare_images_pil(image1, image2)
-print(f"Similarity: {similarity_percentage:.2f}%")
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python script.py <image1_path> <image2_path>")
+        sys.exit(1)
+    
+    img1_path, img2_path = sys.argv[1], sys.argv[2]
+    uniqueness_percentage = compute_uniqueness_score(img1_path, img2_path)
+    
+    print(f"Percentage Likelihood of Being Unique: {uniqueness_percentage:.2f}%")

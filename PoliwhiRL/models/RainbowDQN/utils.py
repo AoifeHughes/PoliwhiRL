@@ -33,7 +33,7 @@ def compute_td_error(experience, policy_net, target_net, device, gamma=0.99):
     # Ensure tensors are on the correct device and add batch dimension since dealing with single experience
     state = state.to(device).unsqueeze(0)  # Add batch dimension
     next_state = next_state.to(device).unsqueeze(0)  # Add batch dimension
-    action = torch.tensor([action], device=device, dtype=torch.long)
+    action = torch.tensor([action], device=device, dtype=torch.uint8)
     reward = torch.tensor([reward], device=device, dtype=torch.float)
     done = torch.tensor([done], device=device, dtype=torch.bool)
 
