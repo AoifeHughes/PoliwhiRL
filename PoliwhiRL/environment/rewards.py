@@ -12,7 +12,7 @@ def calc_rewards(
 
     if use_sight:
         if controller.is_new_vision():
-            total_reward += default_reward * 2
+            total_reward += default_reward * 5
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
@@ -35,7 +35,7 @@ def calc_rewards(
     if controller.pkdex_owned() > controller.max_pkmn_owned:
         if controller.pkdex_owned() == 1:
             #first time getting a pokemon lets allow a lot more exploration
-            controller.extend_timeout(1000)
+            controller.extend_timeout(2000)
             controller.set_save_on_reset()
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()

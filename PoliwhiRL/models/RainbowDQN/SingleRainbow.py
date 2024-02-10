@@ -37,11 +37,14 @@ def run(
     rewards,
     checkpoint_interval,
     epsilon_by_location,
-    frames_in_loc
+    frames_in_loc,
+    eval_mode=False
 ):
 
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
+        if eval_mode:
+            env.set_save_on_reset()
         state = image_to_tensor(state, device)
 
         total_reward = 0
@@ -66,7 +69,8 @@ def run(
                 beta_frames,
             )
             beta_values.append(beta)  # Log beta value
-
+            if eval_mode:
+                epsilon = 0
             if random.random() > epsilon:
                 with torch.no_grad():
                     state_t = state.unsqueeze(0).to(device)
@@ -74,6 +78,11 @@ def run(
                     action = q_values.max(1)[1].item()
             else:
                 action = env.random_move()
+
+            if eval_mode:
+                if done:
+                    break
+                continue
 
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, device)
