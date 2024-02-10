@@ -150,11 +150,9 @@ class Controller:
             total_reward = 0
             for _, v in self.rewards_per_location.items():
                 total_reward += sum(v)
-            print(total_reward)
-            if total_reward > 2:
+            if total_reward > 4:
                 self.set_save_on_reset()
             if self.save_on_reset:
-                print("Found an interesting run, saving!")
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:

@@ -79,12 +79,12 @@ def run(
             else:
                 action = env.random_move()
 
+
+            next_state, reward, done = env.step(action)
             if eval_mode:
                 if done:
                     break
                 continue
-
-            next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, device)
             action = torch.tensor([action], device=device)
             reward = torch.tensor([reward], device=device)

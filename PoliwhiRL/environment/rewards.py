@@ -11,7 +11,7 @@ def calc_rewards(
 
     if use_sight:
         if controller.is_new_vision():
-            total_reward += default_reward * 5
+            total_reward += default_reward * 10
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
@@ -49,5 +49,5 @@ def calc_rewards(
         controller.max_money = controller.get_player_money()
 
     if total_reward > 0:
-        controller.extend_timeout(1)  # Encourage exploration
+        controller.extend_timeout(5)  # Encourage exploration
     return total_reward
