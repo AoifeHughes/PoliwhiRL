@@ -143,10 +143,7 @@ def run(
             frames_in_loc,
         )
 
-    if rewards is None:
-        rewards = rewards_n
-    else:
-        rewards.extend(rewards_n)
+
     total_time = time.time() - start_time  # Total training time
 
     # Given we know frames in location, we can calculate the exact epsilon value
@@ -197,3 +194,7 @@ def run(
         },
         filename=checkpoint_path,
     )
+
+    # run a final episode in eval mode 
+    print("Running final episode in eval mode")
+    res = run_single(0, 1, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, eval_mode=True)
