@@ -13,6 +13,19 @@ def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
         -1.0 * frame_idx / epsilon_decay
     )
 
+def epsilon_by_frame_cyclic(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
+    # Modulate frame_idx to create a cyclical effect
+    modulated_frame_idx = np.cos(frame_idx * (2 * np.pi / epsilon_decay))
+    
+    # Scale and shift the modulated index so it oscillates between 0 and 1
+    normalized_frame_idx = (modulated_frame_idx + 1) / 2
+    
+    # Calculate epsilon using a modified approach that incorporates the cyclic behavior
+    epsilon = epsilon_final + (epsilon_start - epsilon_final) * np.exp(
+        -1.0 * normalized_frame_idx * frame_idx / epsilon_decay
+    )
+    
+    return epsilon
 
 def compute_td_error(experience, policy_net, target_net, device, gamma=0.99):
     state, action, reward, next_state, done = experience
