@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from PoliwhiRL.environment.RAM_locations import locations
 
 
 def calc_rewards(
