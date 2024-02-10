@@ -31,7 +31,7 @@ class Controller:
         self.state_path = state_path
         self.ogTimeout = timeout
         self.timeout = timeout
-        self.timeoutcap = timeout * 100
+        self.timeoutcap = timeout * 1000
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
@@ -137,6 +137,9 @@ class Controller:
         else:
             self.state_path = shutil.copy(statefile, self.temp_dir)
 
+    def set_save_on_reset(self):
+        self.save_on_reset = True
+
     def reset(self, init=False):
         if init:
             self.imgs = ImageMemory()
@@ -144,13 +147,14 @@ class Controller:
             self.runs_data = {}
         else:
             self.log_info_on_reset()
-            if len(self.locs) > 3:
+            if self.save_on_reset:
                 print("Found an interesting run, saving!")
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
         with open(self.paths[1], "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.max_pkmn_seen = 0
+        self.save_on_reset = False
         self.max_pkmn_owned = 0
         self.max_total_level = 0
         self.max_total_exp = 0

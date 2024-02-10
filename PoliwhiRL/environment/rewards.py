@@ -14,22 +14,6 @@ def calc_rewards(
         if controller.is_new_vision():
             total_reward += default_reward * 2
 
-    # Encourage getting out of location
-    if controller.get_current_location() not in controller.locs:
-        controller.locs.add(controller.get_current_location())
-        if controller.get_current_location() in locations:
-            total_reward += default_reward * 50
-            controller.extend_timeout(250)
-        else:
-            total_reward += default_reward * 10
-            controller.extend_timeout(10)
-
-    # Encourage moving around
-    cur_xy = controller.get_XY()
-    if cur_xy not in controller.xy:
-        total_reward += default_reward * 5
-        controller.xy.add(cur_xy)
-
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
     if total_level > np.sum(controller.max_total_level):
@@ -46,13 +30,13 @@ def calc_rewards(
     if controller.pkdex_seen() > controller.max_pkmn_seen:
         total_reward += default_reward * 100
         controller.max_pkmn_seen = controller.pkdex_seen()
-        controller.extend_timeout(100)
+        controller.extend_timeout(250)
 
     if controller.pkdex_owned() > controller.max_pkmn_owned:
         if controller.pkdex_owned() == 1:
             #first time getting a pokemon lets allow a lot more exploration
-            controller.extend_timeout(5000)
-            print("Ding Ding Ding, we gotta pokemon!")
+            controller.extend_timeout(1000)
+            controller.set_save_on_reset()
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()
         controller.extend_timeout(200)
