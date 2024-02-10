@@ -147,6 +147,12 @@ class Controller:
             self.runs_data = {}
         else:
             self.log_info_on_reset()
+            total_reward = 0
+            for _, v in self.rewards_per_location.items():
+                total_reward += sum(v)
+            print(total_reward)
+            if total_reward > 2:
+                self.set_save_on_reset()
             if self.save_on_reset:
                 print("Found an interesting run, saving!")
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")

@@ -199,4 +199,11 @@ def run(
 
     # run a final episode in eval mode 
     print("Running final episode in eval mode")
+    env = Controller(
+        rom_path,
+        state_path,
+        timeout=episode_length,
+        log_path="./logs/rainbow_env_eval.json",
+        use_sight=sight,
+    )
     res = run_single(num_episodes+start_episode, 1, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, eval_mode=True)
