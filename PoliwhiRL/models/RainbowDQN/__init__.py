@@ -80,6 +80,7 @@ def run(
         replay_buffer.load_state_dict(checkpoint["replay_buffer"])
         frames_in_loc = checkpoint["frames_in_loc"]
         rewards = checkpoint["rewards"]
+        epsilons_by_location = checkpoint["epsilon_by_location"]
     else:
         start_episode = 0
 
@@ -190,11 +191,12 @@ def run(
             "optimizer_state_dict": optimizer.state_dict(),
             "replay_buffer": replay_buffer.state_dict(),
             "frames_in_loc": frames_in_loc,
-            "rewards": rewards
+            "rewards": rewards,
+            "epsilon_by_location" : epsilons_by_location
         },
         filename=checkpoint_path,
     )
 
     # run a final episode in eval mode 
     print("Running final episode in eval mode")
-    res = run_single(0, 1, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, eval_mode=True)
+    res = run_single(num_episodes+start_episode, 1, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, eval_mode=True)
