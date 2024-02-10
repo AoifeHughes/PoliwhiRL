@@ -48,7 +48,7 @@ def run(
     frame_idx = 0
     epsilon_start = 1.0
     epsilon_final = 0.01
-    epsilon_decay = 100000
+    epsilon_decay = 10000
     learning_rate = 1e-4
     capacity = 50000
     update_target_every = 1000

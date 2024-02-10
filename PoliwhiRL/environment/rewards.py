@@ -52,6 +52,7 @@ def calc_rewards(
         if controller.pkdex_owned() == 1:
             #first time getting a pokemon lets allow a lot more exploration
             controller.extend_timeout(5000)
+            print("Ding Ding Ding, we gotta pokemon!")
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()
         controller.extend_timeout(200)
