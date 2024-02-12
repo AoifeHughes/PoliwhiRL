@@ -24,7 +24,7 @@ class ImageMemory:
         resized = cv2.resize(image, (30, 30), interpolation=cv2.INTER_AREA)  # Resize considering ndarray input
         return resized.flatten()
 
-    def check_and_store_image(self, target_image, threshold=0.99):
+    def check_and_store_image(self, target_image, threshold=100):
         """Check if a similar image exists; store the new image in memory if not."""
         target_features = self._compute_features(target_image)
         if self.features.shape[0] > 0:

@@ -6,7 +6,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame_cyclic
+from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
 import random
 import torch
 
@@ -52,13 +52,13 @@ def run(
         while True:
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
-            epsilon = epsilon_by_frame_cyclic(
+            epsilon = epsilon_by_frame(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
                 epsilon_start,
                 epsilon_final,
-                epsilon_decay,
+                epsilon_decay if env.get_current_location() != 4 else epsilon_decay*10, # 4 is outside and it needs some extra exploration
             )
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(
@@ -122,16 +122,18 @@ def run(
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
             plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
-        if episode % checkpoint_interval == 0:
+        if episode % checkpoint_interval == 0 and episode > 0:
             save_checkpoint(
                 {
-                    "episode": num_episodes + start_episode,
-                    "frame_idx": frame_idx,
-                    "policy_net_state_dict": policy_net.state_dict(),
-                    "target_net_state_dict": target_net.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "replay_buffer": replay_buffer.state_dict(),
-                    "frames_in_loc": frames_in_loc
+                "episode": episode,
+                "frame_idx": frame_idx,
+                "policy_net_state_dict": policy_net.state_dict(),
+                "target_net_state_dict": target_net.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "replay_buffer": replay_buffer.state_dict(),
+                "frames_in_loc": frames_in_loc,
+                "rewards": rewards,
+                "epsilon_by_location" : epsilon_by_location
                 },
                 filename=f"{checkpoint_path.replace('.pth','')}_ep{episode}.pth",
             )

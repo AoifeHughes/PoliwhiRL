@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from PoliwhiRL.environment.RAM_locations import locations
 
 
 def calc_rewards(
@@ -11,14 +12,30 @@ def calc_rewards(
 
     if use_sight:
         if controller.is_new_vision():
-            total_reward += default_reward * 10
+            total_reward += default_reward * 5
 
     # Encourage party pokemon
     total_level, total_hp, total_exp = controller.party_info()
     if total_level > np.sum(controller.max_total_level):
-        total_reward += default_reward * 100
+        total_reward += default_reward * 200
         controller.max_total_level = total_level
         controller.extend_timeout(500)
+
+    # Encourage moving around
+    cur_xy = controller.get_XY()
+    if cur_xy not in controller.xy:
+        total_reward += default_reward * 10
+        controller.xy.add(cur_xy)
+
+    # Encourage getting out of location
+    if controller.get_current_location() not in controller.locs:
+        controller.locs.add(controller.get_current_location())
+        if controller.get_current_location() in locations:
+            total_reward += default_reward * 100
+            controller.extend_timeout(1000)
+        else:
+            total_reward += default_reward * 10
+            controller.extend_timeout(10)
 
     # encourage max xp
     if total_exp > np.sum(controller.max_total_exp):
