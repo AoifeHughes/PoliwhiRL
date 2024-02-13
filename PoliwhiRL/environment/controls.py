@@ -12,7 +12,7 @@ from PoliwhiRL.utils.utils import document
 import time
 import json
 from PoliwhiRL.environment.ImageMemory import ImageMemory
-
+import pickle
 
 class Controller:
     def __init__(
@@ -303,6 +303,72 @@ class Controller:
         virtual_file = io.BytesIO()
         self.save_state(virtual_file)
         return virtual_file
+    
+    def store_state_with_controller_mem(self, file_loc):
+        virtual_file = io.BytesIO()
+        self.save_state(virtual_file)
+
+
+    def reset_to_saved_state(self, file_path):
+        # Load the combined state from disk
+        with open(file_path, 'rb') as file:
+            saved_state = pickle.load(file)
+
+        # Restore the emulator state
+        emulator_state = io.BytesIO(saved_state['emulator_state'])
+        self.pyboy.load_state(emulator_state)
+
+        # Restore the Controller state
+        controller_state = saved_state['controller_state']
+        for key, value in controller_state.items():
+            setattr(self, key, value)
+
+    def store_state_with_controller_mem(self, file_loc):
+        emulator_state = io.BytesIO()
+        self.pyboy.save_state(emulator_state)
+
+        controller_state = {
+            'temp_dir': self.temp_dir,
+            'log_path': self.log_path,
+            'state_path': self.state_path,
+            'ogTimeout': self.ogTimeout,
+            'timeout': self.timeout,
+            'timeoutcap': self.timeoutcap,
+            'frames_per_loc': self.frames_per_loc,
+            'use_sight': self.use_sight,
+            'scaling_factor': self.scaling_factor,
+            'paths': self.paths,
+            'runs_data': self.runs_data,
+            'action_space_buttons': self.action_space_buttons.tolist(),
+            'action_space': self.action_space.tolist(),
+            'event_dict_press': {key: value.value for key, value in self.event_dict_press.items()},
+            'event_dict_release': {key: value.value for key, value in self.event_dict_release.items()},
+            'imgs': self.imgs,
+            'max_pkmn_seen': self.max_pkmn_seen,
+            'save_on_reset': self.save_on_reset,
+            'max_pkmn_owned': self.max_pkmn_owned,
+            'max_total_level': self.max_total_level,
+            'max_total_exp': self.max_total_exp,
+            'max_money': self.max_money,
+            'locs': list(self.locs),
+            'xy': list(self.xy),
+            'rewards_per_location': self.rewards_per_location,
+            'reward': self.reward,
+            'button': self.button,
+            'buttons': self.buttons,
+            'steps': self.steps,
+            'run': self.run,
+            'run_time': self.run_time,
+        }
+
+        saved_state = {
+            'emulator_state': emulator_state.getvalue(),
+            'controller_state': controller_state,
+        }
+
+        with open(file_loc, 'wb') as file:
+            pickle.dump(saved_state, file)
+
 
     def store_state(self, state, i):
         # check states folder exists and create if not

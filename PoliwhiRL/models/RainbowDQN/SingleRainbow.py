@@ -4,7 +4,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     save_checkpoint,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
 import random
@@ -113,6 +113,19 @@ def run(
             )
             if loss is not None:
                 losses.append(loss)
+
+            if eval_mode:
+                document(
+                    episode,
+                    ep_len,
+                    env.get_screen(),
+                    action,
+                    reward,
+                    done,
+                    epsilon,
+                    "eval",
+                    env.get_current_location(),
+                )
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
