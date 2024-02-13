@@ -35,10 +35,9 @@ class Controller:
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
-        # copy other files to the temporary directory
-        files_to_copy = [file for file in extra_files if os.path.isfile(file)]
-        files_to_copy.append(rom_path)
-        files_to_copy.append(state_path)
+        files_to_copy = [rom_path, state_path]
+        files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
+
         self.paths = [
             shutil.copy(file, self.temp_dir) for file in files_to_copy
         ]
