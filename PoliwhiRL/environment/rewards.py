@@ -66,5 +66,5 @@ def calc_rewards(
         controller.max_money = controller.get_player_money()
 
     if total_reward > 0:
-        controller.extend_timeout(5)  # Encourage exploration
+        controller.extend_timeout(1)  # Encourage exploration
     return total_reward
