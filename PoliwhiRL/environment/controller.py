@@ -28,7 +28,6 @@ class Controller:
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
         self.log_path = log_path
-        self.state_path = state_path
         self.ogTimeout = timeout
         self.timeout = timeout
         self.timeoutcap = timeout * 1000
@@ -41,8 +40,10 @@ class Controller:
         self.paths = [
             shutil.copy(file, self.temp_dir) for file in files_to_copy
         ]
+        self.rom_path = self.paths[0]
+        self.state_path = self.paths[1]
         # Initialize PyBoy with the ROM in the temporary directory
-        self.pyboy = PyBoy(self.paths[0], debug=False, window_type="headless")
+        self.pyboy = PyBoy(rom_path, debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
 
         self.action_space_buttons = np.array(
@@ -105,7 +106,7 @@ class Controller:
             "rewards_per_location": {k:v for k,v in self.rewards_per_location.items() if len(v) > 0},
             "buttons": self.buttons,
             "state_file": self.state_path,
-            "rom_path": self.paths[0],
+            "rom_path": self.rom_path,
             "timeout": self.timeout,
             "timeoutcap": self.timeoutcap,
             "run_time": time.time() - self.run_time,
@@ -146,7 +147,7 @@ class Controller:
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
-        with open(self.paths[1], "rb") as stateFile:
+        with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.max_pkmn_seen = 0
         self.save_on_reset = False
@@ -290,7 +291,7 @@ class Controller:
         text = OCR.extract_text(OCR.preprocess_image(self.screen_image()))
         return text
 
-    def reset_to_saved_state(self, file_path):
+    def load_stored_controller_state(self, file_path):
         # Load the combined state from disk
         with open(file_path, 'rb') as file:
             saved_state = pickle.load(file)
@@ -304,7 +305,7 @@ class Controller:
         for key, value in controller_state.items():
             setattr(self, key, value)
 
-    def store_state_with_controller_mem(self, file_loc):
+    def store_controller_state(self, file_loc):
         emulator_state = io.BytesIO()
         self.pyboy.save_state(emulator_state)
 
@@ -322,8 +323,8 @@ class Controller:
             'runs_data': self.runs_data,
             'action_space_buttons': self.action_space_buttons.tolist(),
             'action_space': self.action_space.tolist(),
-            'event_dict_press': {key: value.value for key, value in self.event_dict_press.items()},
-            'event_dict_release': {key: value.value for key, value in self.event_dict_release.items()},
+            'event_dict_press': {key: value for key, value in self.event_dict_press.items()},
+            'event_dict_release': {key: value for key, value in self.event_dict_release.items()},
             'imgs': self.imgs,
             'max_pkmn_seen': self.max_pkmn_seen,
             'save_on_reset': self.save_on_reset,
