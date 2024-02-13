@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from PoliwhiRL.models.RainbowDQN.utils import (
     compute_td_error,
     optimize_model,

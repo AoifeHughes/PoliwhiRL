@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PoliwhiRL.models.RainbowDQN.NoisyLinear import NoisyLinear
+from .noisylinear import NoisyLinear
 
 
 class RainbowDQN(nn.Module):
