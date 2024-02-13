@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from PoliwhiRL.environment.controls import Controller as environment
+from PoliwhiRL.environment import Controller as environment
 from os.path import basename
 from tqdm import tqdm
 

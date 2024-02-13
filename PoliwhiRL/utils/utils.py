@@ -52,46 +52,6 @@ def document(
     )
 
 
-def load_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon):
-    # Check for latest checkpoint in checkpoints folder
-
-    tmp_path = checkpoint_path
-    if os.path.isdir(checkpoint_path):
-        checkpoints = os.listdir(checkpoint_path)
-        checkpoints = [x for x in checkpoints if x.endswith(".pth")]
-        if len(checkpoints) > 0:
-            # sort checkpoints by last modified date
-            checkpoints.sort(key=lambda x: os.path.getmtime(checkpoint_path + x))
-            checkpoint_path = checkpoint_path + checkpoints[-1]
-    else:
-        os.mkdir(checkpoint_path)
-    if os.path.isfile(checkpoint_path):
-        print(f"Loading checkpoint '{checkpoint_path}'")
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint["state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        start_episode = checkpoint["start_episode"]
-        epsilon = checkpoint["epsilon"]
-        checkpoint_path = tmp_path
-    else:
-        print(f"No checkpoint found at '{checkpoint_path}'")
-    return start_episode, epsilon
-
-
-def save_checkpoint(checkpoint_path, model, optimizer, start_episode, epsilon, timeout):
-    # Save checkpoint
-    if not os.path.isdir(checkpoint_path):
-        os.mkdir(checkpoint_path)
-    checkpoint_path = checkpoint_path + f"checkpoint_{timeout}_{start_episode}.pth"
-    torch.save(
-        {
-            "start_episode": start_episode,
-            "state_dict": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "epsilon": epsilon,
-        },
-        checkpoint_path,
-    )
 
 def save_results(results_path, episodes, results):
     # Save results

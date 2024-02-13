@@ -2,16 +2,16 @@
 import io
 from pyboy import PyBoy, WindowEvent
 import os
-import PoliwhiRL.environment.RAM_locations as RAM_locations
+from . import RAM_locations
 import PoliwhiRL.utils.OCR as OCR
 import numpy as np
 import shutil
 import tempfile
-from PoliwhiRL.environment.rewards import calc_rewards
-from PoliwhiRL.utils.utils import document
+from .rewards import calc_rewards
+from PoliwhiRL.utils import document
 import time
 import json
-from PoliwhiRL.environment.ImageMemory import ImageMemory
+from .imagememory import ImageMemory
 import pickle
 
 class Controller:
@@ -22,11 +22,11 @@ class Controller:
         timeout=100,
         log_path="./logs/log.json",
         use_sight=False,
-        scaling_factor=0.5
+        scaling_factor=0.5,
+        extra_files=[]
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
-        rom_root = os.path.dirname(rom_path)
         self.log_path = log_path
         self.state_path = state_path
         self.ogTimeout = timeout
@@ -36,23 +36,15 @@ class Controller:
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
         # copy other files to the temporary directory
+        files_to_copy = [file for file in extra_files if os.path.isfile(file)]
+        files_to_copy.append(rom_path)
+        files_to_copy.append(state_path)
         self.paths = [
-            shutil.copy(file, self.temp_dir)
-            for file in [
-                rom_path,
-                self.state_path,
-                f"{rom_root}/Pokemon - Crystal Version.gbc.ram",
-                f"{rom_root}/Pokemon - Crystal Version.gbc.rtc",
-            ]
-            if file is not None
+            shutil.copy(file, self.temp_dir) for file in files_to_copy
         ]
-
         # Initialize PyBoy with the ROM in the temporary directory
         self.pyboy = PyBoy(self.paths[0], debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
-        if self.state_path is not None:
-            with open(self.state_path, "rb") as stateFile:
-                self.pyboy.load_state(stateFile)
 
         self.action_space_buttons = np.array(
             [
@@ -298,16 +290,6 @@ class Controller:
     def get_text_on_screen(self):
         text = OCR.extract_text(OCR.preprocess_image(self.screen_image()))
         return text
-
-    def create_memory_state(self, controller):
-        virtual_file = io.BytesIO()
-        self.save_state(virtual_file)
-        return virtual_file
-    
-    def store_state_with_controller_mem(self, file_loc):
-        virtual_file = io.BytesIO()
-        self.save_state(virtual_file)
-
 
     def reset_to_saved_state(self, file_path):
         # Load the combined state from disk

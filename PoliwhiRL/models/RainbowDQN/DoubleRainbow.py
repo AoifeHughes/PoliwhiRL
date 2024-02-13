@@ -3,7 +3,7 @@ from multiprocessing import Pool
 import torch
 import random
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import (
+from .utils import (
     compute_td_error,
     optimize_model,
     beta_by_frame,
@@ -11,7 +11,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     epsilon_by_frame_cyclic
 )
 from PoliwhiRL.utils.utils import image_to_tensor
-from PoliwhiRL.environment.controls import Controller
+from PoliwhiRL.environment import Controller
 
 
 def worker(
@@ -32,6 +32,7 @@ def worker(
     num_episodes,
     frames_in_loc,
     epsilon_by_location,
+    extra_files
 ):
     local_env = Controller(
         rom_path,
@@ -39,6 +40,7 @@ def worker(
         timeout=episode_length,
         log_path=f"./logs/double_rainbow_env_{worker_id}.json",
         use_sight=sight,
+        extra_files=extra_files
     )
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
@@ -166,7 +168,8 @@ def run(
     checkpoint_interval,
     checkpoint_path,
     epsilon_by_location,
-    frames_in_loc
+    frames_in_loc,
+    extra_files
 ):
 
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
@@ -200,6 +203,7 @@ def run(
             losses,
             frames_in_loc,
             epsilon_by_location,
+            extra_files
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -247,6 +251,7 @@ def run_batch(
     losses,
     frames_in_loc,
     epsilon_by_location,
+    extra_files
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -268,6 +273,7 @@ def run_batch(
             num_episodes,
             frames_in_loc,
             epsilon_by_location,
+            extra_files
         )
         for i in range(num_workers)
     ]
