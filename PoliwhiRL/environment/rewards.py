@@ -8,6 +8,14 @@ def update_for_locations(controller, total_reward, default_reward):
             total_reward += default_reward * 100
             controller.extend_timeout(1000)
             controller.reset_has_reached_reward_locations_xy()
+            controller.set_save_on_reset()
+            try:
+                controller.store_controller_state("./PerfectRunState.pkl")
+                print("Made it to Mr. Pokemon's House")
+            except Exception as e:
+                print(e)
+                print("Could not save state")
+
     return total_reward
 
 def update_for_vision(controller, total_reward, default_reward):
@@ -50,7 +58,7 @@ def update_for_pokedex(controller, total_reward, default_reward):
 
     if controller.pkdex_owned() > controller.max_pkmn_owned:
         if controller.pkdex_owned() == 1:
-            controller.extend_timeout(2000)
+            controller.extend_timeout(1000)
             controller.set_save_on_reset()
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()
@@ -76,6 +84,7 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
                 return total_reward
             else:
                 controller.has_reached_reward_locations_xy[controller.get_current_location()][controller.get_XY()] = True
+                controller.extend_timeout(300)
                 return total_reward + default_reward * 100
     return total_reward
 
@@ -87,9 +96,9 @@ def calc_rewards(controller, default_reward=0.01, use_sight=False):
     if use_sight:
         total_reward = update_for_vision(controller, total_reward, default_reward)
 
-    for func in [update_for_party_pokemon, update_for_movement, update_for_pokedex, update_for_money, update_for_xy_checkpoints]:
+    for func in [update_for_party_pokemon, update_for_movement, update_for_pokedex, update_for_money, update_for_xy_checkpoints, update_for_locations]:
         total_reward = func(controller, total_reward, default_reward)
 
     if total_reward > 0:
-        controller.extend_timeout(1)
+        controller.extend_timeout(2)
     return total_reward
