@@ -55,6 +55,9 @@ def run(
     learning_rate = 1e-4
     capacity = 50000
     update_target_every = 1000
+    reward_threshold = 0.3
+    reward_sensitivity = 0.15
+    reward_window_size = 10
     losses = []
     epsilon_values = []  # Tracking epsilon values for exploration metrics
     beta_values = []  # For priority buffer metrics
@@ -115,6 +118,9 @@ def run(
             checkpoint_interval,
             epsilon_by_location,
             frames_in_loc,
+            reward_threshold,
+            reward_sensitivity,
+            reward_window_size
         )
     else:
         losses, rewards_n, memories = run_rainbow_parallel(
@@ -212,4 +218,4 @@ def run(
         use_sight=sight,
         extra_files=extra_files
     )
-    res = run_single(num_episodes+start_episode, 2, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, eval_mode=True)
+    res = run_single(num_episodes+start_episode, 2, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, reward_threshold, reward_sensitivity, reward_window_size, eval_mode=True)

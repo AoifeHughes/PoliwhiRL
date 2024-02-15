@@ -7,10 +7,10 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
+from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame_with_reward
 import random
 import torch
-
+import numpy as np
 
 def run(
     start_episode,
@@ -39,6 +39,9 @@ def run(
     checkpoint_interval,
     epsilon_by_location,
     frames_in_loc,
+    reward_threshold,
+    reward_sensitivity,
+    reward_window_size,
     eval_mode=False
 ):
 
@@ -51,15 +54,20 @@ def run(
         total_reward = 0
         ep_len = 0
         while True:
+            local_rewards = []
+            avg_reward = np.mean(local_rewards[-reward_window_size:]) if len(local_rewards) > reward_window_size else 0
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_with_reward(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
                 epsilon_start,
                 epsilon_final,
-                epsilon_decay if env.get_current_location() != 4 else epsilon_decay*10, # 4 is outside and it needs some extra exploration
+                epsilon_decay,
+                avg_reward, 
+                reward_threshold,
+                reward_sensitivity
             )
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(
@@ -82,6 +90,7 @@ def run(
 
 
             next_state, reward, done = env.step(action)
+            local_rewards.append(reward)
             if eval_mode:
                 if done:
                     break

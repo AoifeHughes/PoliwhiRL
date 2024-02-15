@@ -13,6 +13,18 @@ def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
         -1.0 * frame_idx / epsilon_decay
     )
 
+def epsilon_by_frame_with_reward(frame_idx, epsilon_start, epsilon_final, epsilon_decay, average_reward, reward_threshold, reward_sensitivity):
+    if average_reward > reward_threshold:
+        decay_adjustment = reward_sensitivity
+    else:
+        decay_adjustment = -reward_sensitivity
+    adjusted_epsilon_decay = epsilon_decay + decay_adjustment * epsilon_decay
+    adjusted_epsilon_decay = max(adjusted_epsilon_decay, 1)
+    epsilon = epsilon_final + (epsilon_start - epsilon_final) * np.exp(-1.0 * frame_idx / adjusted_epsilon_decay)
+    
+    return epsilon
+
+
 def epsilon_by_frame_cyclic(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
     # Modulate frame_idx to create a cyclical effect
     modulated_frame_idx = np.cos(frame_idx * (2 * np.pi / epsilon_decay))
