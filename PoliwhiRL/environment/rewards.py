@@ -6,7 +6,7 @@ def update_for_locations(controller, total_reward, default_reward):
         controller.locations.add(controller.get_current_location())
         if controller.get_current_location() == locations['MrPokemonsHouse']:
             total_reward += default_reward * 100
-            controller.extend_timeout(1000)
+            controller.extend_timeout(2000)
             controller.reset_has_reached_reward_locations_xy()
             controller.set_save_on_reset()
             try:
