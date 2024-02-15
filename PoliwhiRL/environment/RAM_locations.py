@@ -10,7 +10,14 @@ money = 0xD84E
 party_base = 0xDCDF
 num_pokemon = 0xDCD7
 
-locations = {'DownstairsPlayersHouse': 6, 'OutsideStartingArea': 4, 'ProfessorElmsLab': 5, 'NPC_house1': 8, 'NPC_house2': 9, 'MrPokemonsHouse': 10}
+locations = {
+    "DownstairsPlayersHouse": 6,
+    "OutsideStartingArea": 4,
+    "ProfessorElmsLab": 5,
+    "NPC_house1": 8,
+    "NPC_house2": 9,
+    "MrPokemonsHouse": 10,
+}
 
 
 pokedex_seen = (0xDEB9, 0xDED8)

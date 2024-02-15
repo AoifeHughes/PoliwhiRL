@@ -1,10 +1,9 @@
+# -*- coding: utf-8 -*-
 import pytest
-from unittest.mock import patch, MagicMock
-from PoliwhiRL.environment import Controller 
+from PoliwhiRL.environment import Controller
 from os.path import basename
 import tempfile
 import os
-
 
 
 # Sample configuration to be returned by the mock
@@ -24,8 +23,12 @@ mock_config = {
     "num_workers": 6,
     "checkpoint_interval": 100,
     "epsilon_by_location": False,
-    "extra_files": [ "./emu_files/Pokemon - Crystal Version.gbc.ram", "./emu_files/Pokemon - Crystal Version.gbc.rtc"]
-  }
+    "extra_files": [
+        "./emu_files/Pokemon - Crystal Version.gbc.ram",
+        "./emu_files/Pokemon - Crystal Version.gbc.rtc",
+    ],
+}
+
 
 @pytest.fixture
 def temp_state_file():
@@ -38,24 +41,27 @@ def temp_state_file():
     # Cleanup
     os.remove(temp_path)
 
+
 @pytest.fixture
 def controller():
     rom_path = mock_config["rom_path"]
     state_path = mock_config["state_path"]
     episode_length = 25
     sight = False
-    return Controller(rom_path,
+    return Controller(
+        rom_path,
         state_path,
         timeout=episode_length,
         log_path="./logs/rainbow_env_eval.json",
-        use_sight=sight)
-
+        use_sight=sight,
+    )
 
 
 def test_initialization_with_mocked_config(controller):
     # Test if the Controller uses values from the mocked config
     assert basename(controller.rom_path) == basename(mock_config["rom_path"])
     assert basename(controller.state_path) == basename(mock_config["state_path"])
+
 
 def test_step_function_updates_state_correctly(controller):
     initial_steps = controller.steps

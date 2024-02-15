@@ -140,7 +140,7 @@ states/*
 *.txt
 *.json
 
-# latex files 
+# latex files
 *.aux
 *.log
 *latexmk
