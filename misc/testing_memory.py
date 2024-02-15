@@ -5,6 +5,17 @@ import pytesseract
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import os 
+import json
+
+def log_data_to_json(log_data, log_file_path="log_data.json"):
+    with open(log_file_path, "w") as log_file:
+        json.dump(log_data, log_file, indent=4)
+
+# Initialize a log structure
+log_data = {
+    "entries": []
+}
+log_id = 0  # Starting ID for your log entries
 
 def preprocess_image(image):
     original_size = image.size
@@ -54,7 +65,7 @@ def plot_coordinates(unique_XY_by_location):
 
 
 pyboy = PyBoy("emu_files/Pokemon - Crystal Version.gbc", window_scale=1)
-pyboy.set_emulation_speed(target_speed=0)
+pyboy.set_emulation_speed(target_speed=2)
 unique_XY_by_location = {}
 imgs = {}
 
@@ -109,23 +120,38 @@ while not pyboy.tick():
     unique_XY_by_location[current_location].append((x_coord, y_coord))
     imgs[current_location].append(pyboy.botsupport_manager().screen().screen_image())
 
-    # screen_image = pyboy.botsupport_manager().screen().screen_image()
-    # screen_image = preprocess_image(screen_image)
-    # text = extract_text(screen_image)
-    #print(f"Text on screen: {text}\n")
-
-    for i in range(60):
-        pyboy.tick()
+ 
 
 
 if not os.path.exists("testing_files"):
     os.makedirs("testing_files")
 
 for loc, img_list in imgs.items():
+    if not os.path.exists(f"testing_files/{loc}"):
+        os.makedirs(f"testing_files/{loc}")
     for i, img in enumerate(img_list):
-        if not os.path.exists(f"testing_files/{loc}"):
-            os.makedirs(f"testing_files/{loc}")
-        img.save(f"testing_files/{loc}/{loc}_{i}.png")
+        # Fetch the corresponding coordinates for the current image
+        x_coord, y_coord = unique_XY_by_location[loc][i]
+
+        # Update the img_path to include location, X, and Y coordinates in the filename
+        img_path = f"testing_files/{loc}/{loc}_x{x_coord}_y{y_coord}_{i}.png"
+        img.save(img_path)
+        
+        # Prepare log entry with coordinates, steps, location, and the image path
+        entry = {
+            "id": log_id,
+            "location": loc,
+            "coordinates": (x_coord, y_coord),  # Fetch the coordinates directly for clarity
+            "steps": i,  # Assuming each image represents a step
+            "image_path": img_path
+        }
+        log_data["entries"].append(entry)
+        
+        # Increment log ID for next entry
+        log_id += 1
+# After collecting all data, write the log data to a JSON file
+log_data_to_json(log_data)
+
 plot_coordinates(unique_XY_by_location)
 
 pyboy.stop()

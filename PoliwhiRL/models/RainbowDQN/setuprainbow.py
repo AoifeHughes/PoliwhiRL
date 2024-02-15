@@ -31,7 +31,8 @@ def run(
     memories=0,
     checkpoint_interval=100,
     epsilon_by_location=False,
-    extra_files=[]
+    extra_files=[],
+    reward_locations_xy={}
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -40,7 +41,8 @@ def run(
         timeout=episode_length,
         log_path="./logs/rainbow_env.json",
         use_sight=sight,
-        extra_files=extra_files
+        extra_files=extra_files, 
+        reward_locations_xy=reward_locations_xy
     )
     gamma = 0.99
     alpha = 0.6
@@ -143,7 +145,8 @@ def run(
             checkpoint_path,
             epsilon_by_location,
             frames_in_loc,
-            extra_files
+            extra_files,
+            reward_locations_xy
         )
 
 

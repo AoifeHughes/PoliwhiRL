@@ -33,6 +33,8 @@ def parse_args():
     parser.add_argument("--checkpoint_interval", type=int, default=config.get("checkpoint_interval", 100))
     parser.add_argument("--epsilon_by_location", action="store_true", default=config.get("epsilon_by_location", False))
     parser.add_argument("--extra_files", type=list, default=config.get("extra_files", []))
+    parser.add_argument("--reward_locations_xy", type=json.loads, default=config.get("reward_locations_xy", "{}"))
+
     return parser.parse_args()
 
 
@@ -53,6 +55,7 @@ def main():
     checkpoint_interval = args.checkpoint_interval
     epsilon_by_location = args.epsilon_by_location
     extra_files = args.extra_files
+    reward_locations_xy = {int(k): v for k, v in args.reward_locations_xy.items()}
 
     if erase:
         print("Erasing all logs, checkpoints, runs, and results")
@@ -83,7 +86,8 @@ def main():
             0,
             checkpoint_interval,
             epsilon_by_location,
-            extra_files
+            extra_files,
+            reward_locations_xy
         )
     elif args.model == "DQN":
         raise NotImplementedError

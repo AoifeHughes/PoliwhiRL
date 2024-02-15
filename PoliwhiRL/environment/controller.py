@@ -23,7 +23,8 @@ class Controller:
         log_path="./logs/log.json",
         use_sight=False,
         scaling_factor=0.5,
-        extra_files=[]
+        extra_files=[],
+        reward_locations_xy={}
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -34,6 +35,7 @@ class Controller:
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
+        self.reward_locations_xy = reward_locations_xy
         files_to_copy = [rom_path, state_path]
         files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
 
@@ -85,23 +87,30 @@ class Controller:
 
         self.reset(init=True)
 
+    def get_has_reached_reward_locations_xy(self):
+        return self.has_reached_reward_locations_xy
+    
+    def get_reward_locations_xy(self):
+        return self.reward_locations_xy
 
     def random_move(self):
         return np.random.choice(self.action_space)
 
     def log_info_on_reset(self):
        
-
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
             "num_pokemon_seen": self.pkdex_seen(),
             "num_pokemon_owned": self.pkdex_owned(),
             "num_images_seen": self.imgs.num_images(),
             "player_money": self.get_player_money(),
-            "visited_locations": len(self.locs),
+            "has_reached_reward_locations_xy": self.has_reached_reward_locations_xy,
+            "reward_locations_xy": self.reward_locations_xy,
+            "visited_locations": len(self.locations),
             "visited_xy": len(self.xy),
             "max_total_level": self.max_total_level,
             "max_total_exp": self.max_total_exp,
+            "max_total_hp": self.max_total_hp,
             "steps": self.steps,
             "rewards_per_location": {k:v for k,v in self.rewards_per_location.items() if len(v) > 0},
             "buttons": self.buttons,
@@ -132,6 +141,17 @@ class Controller:
     def set_save_on_reset(self):
         self.save_on_reset = True
 
+    def reset_has_reached_reward_locations_xy(self):
+        self.has_reached_reward_locations_xy = {}
+        for _, v in self.reward_locations_xy.items():
+            loc = v[0]
+            x = v[1]
+            y = v[2]
+            if loc not in self.has_reached_reward_locations_xy:
+                self.has_reached_reward_locations_xy[loc] = {(x,y): False}
+            else:
+                self.has_reached_reward_locations_xy[loc][(x,y)] = False
+
     def reset(self, init=False):
         if init:
             self.imgs = ImageMemory()
@@ -149,13 +169,15 @@ class Controller:
             self.imgs.reset()
         with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
+        self.reset_has_reached_reward_locations_xy()
         self.max_pkmn_seen = 0
         self.save_on_reset = False
         self.max_pkmn_owned = 0
         self.max_total_level = 0
         self.max_total_exp = 0
+        self.max_total_hp = 0
         self.max_money = 0
-        self.locs = set()
+        self.locations = set()
         self.xy = set()
         self.rewards_per_location = {i: [] for i in range(256)}
         self.reward = 0
@@ -313,6 +335,8 @@ class Controller:
             'temp_dir': self.temp_dir,
             'log_path': self.log_path,
             'state_path': self.state_path,
+            'has_reached_reward_locations_xy': self.has_reached_reward_locations_xy,
+            'reward_locations_xy': self.reward_locations_xy,
             'ogTimeout': self.ogTimeout,
             'timeout': self.timeout,
             'timeoutcap': self.timeoutcap,
@@ -331,8 +355,9 @@ class Controller:
             'max_pkmn_owned': self.max_pkmn_owned,
             'max_total_level': self.max_total_level,
             'max_total_exp': self.max_total_exp,
+            'max_total_hp': self.max_total_hp,
             'max_money': self.max_money,
-            'locs': list(self.locs),
+            'locations': list(self.locations),
             'xy': list(self.xy),
             'rewards_per_location': self.rewards_per_location,
             'reward': self.reward,
