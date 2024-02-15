@@ -32,7 +32,8 @@ def worker(
     num_episodes,
     frames_in_loc,
     epsilon_by_location,
-    extra_files
+    extra_files,
+    reward_locations_xy
 ):
     local_env = Controller(
         rom_path,
@@ -40,7 +41,8 @@ def worker(
         timeout=episode_length,
         log_path=f"./logs/double_rainbow_env_{worker_id}.json",
         use_sight=sight,
-        extra_files=extra_files
+        extra_files=extra_files,
+        reward_locations_xy=reward_locations_xy
     )
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
@@ -169,7 +171,8 @@ def run(
     checkpoint_path,
     epsilon_by_location,
     frames_in_loc,
-    extra_files
+    extra_files,
+    reward_locations_xy
 ):
 
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
@@ -203,7 +206,8 @@ def run(
             losses,
             frames_in_loc,
             epsilon_by_location,
-            extra_files
+            extra_files,
+            reward_locations_xy
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -251,7 +255,8 @@ def run_batch(
     losses,
     frames_in_loc,
     epsilon_by_location,
-    extra_files
+    extra_files,
+    reward_locations_xy
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -273,7 +278,8 @@ def run_batch(
             num_episodes,
             frames_in_loc,
             epsilon_by_location,
-            extra_files
+            extra_files,
+            reward_locations_xy
         )
         for i in range(num_workers)
     ]
