@@ -9,7 +9,6 @@ import itertools
 
 
 def image_to_tensor(image, device):
-
     image = torch.from_numpy(np.transpose(image, (2, 0, 1))).to(torch.uint8) / 255.0
     image = image.to(device)
 
@@ -50,7 +49,6 @@ def document(
     img.save(
         f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}_{location}.png"
     )
-
 
 
 def save_results(results_path, episodes, results):

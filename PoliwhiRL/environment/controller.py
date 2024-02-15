@@ -14,6 +14,7 @@ import json
 from .imagememory import ImageMemory
 import pickle
 
+
 class Controller:
     def __init__(
         self,
@@ -24,7 +25,7 @@ class Controller:
         use_sight=False,
         scaling_factor=0.5,
         extra_files=[],
-        reward_locations_xy={}
+        reward_locations_xy={},
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -39,9 +40,7 @@ class Controller:
         files_to_copy = [rom_path, state_path]
         files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
 
-        self.paths = [
-            shutil.copy(file, self.temp_dir) for file in files_to_copy
-        ]
+        self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.rom_path = self.paths[0]
         self.state_path = self.paths[1]
         # Initialize PyBoy with the ROM in the temporary directory
@@ -89,7 +88,7 @@ class Controller:
 
     def get_has_reached_reward_locations_xy(self):
         return self.has_reached_reward_locations_xy
-    
+
     def get_reward_locations_xy(self):
         return self.reward_locations_xy
 
@@ -97,7 +96,6 @@ class Controller:
         return np.random.choice(self.action_space)
 
     def log_info_on_reset(self):
-       
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
             "num_pokemon_seen": self.pkdex_seen(),
@@ -112,7 +110,9 @@ class Controller:
             "max_total_exp": self.max_total_exp,
             "max_total_hp": self.max_total_hp,
             "steps": self.steps,
-            "rewards_per_location": {k:v for k,v in self.rewards_per_location.items() if len(v) > 0},
+            "rewards_per_location": {
+                k: v for k, v in self.rewards_per_location.items() if len(v) > 0
+            },
             "buttons": self.buttons,
             "state_file": self.state_path,
             "rom_path": self.rom_path,
@@ -148,9 +148,9 @@ class Controller:
             x = v[1]
             y = v[2]
             if loc not in self.has_reached_reward_locations_xy:
-                self.has_reached_reward_locations_xy[loc] = {(x,y): False}
+                self.has_reached_reward_locations_xy[loc] = {(x, y): False}
             else:
-                self.has_reached_reward_locations_xy[loc][(x,y)] = False
+                self.has_reached_reward_locations_xy[loc][(x, y)] = False
 
     def reset(self, init=False):
         if init:
@@ -189,8 +189,6 @@ class Controller:
         self.step(len(self.action_space) - 1)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
-    
-    
 
     def save_state(self, file):
         self.pyboy.save_state(file)
@@ -222,7 +220,7 @@ class Controller:
     def screen_image(self):
         # Original image
         original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
-        
+
         # Only resize if scaling_factor is not 1
         if self.scaling_factor == 1.0:
             return original_image
@@ -231,10 +229,16 @@ class Controller:
             original_height, original_width, num_channels = original_image.shape
             new_height = int(original_height * self.scaling_factor)
             new_width = int(original_width * self.scaling_factor)
-            
+
             # Reshape and average to downscale the image
-            resized_image = original_image.reshape(new_height, original_height // new_height, new_width, original_width // new_width, num_channels).mean(axis=(1, 3))
-            
+            resized_image = original_image.reshape(
+                new_height,
+                original_height // new_height,
+                new_width,
+                original_width // new_width,
+                num_channels,
+            ).mean(axis=(1, 3))
+
             return resized_image.astype(np.uint8)
 
     def get_frames_in_current_location(self):
@@ -256,7 +260,7 @@ class Controller:
 
     def get_current_location(self):
         loc = self.pyboy.get_memory_value(RAM_locations.location)
-        if loc == 7: # starting zone is also 7 if you leave and come back
+        if loc == 7:  # starting zone is also 7 if you leave and come back
             loc = 0
         return loc
 
@@ -315,15 +319,15 @@ class Controller:
 
     def load_stored_controller_state(self, file_path):
         # Load the combined state from disk
-        with open(file_path, 'rb') as file:
+        with open(file_path, "rb") as file:
             saved_state = pickle.load(file)
 
         # Restore the emulator state
-        emulator_state = io.BytesIO(saved_state['emulator_state'])
+        emulator_state = io.BytesIO(saved_state["emulator_state"])
         self.pyboy.load_state(emulator_state)
 
         # Restore the Controller state
-        controller_state = saved_state['controller_state']
+        controller_state = saved_state["controller_state"]
         for key, value in controller_state.items():
             setattr(self, key, value)
 
@@ -332,50 +336,53 @@ class Controller:
         self.pyboy.save_state(emulator_state)
 
         controller_state = {
-            'temp_dir': self.temp_dir,
-            'log_path': self.log_path,
-            'state_path': self.state_path,
-            'has_reached_reward_locations_xy': self.has_reached_reward_locations_xy,
-            'reward_locations_xy': self.reward_locations_xy,
-            'ogTimeout': self.ogTimeout,
-            'timeout': self.timeout,
-            'timeoutcap': self.timeoutcap,
-            'frames_per_loc': self.frames_per_loc,
-            'use_sight': self.use_sight,
-            'scaling_factor': self.scaling_factor,
-            'paths': self.paths,
-            'runs_data': self.runs_data,
-            'action_space_buttons': self.action_space_buttons.tolist(),
-            'action_space': self.action_space.tolist(),
-            'event_dict_press': {key: value for key, value in self.event_dict_press.items()},
-            'event_dict_release': {key: value for key, value in self.event_dict_release.items()},
-            'imgs': self.imgs,
-            'max_pkmn_seen': self.max_pkmn_seen,
-            'save_on_reset': self.save_on_reset,
-            'max_pkmn_owned': self.max_pkmn_owned,
-            'max_total_level': self.max_total_level,
-            'max_total_exp': self.max_total_exp,
-            'max_total_hp': self.max_total_hp,
-            'max_money': self.max_money,
-            'locations': list(self.locations),
-            'xy': list(self.xy),
-            'rewards_per_location': self.rewards_per_location,
-            'reward': self.reward,
-            'button': self.button,
-            'buttons': self.buttons,
-            'steps': self.steps,
-            'run': self.run,
-            'run_time': self.run_time,
+            "temp_dir": self.temp_dir,
+            "log_path": self.log_path,
+            "state_path": self.state_path,
+            "has_reached_reward_locations_xy": self.has_reached_reward_locations_xy,
+            "reward_locations_xy": self.reward_locations_xy,
+            "ogTimeout": self.ogTimeout,
+            "timeout": self.timeout,
+            "timeoutcap": self.timeoutcap,
+            "frames_per_loc": self.frames_per_loc,
+            "use_sight": self.use_sight,
+            "scaling_factor": self.scaling_factor,
+            "paths": self.paths,
+            "runs_data": self.runs_data,
+            "action_space_buttons": self.action_space_buttons.tolist(),
+            "action_space": self.action_space.tolist(),
+            "event_dict_press": {
+                key: value for key, value in self.event_dict_press.items()
+            },
+            "event_dict_release": {
+                key: value for key, value in self.event_dict_release.items()
+            },
+            "imgs": self.imgs,
+            "max_pkmn_seen": self.max_pkmn_seen,
+            "save_on_reset": self.save_on_reset,
+            "max_pkmn_owned": self.max_pkmn_owned,
+            "max_total_level": self.max_total_level,
+            "max_total_exp": self.max_total_exp,
+            "max_total_hp": self.max_total_hp,
+            "max_money": self.max_money,
+            "locations": list(self.locations),
+            "xy": list(self.xy),
+            "rewards_per_location": self.rewards_per_location,
+            "reward": self.reward,
+            "button": self.button,
+            "buttons": self.buttons,
+            "steps": self.steps,
+            "run": self.run,
+            "run_time": self.run_time,
         }
 
         saved_state = {
-            'emulator_state': emulator_state.getvalue(),
-            'controller_state': controller_state,
+            "emulator_state": emulator_state.getvalue(),
+            "controller_state": controller_state,
         }
 
-        with open(file_loc, 'wb') as file:
+        with open(file_loc, "wb") as file:
             pickle.dump(saved_state, file)
-
 
     def store_state(self, state, i):
         # check states folder exists and create if not
@@ -398,7 +405,6 @@ class Controller:
             self.get_current_location(),
         )
 
-
     def pkdex_seen(self):
         start_address, end_address = RAM_locations.pokedex_seen
 
@@ -406,7 +412,7 @@ class Controller:
         for address in range(start_address, end_address + 1):
             # Retrieve the byte value from the current address
             byte_value = self.pyboy.get_memory_value(address)
-            
+
             # Count the number of bits set to 1 (i.e., Pokémon seen) in this byte
             while byte_value:
                 total_seen += byte_value & 1
@@ -421,7 +427,7 @@ class Controller:
         for address in range(start_address, end_address + 1):
             # Retrieve the byte value from the current address
             byte_value = self.pyboy.get_memory_value(address)
-            
+
             # Count the number of bits set to 1 (i.e., Pokémon owned) in this byte
             while byte_value:
                 total_owned += byte_value & 1

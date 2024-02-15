@@ -6,11 +6,7 @@ import json
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
-from .utils import (
-    save_checkpoint,
-    load_checkpoint,
-    epsilon_by_frame
-)
+from .utils import save_checkpoint, load_checkpoint, epsilon_by_frame
 from .singlerainbow import run as run_single
 from .doublerainbow import run as run_rainbow_parallel
 from PoliwhiRL.utils import plot_best_attempts
@@ -32,7 +28,7 @@ def run(
     checkpoint_interval=100,
     epsilon_by_location=False,
     extra_files=[],
-    reward_locations_xy={}
+    reward_locations_xy={},
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -41,8 +37,8 @@ def run(
         timeout=episode_length,
         log_path="./logs/rainbow_env.json",
         use_sight=sight,
-        extra_files=extra_files, 
-        reward_locations_xy=reward_locations_xy
+        extra_files=extra_files,
+        reward_locations_xy=reward_locations_xy,
     )
     gamma = 0.99
     alpha = 0.6
@@ -74,7 +70,6 @@ def run(
     replay_buffer = PrioritizedReplayBuffer(capacity, alpha)
     frames_in_loc = {i: 0 for i in range(256)}
     epsilons_by_location = {i: 1.0 for i in range(256)}
-
 
     checkpoint = load_checkpoint(checkpoint_path, device)
     if checkpoint is not None:
@@ -120,7 +115,7 @@ def run(
             frames_in_loc,
             reward_threshold,
             reward_sensitivity,
-            reward_window_size
+            reward_window_size,
         )
     else:
         losses, rewards_n, memories = run_rainbow_parallel(
@@ -152,9 +147,8 @@ def run(
             epsilon_by_location,
             frames_in_loc,
             extra_files,
-            reward_locations_xy
+            reward_locations_xy,
         )
-
 
     total_time = time.time() - start_time  # Total training time
 
@@ -174,10 +168,8 @@ def run(
         "beta_values": beta_values,
         "td_errors": td_errors,
         "frames_in_loc": frames_in_loc,
-        "epsilons_by_location": epsilons_by_location
+        "epsilons_by_location": epsilons_by_location,
     }
-
-
 
     # Save logged data to file
     # check folder exists and create
@@ -203,12 +195,12 @@ def run(
             "replay_buffer": replay_buffer.state_dict(),
             "frames_in_loc": frames_in_loc,
             "rewards": rewards,
-            "epsilon_by_location" : epsilons_by_location
+            "epsilon_by_location": epsilons_by_location,
         },
         filename=checkpoint_path,
     )
 
-    # run a final episode in eval mode 
+    # run a final episode in eval mode
     print("Running final episode in eval mode")
     env = Controller(
         rom_path,
@@ -216,6 +208,37 @@ def run(
         timeout=episode_length,
         log_path="./logs/rainbow_env_eval.json",
         use_sight=sight,
-        extra_files=extra_files
+        extra_files=extra_files,
     )
-    res = run_single(num_episodes+start_episode, 2, env, device, policy_net, target_net, optimizer, replay_buffer, checkpoint_path, frame_idx, epsilon_start, epsilon_final, epsilon_decay, beta_start, beta_frames, batch_size, gamma, update_target_every, losses, epsilon_values, beta_values, td_errors, rewards, checkpoint_interval, epsilon_by_location, frames_in_loc, reward_threshold, reward_sensitivity, reward_window_size, eval_mode=True)
+    _ = run_single(
+        num_episodes + start_episode,
+        2,
+        env,
+        device,
+        policy_net,
+        target_net,
+        optimizer,
+        replay_buffer,
+        checkpoint_path,
+        frame_idx,
+        epsilon_start,
+        epsilon_final,
+        epsilon_decay,
+        beta_start,
+        beta_frames,
+        batch_size,
+        gamma,
+        update_target_every,
+        losses,
+        epsilon_values,
+        beta_values,
+        td_errors,
+        rewards,
+        checkpoint_interval,
+        epsilon_by_location,
+        frames_in_loc,
+        reward_threshold,
+        reward_sensitivity,
+        reward_window_size,
+        eval_mode=True,
+    )

@@ -8,7 +8,7 @@ from .utils import (
     optimize_model,
     beta_by_frame,
     save_checkpoint,
-    epsilon_by_frame_cyclic
+    epsilon_by_frame_cyclic,
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment import Controller
@@ -33,7 +33,7 @@ def worker(
     frames_in_loc,
     epsilon_by_location,
     extra_files,
-    reward_locations_xy
+    reward_locations_xy,
 ):
     local_env = Controller(
         rom_path,
@@ -42,7 +42,7 @@ def worker(
         log_path=f"./logs/double_rainbow_env_{worker_id}.json",
         use_sight=sight,
         extra_files=extra_files,
-        reward_locations_xy=reward_locations_xy
+        reward_locations_xy=reward_locations_xy,
     )
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
@@ -172,9 +172,8 @@ def run(
     epsilon_by_location,
     frames_in_loc,
     extra_files,
-    reward_locations_xy
+    reward_locations_xy,
 ):
-
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
         raise ValueError(
@@ -207,7 +206,7 @@ def run(
             frames_in_loc,
             epsilon_by_location,
             extra_files,
-            reward_locations_xy
+            reward_locations_xy,
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -222,7 +221,7 @@ def run(
                     "target_net_state_dict": target_net.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "replay_buffer": replay_buffer.state_dict(),
-                    "frames_in_loc": frames_in_loc
+                    "frames_in_loc": frames_in_loc,
                 },
                 filename=checkpoint_path,
             )
@@ -256,7 +255,7 @@ def run_batch(
     frames_in_loc,
     epsilon_by_location,
     extra_files,
-    reward_locations_xy
+    reward_locations_xy,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -279,7 +278,7 @@ def run_batch(
             frames_in_loc,
             epsilon_by_location,
             extra_files,
-            reward_locations_xy
+            reward_locations_xy,
         )
         for i in range(num_workers)
     ]

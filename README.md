@@ -16,13 +16,14 @@ understanding that software is legally obtained and that the user has the right 
 PoliwhiRL is a Reinforcement Learning library designed for sprite-based 2-D Pokémon games. It provides a framework for experimenting with different RL algorithms to interact with Pokémon games in an emulated environment.
 
 ## Command-Line Options
+
 The main script `main.py` supports several command-line options to customize the execution of the RL models. Here are the options available:
 
 - `--rom_path`: Path to the ROM file. Default is `./emu_files/Pokemon - Crystal Version.gbc`.
 - `--state_path`: Path to the saved state file for starting the game. Default is `./emu_files/states/start.state`.
-- `--episode_length`: Length of each episode in terms of the number of steps. Default is 5.
-- `--device`: The device to run the model on (`cpu` `mps`, `cuda`). Default is `cpu`.
-- `--num_episodes`: Number of episodes to run. Default is 1000.
+- `--episode_length`: Length of each episode in terms of the number of steps. Default is 25.
+- `--device`: The device to run the model on (`cpu`, `mps`, `cuda`). Default is `cpu`.
+- `--num_episodes`: Number of episodes to run. Default is 10000.
 - `--batch_size`: Batch size for training. Default is 32.
 - `--checkpoint`: Path to save or load the model checkpoint. Default is `./checkpoints/RainbowDQN.pth`.
 - `--model`: The model to use. Options are `RainbowDQN`, `DQN`, `PPO`, or `explore`. Default is `RainbowDQN`.
@@ -30,10 +31,17 @@ The main script `main.py` supports several command-line options to customize the
 - `--erase`: Erase all logs, checkpoints, runs, and results before starting.
 - `--parallel`: Run the model in parallel mode.
 - `--runs_per_worker`: Number of runs per worker in parallel mode. Default is 4.
-- `--num_workers`: Number of workers for parallel execution. Default is 8.
+- `--num_workers`: Number of workers for parallel execution. Default is 6.
 - `--checkpoint_interval`: Interval for saving the model checkpoint. Default is 100.
 - `--epsilon_by_location`: Enable epsilon decay by location strategy.
+- `--extra_files`: List of extra files to use. Default is an empty list.
+- `--reward_locations_xy`: Dictionary of XY locations to rewards. Default is an empty dictionary.
 
+## Configuration via `config.json`
+
+In addition to command-line options, you can also customize the execution of the RL models by editing the `config.json` file. This file allows you to set default values for all the parameters available in command-line options. If `config.json` exists in the same directory as `main.py`, it will be automatically loaded, and its settings will be used as defaults, which can still be overridden by command-line arguments.
+
+This approach provides a flexible way to maintain different configurations without changing the script or specifying many command-line arguments every time you run the model.
 ## Implemented Features
 - **Models**: RainbowDQN, DQN (partially implemented), and PPO (planned but not implemented).
 - **Exploration**: Basic exploration functionality with optional sight-based exploration.
