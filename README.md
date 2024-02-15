@@ -1,6 +1,7 @@
 # PoliwhiRL README
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/AoifeHughes/PoliwhiRL/main.svg)](https://results.pre-commit.ci/latest/github/AoifeHughes/PoliwhiRL/main)
 
-![PoliwhiRL](./images/logo.png)
+<img src="./images/logo.png" alt="PoliwhiRL" width="50%">
 
 ## Legal Disclaimer
 This project is not affiliated with, endorsed, or sponsored by Nintendo, Game
