@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import hashlib
 from skimage.metrics import structural_similarity as ssim
 import cv2
@@ -5,13 +6,18 @@ from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import os
 
+
 class ImageMemory:
     def __init__(self, max_images=10000):
         self.max_images = max_images  # Maximum number of images to store
         self.images = {}  # Stores images in memory, mapped by hash
         self.image_order = []  # Track order of images for removing oldest
-        self.feature_index = NearestNeighbors(n_neighbors=1, algorithm="auto")  # For nearest neighbors searches
-        self.features = np.array([]).reshape(0, 30*30*3)  # Stored features for all images, initialized for reshaping
+        self.feature_index = NearestNeighbors(
+            n_neighbors=1, algorithm="auto"
+        )  # For nearest neighbors searches
+        self.features = np.array([]).reshape(
+            0, 30 * 30 * 3
+        )  # Stored features for all images, initialized for reshaping
         self.ids = []  # Image identifiers corresponding to features
         self._reset_state()
 
@@ -21,14 +27,18 @@ class ImageMemory:
 
     def _compute_features(self, image):
         """Compute a simplified feature vector for the image."""
-        resized = cv2.resize(image, (30, 30), interpolation=cv2.INTER_AREA)  # Resize considering ndarray input
+        resized = cv2.resize(
+            image, (30, 30), interpolation=cv2.INTER_AREA
+        )  # Resize considering ndarray input
         return resized.flatten()
 
     def check_and_store_image(self, target_image, threshold=100):
         """Check if a similar image exists; store the new image in memory if not."""
         target_features = self._compute_features(target_image)
         if self.features.shape[0] > 0:
-            distances, indices = self.feature_index.kneighbors([target_features], n_neighbors=1)
+            distances, indices = self.feature_index.kneighbors(
+                [target_features], n_neighbors=1
+            )
             if distances[0][0] < threshold:
                 # Found a similar image, return its identifier
                 target_hash = self.ids[indices[0][0]]
@@ -67,7 +77,9 @@ class ImageMemory:
         """Reset the storage state to its initial configuration."""
         self.images = {}
         self.image_order = []
-        self.features = np.array([]).reshape(0, 30*30*3)  # Reset features for reshaping
+        self.features = np.array([]).reshape(
+            0, 30 * 30 * 3
+        )  # Reset features for reshaping
         self.ids = []
         # Reinitialize the nearest neighbors index with no data
         self.feature_index = NearestNeighbors(n_neighbors=1, algorithm="auto")
@@ -90,7 +102,7 @@ class ImageMemory:
         # Check if the folder exists, if not, create it
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-        
+
         for index, image_hash in enumerate(self.image_order):
             image_data = self.images[image_hash]
             # Format the file name to include the index for ordering

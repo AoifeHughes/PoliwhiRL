@@ -1,10 +1,22 @@
+# -*- coding: utf-8 -*-
 from pyboy import PyBoy
 import numpy as np
 from PIL import Image
 import pytesseract
-from collections import OrderedDict
 import matplotlib.pyplot as plt
-import os 
+import os
+import json
+
+
+def log_data_to_json(log_data, log_file_path="log_data.json"):
+    with open(log_file_path, "w") as log_file:
+        json.dump(log_data, log_file, indent=4)
+
+
+# Initialize a log structure
+log_data = {"entries": []}
+log_id = 0  # Starting ID for your log entries
+
 
 def preprocess_image(image):
     original_size = image.size
@@ -15,9 +27,11 @@ def preprocess_image(image):
     image = image.point(lambda p: p > threshold_value and 255)
     return image
 
+
 def extract_text(image):
     text = pytesseract.image_to_string(image, config="--psm 11")
     return text
+
 
 def read_little_endian(pyboy, start, end):
     raw_bytes = []
@@ -26,8 +40,10 @@ def read_little_endian(pyboy, start, end):
         raw_bytes.append(byte)
     return raw_bytes
 
+
 def bytes_to_int(byte_list):
     return int.from_bytes(byte_list, byteorder="little")
+
 
 def count_set_bits(byte):
     count = 0
@@ -36,25 +52,26 @@ def count_set_bits(byte):
         byte >>= 1
     return count
 
+
 def plot_coordinates(unique_XY_by_location):
     colors = plt.cm.rainbow(np.linspace(0, 1, len(unique_XY_by_location)))
     for (location, coordinates), color in zip(unique_XY_by_location.items(), colors):
         X = [coord[0] for coord in coordinates]
         Y = [coord[1] for coord in coordinates]
-        fig, ax = plt.subplots(1, figsize=(5,5), dpi=100)
-        ax.scatter(X, Y, alpha=0.6, edgecolors='w', color=color)
+        fig, ax = plt.subplots(1, figsize=(5, 5), dpi=100)
+        ax.scatter(X, Y, alpha=0.6, edgecolors="w", color=color)
         # Only add the label to the line plot
-        ax.plot(X, Y, alpha=0.5, color=color, label=f'Location {location}')
+        ax.plot(X, Y, alpha=0.5, color=color, label=f"Location {location}")
         fig.savefig(f"testing_files/{location}/location_{location}.png")
-        fig.suptitle('Ordered XY Coordinates by Location')
-        ax.set_xlabel('X Coordinate')
-        ax.set_ylabel('Y Coordinate')
-    # Ensure the legend is displayed. The 'best' location will automatically adjust to a less obtrusive place.
+        fig.suptitle("Ordered XY Coordinates by Location")
+        ax.set_xlabel("X Coordinate")
+        ax.set_ylabel("Y Coordinate")
+        # Ensure the legend is displayed. The 'best' location will automatically adjust to a less obtrusive place.
         fig.legend()
 
 
 pyboy = PyBoy("emu_files/Pokemon - Crystal Version.gbc", window_scale=1)
-pyboy.set_emulation_speed(target_speed=0)
+pyboy.set_emulation_speed(target_speed=2)
 unique_XY_by_location = {}
 imgs = {}
 
@@ -71,7 +88,9 @@ while not pyboy.tick():
     y_coord = pyboy.get_memory_value(0xDCB7)
     johto_badges = pyboy.get_memory_value(0xD857)
     kanto_badges = pyboy.get_memory_value(0xD858)
-    print(f"Johto Badges: {johto_badges}, Kanto Badges: {kanto_badges} (Raw bytes: {[johto_badges, kanto_badges]})\n")
+    print(
+        f"Johto Badges: {johto_badges}, Kanto Badges: {kanto_badges} (Raw bytes: {[johto_badges, kanto_badges]})\n"
+    )
 
     num_pokemon = pyboy.get_memory_value(0xDCD7)
     print(f"Number of Party Pokémon: {num_pokemon} (Raw byte: {num_pokemon})\n")
@@ -89,11 +108,15 @@ while not pyboy.tick():
             * np.array([1, 256, 65536])
         )
         total_level += level
-        print(f"Pokémon {i+1}: Level {level} (Level Raw: {level}, HP Raw: {hp_raw}, EXP Raw: {exp_raw})\n")
+        print(
+            f"Pokémon {i+1}: Level {level} (Level Raw: {level}, HP Raw: {hp_raw}, EXP Raw: {exp_raw})\n"
+        )
 
     received = pyboy.get_memory_value(0xCF60)
     print(f"Total Level of Party: {total_level}\n")
-    print(f"Player's X Coordinate: {x_coord}, Player's Y Coordinate: {y_coord} Received: {received}\n")
+    print(
+        f"Player's X Coordinate: {x_coord}, Player's Y Coordinate: {y_coord} Received: {received}\n"
+    )
     print(f"Player's Location: {pyboy.get_memory_value(0xD148)}\n")
     caught_pokemon = sum(
         count_set_bits(pyboy.get_memory_value(0xDE99 + i)) for i in range(20)
@@ -104,28 +127,44 @@ while not pyboy.tick():
     if current_location not in unique_XY_by_location:
         unique_XY_by_location[current_location] = []
 
-    if current_location not in imgs:    
+    if current_location not in imgs:
         imgs[current_location] = []
     unique_XY_by_location[current_location].append((x_coord, y_coord))
     imgs[current_location].append(pyboy.botsupport_manager().screen().screen_image())
-
-    # screen_image = pyboy.botsupport_manager().screen().screen_image()
-    # screen_image = preprocess_image(screen_image)
-    # text = extract_text(screen_image)
-    #print(f"Text on screen: {text}\n")
-
-    for i in range(60):
-        pyboy.tick()
 
 
 if not os.path.exists("testing_files"):
     os.makedirs("testing_files")
 
 for loc, img_list in imgs.items():
+    if not os.path.exists(f"testing_files/{loc}"):
+        os.makedirs(f"testing_files/{loc}")
     for i, img in enumerate(img_list):
-        if not os.path.exists(f"testing_files/{loc}"):
-            os.makedirs(f"testing_files/{loc}")
-        img.save(f"testing_files/{loc}/{loc}_{i}.png")
+        # Fetch the corresponding coordinates for the current image
+        x_coord, y_coord = unique_XY_by_location[loc][i]
+
+        # Update the img_path to include location, X, and Y coordinates in the filename
+        img_path = f"testing_files/{loc}/{loc}_x{x_coord}_y{y_coord}_{i}.png"
+        img.save(img_path)
+
+        # Prepare log entry with coordinates, steps, location, and the image path
+        entry = {
+            "id": log_id,
+            "location": loc,
+            "coordinates": (
+                x_coord,
+                y_coord,
+            ),  # Fetch the coordinates directly for clarity
+            "steps": i,  # Assuming each image represents a step
+            "image_path": img_path,
+        }
+        log_data["entries"].append(entry)
+
+        # Increment log ID for next entry
+        log_id += 1
+# After collecting all data, write the log data to a JSON file
+log_data_to_json(log_data)
+
 plot_coordinates(unique_XY_by_location)
 
 pyboy.stop()

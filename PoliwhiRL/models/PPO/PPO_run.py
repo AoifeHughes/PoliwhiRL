@@ -31,9 +31,7 @@ def run_episode_ppo(
 ):
     controller = Controller(rom_path, state_path)
     controller.handleMovement("A")  # Start the game
-    state = image_to_tensor(
-        controller.screen_image(), device
-    )
+    state = image_to_tensor(controller.screen_image(), device)
     locs = set()
     xy = set()
     imgs = []

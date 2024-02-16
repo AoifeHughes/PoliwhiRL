@@ -9,14 +9,16 @@ received = 0xCF60
 money = 0xD84E
 party_base = 0xDCDF
 num_pokemon = 0xDCD7
+
 locations = {
-    6: "DownstairsPlayersHouse",
-    # 0: "UpstairsPlayersHouse1",
-    # 7: "UpstairsPlayersHouse2",
-    4: "OutsideStartingArea",
-    5: "ProfessorElmsLab",
-    8: "NPC_house1",
-    9: "NPC_house2",
+    "DownstairsPlayersHouse": 6,
+    "OutsideStartingArea": 4,
+    "ProfessorElmsLab": 5,
+    "NPC_house1": 8,
+    "NPC_house2": 9,
+    "MrPokemonsHouse": 10,
 }
+
+
 pokedex_seen = (0xDEB9, 0xDED8)
 pokedex_owned = (0xDE99, 0xDEB8)
