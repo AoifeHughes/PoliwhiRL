@@ -149,6 +149,17 @@ def run(
             ep_len += 1
         rewards.append(total_reward)
         if episode % 100 == 0 and episode > 0:
+            document(
+                episode,
+                ep_len,
+                env.get_screen(),
+                action,
+                reward,
+                done,
+                epsilon,
+                "train",
+                env.get_current_location(),
+            )
             plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
         if episode % checkpoint_interval == 0 and episode > 0:
             save_checkpoint(
