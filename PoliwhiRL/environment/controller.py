@@ -96,6 +96,12 @@ class Controller:
         return np.random.choice(self.action_space)
 
     def log_info_on_reset(self):
+        new_dict = {}
+        for outer_key, inner_dict in self.has_reached_reward_locations_xy.items():
+            new_inner_dict = {str(inner_key): value for inner_key, value in inner_dict.items()}
+            new_dict[outer_key] = new_inner_dict
+
+        self.has_reached_reward_locations_xy = new_dict
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
             "num_pokemon_seen": self.pkdex_seen(),
@@ -127,6 +133,7 @@ class Controller:
     def write_log(self, filepath):
         if not os.path.isdir(os.path.dirname(filepath)):
             os.mkdir(os.path.dirname(filepath))
+
 
         with open(filepath, "w") as f:
             json.dump(self.runs_data, f, indent=4)
