@@ -4,11 +4,15 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     save_checkpoint,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
 from tqdm import tqdm
-from PoliwhiRL.models.RainbowDQN.utils import beta_by_frame, epsilon_by_frame
+from PoliwhiRL.models.RainbowDQN.utils import (
+    beta_by_frame,
+    epsilon_by_frame_with_reward,
+)
 import random
 import torch
+import numpy as np
 
 
 def run(
@@ -38,9 +42,11 @@ def run(
     checkpoint_interval,
     epsilon_by_location,
     frames_in_loc,
-    eval_mode=False
+    reward_threshold,
+    reward_sensitivity,
+    reward_window_size,
+    eval_mode=False,
 ):
-
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         state = env.reset()
         if eval_mode:
@@ -50,15 +56,24 @@ def run(
         total_reward = 0
         ep_len = 0
         while True:
+            local_rewards = []
+            avg_reward = (
+                np.mean(local_rewards[-reward_window_size:])
+                if len(local_rewards) > reward_window_size
+                else 0
+            )
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
-            epsilon = epsilon_by_frame(
+            epsilon = epsilon_by_frame_with_reward(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
                 else frame_idx,
                 epsilon_start,
                 epsilon_final,
-                epsilon_decay if env.get_current_location() != 4 else epsilon_decay*10, # 4 is outside and it needs some extra exploration
+                epsilon_decay,
+                avg_reward,
+                reward_threshold,
+                reward_sensitivity,
             )
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(
@@ -79,8 +94,8 @@ def run(
             else:
                 action = env.random_move()
 
-
             next_state, reward, done = env.step(action)
+            local_rewards.append(reward)
             if eval_mode:
                 if done:
                     break
@@ -114,6 +129,19 @@ def run(
             if loss is not None:
                 losses.append(loss)
 
+            if eval_mode:
+                document(
+                    episode,
+                    ep_len,
+                    env.get_screen(),
+                    action,
+                    reward,
+                    done,
+                    epsilon,
+                    "eval",
+                    env.get_current_location(),
+                )
+
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
             if done:
@@ -125,15 +153,15 @@ def run(
         if episode % checkpoint_interval == 0 and episode > 0:
             save_checkpoint(
                 {
-                "episode": episode,
-                "frame_idx": frame_idx,
-                "policy_net_state_dict": policy_net.state_dict(),
-                "target_net_state_dict": target_net.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "replay_buffer": replay_buffer.state_dict(),
-                "frames_in_loc": frames_in_loc,
-                "rewards": rewards,
-                "epsilon_by_location" : epsilon_by_location
+                    "episode": episode,
+                    "frame_idx": frame_idx,
+                    "policy_net_state_dict": policy_net.state_dict(),
+                    "target_net_state_dict": target_net.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "replay_buffer": replay_buffer.state_dict(),
+                    "frames_in_loc": frames_in_loc,
+                    "rewards": rewards,
+                    "epsilon_by_location": epsilon_by_location,
                 },
                 filename=f"{checkpoint_path.replace('.pth','')}_ep{episode}.pth",
             )

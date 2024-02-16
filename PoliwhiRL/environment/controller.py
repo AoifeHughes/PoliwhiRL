@@ -2,16 +2,17 @@
 import io
 from pyboy import PyBoy, WindowEvent
 import os
-import PoliwhiRL.environment.RAM_locations as RAM_locations
+from . import RAM_locations
 import PoliwhiRL.utils.OCR as OCR
 import numpy as np
 import shutil
 import tempfile
-from PoliwhiRL.environment.rewards import calc_rewards
-from PoliwhiRL.utils.utils import document
+from .rewards import calc_rewards
+from PoliwhiRL.utils import document
 import time
 import json
-from PoliwhiRL.environment.ImageMemory import ImageMemory
+from .imagememory import ImageMemory
+import pickle
 
 
 class Controller:
@@ -22,37 +23,29 @@ class Controller:
         timeout=100,
         log_path="./logs/log.json",
         use_sight=False,
-        scaling_factor=0.5
+        scaling_factor=0.5,
+        extra_files=[],
+        reward_locations_xy={},
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
-        rom_root = os.path.dirname(rom_path)
         self.log_path = log_path
-        self.state_path = state_path
         self.ogTimeout = timeout
         self.timeout = timeout
         self.timeoutcap = timeout * 1000
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
-        # copy other files to the temporary directory
-        self.paths = [
-            shutil.copy(file, self.temp_dir)
-            for file in [
-                rom_path,
-                self.state_path,
-                f"{rom_root}/Pokemon - Crystal Version.gbc.ram",
-                f"{rom_root}/Pokemon - Crystal Version.gbc.rtc",
-            ]
-            if file is not None
-        ]
+        self.reward_locations_xy = reward_locations_xy
+        files_to_copy = [rom_path, state_path]
+        files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
 
+        self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
+        self.rom_path = self.paths[0]
+        self.state_path = self.paths[1]
         # Initialize PyBoy with the ROM in the temporary directory
-        self.pyboy = PyBoy(self.paths[0], debug=False, window_type="headless")
+        self.pyboy = PyBoy(rom_path, debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
-        if self.state_path is not None:
-            with open(self.state_path, "rb") as stateFile:
-                self.pyboy.load_state(stateFile)
 
         self.action_space_buttons = np.array(
             [
@@ -93,28 +86,44 @@ class Controller:
 
         self.reset(init=True)
 
+    def get_has_reached_reward_locations_xy(self):
+        return self.has_reached_reward_locations_xy
+
+    def get_reward_locations_xy(self):
+        return self.reward_locations_xy
 
     def random_move(self):
         return np.random.choice(self.action_space)
 
     def log_info_on_reset(self):
-       
+        new_dict = {}
+        for outer_key, inner_dict in self.has_reached_reward_locations_xy.items():
+            new_inner_dict = {
+                str(inner_key): value for inner_key, value in inner_dict.items()
+            }
+            new_dict[outer_key] = new_inner_dict
 
+        self.has_reached_reward_locations_xy = new_dict
         self.runs_data[self.run] = {
             "used_sight": self.use_sight,
             "num_pokemon_seen": self.pkdex_seen(),
             "num_pokemon_owned": self.pkdex_owned(),
             "num_images_seen": self.imgs.num_images(),
             "player_money": self.get_player_money(),
-            "visited_locations": len(self.locs),
+            "has_reached_reward_locations_xy": self.has_reached_reward_locations_xy,
+            "reward_locations_xy": self.reward_locations_xy,
+            "visited_locations": len(self.locations),
             "visited_xy": len(self.xy),
             "max_total_level": self.max_total_level,
             "max_total_exp": self.max_total_exp,
+            "max_total_hp": self.max_total_hp,
             "steps": self.steps,
-            "rewards_per_location": {k:v for k,v in self.rewards_per_location.items() if len(v) > 0},
+            "rewards_per_location": {
+                k: v for k, v in self.rewards_per_location.items() if len(v) > 0
+            },
             "buttons": self.buttons,
             "state_file": self.state_path,
-            "rom_path": self.paths[0],
+            "rom_path": self.rom_path,
             "timeout": self.timeout,
             "timeoutcap": self.timeoutcap,
             "run_time": time.time() - self.run_time,
@@ -140,6 +149,17 @@ class Controller:
     def set_save_on_reset(self):
         self.save_on_reset = True
 
+    def reset_has_reached_reward_locations_xy(self):
+        self.has_reached_reward_locations_xy = {}
+        for _, v in self.reward_locations_xy.items():
+            loc = v[0]
+            x = v[1]
+            y = v[2]
+            if loc not in self.has_reached_reward_locations_xy:
+                self.has_reached_reward_locations_xy[loc] = {(x, y): False}
+            else:
+                self.has_reached_reward_locations_xy[loc][(x, y)] = False
+
     def reset(self, init=False):
         if init:
             self.imgs = ImageMemory()
@@ -155,15 +175,17 @@ class Controller:
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
-        with open(self.paths[1], "rb") as stateFile:
+        with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
+        self.reset_has_reached_reward_locations_xy()
         self.max_pkmn_seen = 0
         self.save_on_reset = False
         self.max_pkmn_owned = 0
         self.max_total_level = 0
         self.max_total_exp = 0
+        self.max_total_hp = 0
         self.max_money = 0
-        self.locs = set()
+        self.locations = set()
         self.xy = set()
         self.rewards_per_location = {i: [] for i in range(256)}
         self.reward = 0
@@ -175,8 +197,6 @@ class Controller:
         self.step(len(self.action_space) - 1)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
-    
-    
 
     def save_state(self, file):
         self.pyboy.save_state(file)
@@ -208,7 +228,7 @@ class Controller:
     def screen_image(self):
         # Original image
         original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
-        
+
         # Only resize if scaling_factor is not 1
         if self.scaling_factor == 1.0:
             return original_image
@@ -217,10 +237,16 @@ class Controller:
             original_height, original_width, num_channels = original_image.shape
             new_height = int(original_height * self.scaling_factor)
             new_width = int(original_width * self.scaling_factor)
-            
+
             # Reshape and average to downscale the image
-            resized_image = original_image.reshape(new_height, original_height // new_height, new_width, original_width // new_width, num_channels).mean(axis=(1, 3))
-            
+            resized_image = original_image.reshape(
+                new_height,
+                original_height // new_height,
+                new_width,
+                original_width // new_width,
+                num_channels,
+            ).mean(axis=(1, 3))
+
             return resized_image.astype(np.uint8)
 
     def get_frames_in_current_location(self):
@@ -242,7 +268,7 @@ class Controller:
 
     def get_current_location(self):
         loc = self.pyboy.get_memory_value(RAM_locations.location)
-        if loc == 7: # starting zone is also 7 if you leave and come back
+        if loc == 7:  # starting zone is also 7 if you leave and come back
             loc = 0
         return loc
 
@@ -299,10 +325,72 @@ class Controller:
         text = OCR.extract_text(OCR.preprocess_image(self.screen_image()))
         return text
 
-    def create_memory_state(self, controller):
-        virtual_file = io.BytesIO()
-        self.save_state(virtual_file)
-        return virtual_file
+    def load_stored_controller_state(self, file_path):
+        # Load the combined state from disk
+        with open(file_path, "rb") as file:
+            saved_state = pickle.load(file)
+
+        # Restore the emulator state
+        emulator_state = io.BytesIO(saved_state["emulator_state"])
+        self.pyboy.load_state(emulator_state)
+
+        # Restore the Controller state
+        controller_state = saved_state["controller_state"]
+        for key, value in controller_state.items():
+            setattr(self, key, value)
+
+    def store_controller_state(self, file_loc):
+        emulator_state = io.BytesIO()
+        self.pyboy.save_state(emulator_state)
+
+        controller_state = {
+            "temp_dir": self.temp_dir,
+            "log_path": self.log_path,
+            "state_path": self.state_path,
+            "has_reached_reward_locations_xy": self.has_reached_reward_locations_xy,
+            "reward_locations_xy": self.reward_locations_xy,
+            "ogTimeout": self.ogTimeout,
+            "timeout": self.timeout,
+            "timeoutcap": self.timeoutcap,
+            "frames_per_loc": self.frames_per_loc,
+            "use_sight": self.use_sight,
+            "scaling_factor": self.scaling_factor,
+            "paths": self.paths,
+            "runs_data": self.runs_data,
+            "action_space_buttons": self.action_space_buttons.tolist(),
+            "action_space": self.action_space.tolist(),
+            "event_dict_press": {
+                key: value for key, value in self.event_dict_press.items()
+            },
+            "event_dict_release": {
+                key: value for key, value in self.event_dict_release.items()
+            },
+            "imgs": self.imgs,
+            "max_pkmn_seen": self.max_pkmn_seen,
+            "save_on_reset": self.save_on_reset,
+            "max_pkmn_owned": self.max_pkmn_owned,
+            "max_total_level": self.max_total_level,
+            "max_total_exp": self.max_total_exp,
+            "max_total_hp": self.max_total_hp,
+            "max_money": self.max_money,
+            "locations": list(self.locations),
+            "xy": list(self.xy),
+            "rewards_per_location": self.rewards_per_location,
+            "reward": self.reward,
+            "button": self.button,
+            "buttons": self.buttons,
+            "steps": self.steps,
+            "run": self.run,
+            "run_time": self.run_time,
+        }
+
+        saved_state = {
+            "emulator_state": emulator_state.getvalue(),
+            "controller_state": controller_state,
+        }
+
+        with open(file_loc, "wb") as file:
+            pickle.dump(saved_state, file)
 
     def store_state(self, state, i):
         # check states folder exists and create if not
@@ -325,7 +413,6 @@ class Controller:
             self.get_current_location(),
         )
 
-
     def pkdex_seen(self):
         start_address, end_address = RAM_locations.pokedex_seen
 
@@ -333,7 +420,7 @@ class Controller:
         for address in range(start_address, end_address + 1):
             # Retrieve the byte value from the current address
             byte_value = self.pyboy.get_memory_value(address)
-            
+
             # Count the number of bits set to 1 (i.e., Pokémon seen) in this byte
             while byte_value:
                 total_seen += byte_value & 1
@@ -348,7 +435,7 @@ class Controller:
         for address in range(start_address, end_address + 1):
             # Retrieve the byte value from the current address
             byte_value = self.pyboy.get_memory_value(address)
-            
+
             # Count the number of bits set to 1 (i.e., Pokémon owned) in this byte
             while byte_value:
                 total_owned += byte_value & 1

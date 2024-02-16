@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
-from PoliwhiRL.environment.controls import Controller
+from PoliwhiRL.environment.controller import Controller
 from PoliwhiRL.utils.utils import (
     save_results,
     plot_best_attempts,
