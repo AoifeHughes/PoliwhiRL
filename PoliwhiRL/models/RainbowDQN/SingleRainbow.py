@@ -65,9 +65,11 @@ def run(
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
             epsilon = epsilon_by_frame_with_reward(
-                frames_in_loc[env.get_current_location()]
-                if epsilon_by_location
-                else frame_idx,
+                (
+                    frames_in_loc[env.get_current_location()]
+                    if epsilon_by_location
+                    else frame_idx
+                ),
                 epsilon_start,
                 epsilon_final,
                 epsilon_decay,
@@ -77,9 +79,11 @@ def run(
             )
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(
-                frames_in_loc[env.get_current_location()]
-                if epsilon_by_location
-                else frame_idx,
+                (
+                    frames_in_loc[env.get_current_location()]
+                    if epsilon_by_location
+                    else frame_idx
+                ),
                 beta_start,
                 beta_frames,
             )

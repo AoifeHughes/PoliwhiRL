@@ -59,18 +59,22 @@ def worker(
             frames_in_loc[local_env.get_current_location()] += 1
             frame_idxs.append(frame_idx)
             epsilon = epsilon_by_frame_cyclic(
-                frames_in_loc[local_env.get_current_location()]
-                if epsilon_by_location
-                else frame_idx,
+                (
+                    frames_in_loc[local_env.get_current_location()]
+                    if epsilon_by_location
+                    else frame_idx
+                ),
                 epsilon_start,
                 epsilon_final,
                 epsilon_decay,
             )
             epsilon_values.append(epsilon)
             beta = beta_by_frame(
-                frames_in_loc[local_env.get_current_location()]
-                if epsilon_by_location
-                else frame_idx,
+                (
+                    frames_in_loc[local_env.get_current_location()]
+                    if epsilon_by_location
+                    else frame_idx
+                ),
                 beta_start,
                 beta_frames,
             )
