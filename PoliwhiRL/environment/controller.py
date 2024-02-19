@@ -215,8 +215,8 @@ class Controller:
         self.pyboy._rendering(True)
         self.pyboy.tick()
         next_state = self.screen_image()
+        self.reward = calc_rewards(self, use_sight=self.use_sight)
         if not init:
-            self.reward = calc_rewards(self, use_sight=self.use_sight)
             self.rewards.append(self.reward)
             self.rewards_per_location[self.get_current_location()].append(self.reward)
             self.steps += 1
@@ -226,6 +226,8 @@ class Controller:
                 self.frames_per_loc[self.get_current_location()] + 1
             )
             self.done = True if self.steps == self.timeout else False
+        else:
+            self.reward = 0
         return next_state, self.reward, self.done
 
     def screen_image(self):
@@ -404,9 +406,9 @@ class Controller:
         with open(f"./states/state_{i}.state", "wb") as f:
             f.write(state.read())
 
-    def record(self, ep, e, name):
+    def record(self, e, name):
         document(
-            ep,
+            self.run,
             self.steps,
             self.screen_image(),
             self.button,
@@ -415,6 +417,8 @@ class Controller:
             e,
             name,
             self.get_current_location(),
+            self.get_XY()[0],
+            self.get_XY()[1],
         )
 
     def pkdex_seen(self):

@@ -28,7 +28,7 @@ def select_action(state, epsilon, device, movements, model):
 
 
 def document(
-    episode_id, step_id, img, button_press, reward, timeout, epsilon, phase, location
+    episode_id, step_id, img, button_press, reward, timeout, epsilon, phase, location, x, y
 ):
     try:
         if not os.path.isdir("./runs"):
@@ -47,7 +47,7 @@ def document(
         img = Image.fromarray(img)
 
     img.save(
-        f"{save_dir}/step_{step_id}_btn_{button_press}_reward_{np.around(reward,2)}_ep_{np.around(epsilon,2)}_loc_{location}_timeout_{timeout}.png"
+        f"{save_dir}/step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}.png"
     )
 
 
