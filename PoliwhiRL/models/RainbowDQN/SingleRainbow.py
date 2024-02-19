@@ -132,16 +132,16 @@ def run(
 
             if eval_mode or episode % 100 == 0:
                 document(
-                episode,
-                ep_len,
-                env.screen_image(),
-                og_action,
-                local_rewards[-1],
-                env.timeout,
-                epsilon,
-                "train",
-                env.get_current_location(),
-            )
+                    episode,
+                    ep_len,
+                    env.screen_image(),
+                    og_action,
+                    local_rewards[-1],
+                    env.timeout,
+                    epsilon,
+                    "train",
+                    env.get_current_location(),
+                )
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
