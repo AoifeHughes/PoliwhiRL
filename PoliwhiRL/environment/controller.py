@@ -23,7 +23,7 @@ class Controller:
         timeout=100,
         log_path="./logs/log.json",
         use_sight=False,
-        scaling_factor=0.5,
+        scaling_factor=1,
         extra_files=[],
         reward_locations_xy={},
     ):
