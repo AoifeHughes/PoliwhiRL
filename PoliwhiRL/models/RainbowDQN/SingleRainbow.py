@@ -64,6 +64,7 @@ def run(
             )
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
+
             epsilon = epsilon_by_frame(
                 frames_in_loc[env.get_current_location()]
                 if epsilon_by_location
@@ -71,10 +72,8 @@ def run(
                 epsilon_start,
                 epsilon_final,
                 epsilon_decay,
-                avg_reward,
-                reward_threshold,
-                reward_sensitivity,
             )
+
             epsilon_values.append(epsilon)  # Log epsilon value
             beta = beta_by_frame(
                 frames_in_loc[env.get_current_location()]
@@ -130,18 +129,8 @@ def run(
             if loss is not None:
                 losses.append(loss)
 
-            if eval_mode or episode % 100 == 0:
-                document(
-                episode,
-                ep_len,
-                env.screen_image(),
-                og_action,
-                local_rewards[-1],
-                env.timeout,
-                epsilon,
-                "train",
-                env.get_current_location(),
-            )
+            if eval_mode or episode % 5 == 0:
+                env.record(epsilon, "DoubleDQN")
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
