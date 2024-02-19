@@ -118,6 +118,7 @@ class Controller:
             "max_total_exp": self.max_total_exp,
             "max_total_hp": self.max_total_hp,
             "steps": self.steps,
+            "rewards": self.rewards,
             "rewards_per_location": {
                 k: v for k, v in self.rewards_per_location.items() if len(v) > 0
             },
@@ -170,7 +171,7 @@ class Controller:
             total_reward = 0
             for _, v in self.rewards_per_location.items():
                 total_reward += sum(v)
-            if total_reward > 4:
+            if total_reward > 8:
                 self.set_save_on_reset()
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
@@ -187,6 +188,7 @@ class Controller:
         self.max_money = 0
         self.locations = set()
         self.xy = set()
+        self.rewards = []
         self.rewards_per_location = {i: [] for i in range(256)}
         self.reward = 0
         self.button = None
@@ -194,14 +196,15 @@ class Controller:
         self.buttons = []
         self.run += 1
         self.run_time = time.time()
-        self.step(len(self.action_space) - 1)  # pass
+        self.done = False
+        self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
 
     def save_state(self, file):
         self.pyboy.save_state(file)
 
-    def step(self, movement, ticks_per_input=10, wait=480):
+    def step(self, movement, ticks_per_input=10, wait=480, init=False):
         self.pyboy._rendering(False)
         movement = self.action_space_buttons[movement]
         if movement != "PASS":
@@ -214,15 +217,17 @@ class Controller:
         self.pyboy._rendering(True)
         self.pyboy.tick()
         next_state = self.screen_image()
-        self.reward = calc_rewards(self, use_sight=self.use_sight)
-        self.rewards_per_location[self.get_current_location()].append(self.reward)
-        self.steps += 1
-        self.button = movement
-        self.buttons.append(movement)
-        self.frames_per_loc[self.get_current_location()] = (
-            self.frames_per_loc[self.get_current_location()] + 1
-        )
-        self.done = True if self.steps == self.timeout else False
+        if not init:
+            self.reward = calc_rewards(self, use_sight=self.use_sight)
+            self.rewards.append(self.reward)
+            self.rewards_per_location[self.get_current_location()].append(self.reward)
+            self.steps += 1
+            self.button = movement
+            self.buttons.append(movement)
+            self.frames_per_loc[self.get_current_location()] = (
+                self.frames_per_loc[self.get_current_location()] + 1
+            )
+            self.done = True if self.steps == self.timeout else False
         return next_state, self.reward, self.done
 
     def screen_image(self):
@@ -353,6 +358,7 @@ class Controller:
             "timeout": self.timeout,
             "timeoutcap": self.timeoutcap,
             "frames_per_loc": self.frames_per_loc,
+            "rewards": self.rewards,
             "use_sight": self.use_sight,
             "scaling_factor": self.scaling_factor,
             "paths": self.paths,

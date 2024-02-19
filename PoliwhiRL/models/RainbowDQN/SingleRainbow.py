@@ -93,8 +93,9 @@ def run(
                     action = q_values.max(1)[1].item()
             else:
                 action = env.random_move()
-
             next_state, reward, done = env.step(action)
+            og_action = action
+            og_action = env.action_space_buttons[og_action]
             local_rewards.append(reward)
             if eval_mode:
                 if done:
@@ -129,18 +130,18 @@ def run(
             if loss is not None:
                 losses.append(loss)
 
-            if eval_mode:
+            if eval_mode or episode % 100 == 0:
                 document(
-                    episode,
-                    ep_len,
-                    env.get_screen(),
-                    action,
-                    reward,
-                    done,
-                    epsilon,
-                    "eval",
-                    env.get_current_location(),
-                )
+                episode,
+                ep_len,
+                env.screen_image(),
+                og_action,
+                local_rewards[-1],
+                env.timeout,
+                epsilon,
+                "train",
+                env.get_current_location(),
+            )
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
@@ -148,18 +149,7 @@ def run(
                 break
             ep_len += 1
         rewards.append(total_reward)
-        if episode % 100 == 0 and episode > 0:
-            document(
-                episode,
-                ep_len,
-                env.get_screen(),
-                action,
-                reward,
-                done,
-                epsilon,
-                "train",
-                env.get_current_location(),
-            )
+        if episode % 100 == 0:
             plot_best_attempts("./results/", "", "RainbowDQN_latest_single", rewards)
         if episode % checkpoint_interval == 0 and episode > 0:
             save_checkpoint(

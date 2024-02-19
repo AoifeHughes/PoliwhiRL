@@ -6,7 +6,7 @@ do
         continue
     fi
 
-    python main.py --device mps --model RainbowDQN --checkpoint_interval 50000 --epsilon_by_location --num_episodes 500 --sight
+    python main.py --device mps --model RainbowDQN --checkpoint_interval 1000 --epsilon_by_location --num_episodes 250 --sight
     mkdir run_$i
     mv results run_$i
     mv runs/* run_$i
