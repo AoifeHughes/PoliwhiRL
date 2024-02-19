@@ -46,13 +46,13 @@ def run(
     beta_frames = 1000
     frame_idx = 0
     epsilon_start = 1.0
-    epsilon_final = 0.01
-    epsilon_decay = 50000
+    epsilon_final = 0.1
+    epsilon_decay = 100000
     learning_rate = 1e-4
     capacity = 50000
     update_target_every = 1000
     reward_threshold = 0.3
-    reward_sensitivity = 0.15
+    reward_sensitivity = 0.01
     reward_window_size = 10
     losses = []
     epsilon_values = []  # Tracking epsilon values for exploration metrics

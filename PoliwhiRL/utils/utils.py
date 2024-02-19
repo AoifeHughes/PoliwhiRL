@@ -39,7 +39,7 @@ def document(
     # check if all folders and subfolders exist
     if not os.path.isdir(fldr):
         os.mkdir(fldr)
-    save_dir = f"./{fldr}/{timeout}_{episode_id}_{np.around(epsilon,2)}"
+    save_dir = f"./{fldr}/{episode_id}"
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
     # save image
@@ -47,7 +47,7 @@ def document(
         img = Image.fromarray(img)
 
     img.save(
-        f"{save_dir}/step_{step_id}_{button_press}_{np.around(reward,2)}_{location}.png"
+        f"{save_dir}/step_{step_id}_btn_{button_press}_reward_{np.around(reward,2)}_ep_{np.around(epsilon,2)}_loc_{location}_timeout_{timeout}.png"
     )
 
 
