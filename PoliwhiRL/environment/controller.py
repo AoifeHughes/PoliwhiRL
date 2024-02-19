@@ -171,8 +171,6 @@ class Controller:
             total_reward = 0
             for _, v in self.rewards_per_location.items():
                 total_reward += sum(v)
-            if total_reward > 8:
-                self.set_save_on_reset()
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
