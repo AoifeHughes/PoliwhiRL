@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import matplotlib.pyplot as plt
 import sys
@@ -11,15 +12,15 @@ if len(sys.argv) < 2:
 file_name = sys.argv[1]
 
 # Read the JSON file
-with open(file_name, 'r') as file:
+with open(file_name, "r") as file:
     data = json.load(file)
 
 # Extract epsilon_values
-epsilon_values = data['rewards']
+epsilon_values = data["rewards"]
 
 # Plot the epsilon_values
 plt.plot(epsilon_values)
-plt.title('Epsilon Values Over Time')
-plt.xlabel('Time Step')
-plt.ylabel('Epsilon Value')
+plt.title("Epsilon Values Over Time")
+plt.xlabel("Time Step")
+plt.ylabel("Epsilon Value")
 plt.show()
