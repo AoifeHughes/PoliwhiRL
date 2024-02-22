@@ -10,7 +10,6 @@ def update_for_locations(controller, total_reward, default_reward):
             total_reward += default_reward * 100
             controller.extend_timeout(2000)
             controller.reset_has_reached_reward_locations_xy()
-            controller.set_save_on_reset()
             try:
                 controller.store_controller_state("./PerfectRunState.pkl")
                 print("Made it to Mr. Pokemon's House")
@@ -64,7 +63,6 @@ def update_for_pokedex(controller, total_reward, default_reward):
     if controller.pkdex_owned() > controller.max_pkmn_owned:
         if controller.pkdex_owned() == 1:
             controller.extend_timeout(1000)
-            controller.set_save_on_reset()
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()
         controller.extend_timeout(200)
