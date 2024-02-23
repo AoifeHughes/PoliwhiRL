@@ -80,7 +80,6 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
                 controller.get_current_location()
             ]
         ):
-            # check if been rewarded for this location_xy
             if (
                 controller.has_reached_reward_locations_xy[
                     controller.get_current_location()

@@ -115,9 +115,6 @@ def run(
             checkpoint_interval,
             epsilon_by_location,
             frames_in_loc,
-            reward_threshold,
-            reward_sensitivity,
-            reward_window_size,
             scaling_factor,
         )
     else:

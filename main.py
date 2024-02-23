@@ -24,7 +24,7 @@ def parse_args():
         default=config.get("rom_path", "./emu_files/Pokemon - Crystal Version.gbc"),
     )
     parser.add_argument(
-        "scaling_factor", type=float, default=config.get("scaling_factor", 1)
+        "--scaling_factor", type=float, default=config.get("scaling_factor", 1)
     )
     parser.add_argument(
         "--state_path",

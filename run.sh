@@ -5,7 +5,7 @@ device="mps"
 model="RainbowDQN"
 checkpoint_interval=100
 epsilon_by_location="--epsilon_by_location" # This is a flag
-num_episodes=1000
+num_episodes=500
 base_episode_length=500 # Base episode length before multiplication
 scale_factor=0.5
 
