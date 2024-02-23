@@ -46,7 +46,6 @@ def run(
     eval_mode=False,
 ):
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
-        state = env.reset()
         if eval_mode:
             env.set_save_on_reset()
         state = image_to_tensor(state, device)
@@ -149,6 +148,7 @@ def run(
                 },
                 filename=f"{checkpoint_path.replace('.pth','')}_ep{episode}.pth",
             )
+        state = env.reset()
 
     env.close()
 
