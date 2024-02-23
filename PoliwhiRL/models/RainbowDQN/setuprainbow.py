@@ -29,7 +29,7 @@ def run(
     epsilon_by_location=False,
     extra_files=[],
     reward_locations_xy={},
-    scaling_factor=1
+    scaling_factor=1,
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -40,7 +40,7 @@ def run(
         use_sight=sight,
         extra_files=extra_files,
         reward_locations_xy=reward_locations_xy,
-        scaling_factor=scaling_factor
+        scaling_factor=scaling_factor,
     )
     gamma = 0.99
     alpha = 0.6
@@ -118,8 +118,7 @@ def run(
             reward_threshold,
             reward_sensitivity,
             reward_window_size,
-            scaling_factor
-
+            scaling_factor,
         )
     else:
         losses, rewards_n, memories = run_rainbow_parallel(
@@ -152,8 +151,7 @@ def run(
             frames_in_loc,
             extra_files,
             reward_locations_xy,
-            scaling_factor
-
+            scaling_factor,
         )
 
     total_time = time.time() - start_time  # Total training time

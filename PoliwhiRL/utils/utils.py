@@ -28,7 +28,18 @@ def select_action(state, epsilon, device, movements, model):
 
 
 def document(
-    episode_id, step_id, img, button_press, reward, timeout, epsilon, phase, location, x, y, was_random
+    episode_id,
+    step_id,
+    img,
+    button_press,
+    reward,
+    timeout,
+    epsilon,
+    phase,
+    location,
+    x,
+    y,
+    was_random,
 ):
     try:
         if not os.path.isdir("./runs"):

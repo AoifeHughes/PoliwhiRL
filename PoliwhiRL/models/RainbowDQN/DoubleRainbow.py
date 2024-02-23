@@ -34,7 +34,7 @@ def worker(
     epsilon_by_location,
     extra_files,
     reward_locations_xy,
-    scaling_factor
+    scaling_factor,
 ):
     local_env = Controller(
         rom_path,
@@ -44,8 +44,7 @@ def worker(
         use_sight=sight,
         extra_files=extra_files,
         reward_locations_xy=reward_locations_xy,
-        scaling_factor=scaling_factor
-
+        scaling_factor=scaling_factor,
     )
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
@@ -176,8 +175,7 @@ def run(
     frames_in_loc,
     extra_files,
     reward_locations_xy,
-    scaling_factor
-
+    scaling_factor,
 ):
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -212,7 +210,7 @@ def run(
             epsilon_by_location,
             extra_files,
             reward_locations_xy,
-            scaling_factor
+            scaling_factor,
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -262,7 +260,7 @@ def run_batch(
     epsilon_by_location,
     extra_files,
     reward_locations_xy,
-    scaling_factor
+    scaling_factor,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -286,7 +284,7 @@ def run_batch(
             epsilon_by_location,
             extra_files,
             reward_locations_xy,
-            scaling_factor
+            scaling_factor,
         )
         for i in range(num_workers)
     ]
