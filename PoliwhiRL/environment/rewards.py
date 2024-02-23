@@ -56,7 +56,6 @@ def update_for_pokedex(controller, total_reward, default_reward):
         controller.max_pkmn_seen = controller.pkdex_seen()
 
     if controller.pkdex_owned() > controller.max_pkmn_owned:
-
         total_reward += default_reward * 200
         controller.max_pkmn_owned = controller.pkdex_owned()
     return total_reward
@@ -112,6 +111,5 @@ def calc_rewards(controller, default_reward=0.01, use_sight=False):
         update_for_locations,
     ]:
         total_reward = func(controller, total_reward, default_reward)
-
 
     return total_reward
