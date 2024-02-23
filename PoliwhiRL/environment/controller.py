@@ -406,7 +406,7 @@ class Controller:
         with open(f"./states/state_{i}.state", "wb") as f:
             f.write(state.read())
 
-    def record(self, e, name):
+    def record(self, e, name, was_random=False):
         document(
             self.run,
             self.steps,
@@ -419,6 +419,7 @@ class Controller:
             self.get_current_location(),
             self.get_XY()[0],
             self.get_XY()[1],
+            was_random,
         )
 
     def pkdex_seen(self):

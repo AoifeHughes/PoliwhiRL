@@ -23,6 +23,7 @@ def parse_args():
         type=str,
         default=config.get("rom_path", "./emu_files/Pokemon - Crystal Version.gbc"),
     )
+    parser.add_argument("scaling_factor", type=float, default=config.get("scaling_factor", 1))
     parser.add_argument(
         "--state_path",
         type=str,
@@ -95,6 +96,7 @@ def main():
     epsilon_by_location = args.epsilon_by_location
     extra_files = args.extra_files
     reward_locations_xy = {int(k): v for k, v in args.reward_locations_xy.items()}
+    scaling_factor=args.scaling_factor
 
     if erase:
         print("Erasing all logs, checkpoints, runs, and results")
@@ -127,6 +129,7 @@ def main():
             epsilon_by_location,
             extra_files,
             reward_locations_xy,
+            scaling_factor,
         )
     elif args.model == "DQN":
         raise NotImplementedError
