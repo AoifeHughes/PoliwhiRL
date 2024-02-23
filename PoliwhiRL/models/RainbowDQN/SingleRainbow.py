@@ -57,6 +57,7 @@ def run(
             local_rewards = []
             frame_idx += 1
             frames_in_loc[env.get_current_location()] += 1
+            was_random = False
 
             epsilon = epsilon_by_frame(
                 frames_in_loc[env.get_current_location()]
@@ -85,6 +86,7 @@ def run(
                     action = q_values.max(1)[1].item()
             else:
                 action = env.random_move()
+                was_random = True
             next_state, reward, done = env.step(action)
             og_action = action
             og_action = env.action_space_buttons[og_action]
@@ -122,8 +124,7 @@ def run(
             if loss is not None:
                 losses.append(loss)
 
-            if eval_mode or episode % 5 == 0:
-                env.record(epsilon, "DoubleDQN")
+            env.record(epsilon, "DoubleDQN", was_random)
 
             if frame_idx % update_target_every == 0:
                 target_net.load_state_dict(policy_net.state_dict())
