@@ -30,7 +30,7 @@ def select_action(state, epsilon, device, movements, model):
 def document(
     episode_id,
     step_id,
-    img,
+    img,  # Assuming img is a NumPy array in BGR format
     button_press,
     reward,
     timeout,
@@ -47,16 +47,16 @@ def document(
     except Exception as e:
         print(e)
     fldr = "./runs/" + str(phase) + "/"
-    # check if all folders and subfolders exist
+    # Check if all folders and subfolders exist
     if not os.path.isdir(fldr):
         os.mkdir(fldr)
     save_dir = f"./{fldr}/{episode_id}"
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
-    # save image
+    # Convert BGR to RGB
     if not isinstance(img, Image.Image):
-        img = Image.fromarray(img)
-
+        img = Image.fromarray(img[..., ::-1])  # BGR to RGB conversion
+    # Save image
     img.save(
         f"{save_dir}/step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}.png"
     )
