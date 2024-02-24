@@ -9,7 +9,7 @@ num_episodes=500
 base_episode_length=500 # Base episode length before multiplication
 scale_factor=0.5
 
-for ((i=1; i<=2; i++))
+for ((i=1; i<=5; i++))
 do
     # Calculate episode_length for the current iteration
     episode_length=$((base_episode_length * i))

@@ -210,6 +210,7 @@ def run(
         log_path="./logs/rainbow_env_eval.json",
         use_sight=sight,
         extra_files=extra_files,
+        scaling_factor=scaling_factor,
     )
     _ = run_single(
         num_episodes + start_episode,
@@ -238,9 +239,6 @@ def run(
         checkpoint_interval,
         epsilon_by_location,
         frames_in_loc,
-        reward_threshold,
-        reward_sensitivity,
-        reward_window_size,
         scaling_factor,
         eval_mode=True,
     )
