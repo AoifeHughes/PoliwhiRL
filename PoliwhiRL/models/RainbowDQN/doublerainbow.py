@@ -101,7 +101,6 @@ def worker(
                 (state, action, reward, next_state, done, beta, td_error)
             )
             state = next_state
-        # After episode ends, put all experiences and metrics in their respective queues
         experiences.extend(episode_experiences)
         rewards.append(total_reward)
         td_errors.extend(episode_td_errors)
