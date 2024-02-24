@@ -24,7 +24,6 @@ def run(
     sight=False,
     runs_per_worker=100,
     num_workers=8,
-    memories=0,
     checkpoint_interval=100,
     epsilon_by_location=False,
     extra_files=[],
