@@ -12,7 +12,6 @@ from PoliwhiRL.models.RainbowDQN.utils import (
 )
 import random
 import torch
-import numpy as np
 
 
 def run(
