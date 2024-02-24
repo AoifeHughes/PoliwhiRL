@@ -35,6 +35,7 @@ def worker(
     extra_files,
     reward_locations_xy,
     scaling_factor,
+    use_grayscale,
 ):
     local_env = Controller(
         rom_path,
@@ -45,6 +46,7 @@ def worker(
         extra_files=extra_files,
         reward_locations_xy=reward_locations_xy,
         scaling_factor=scaling_factor,
+        use_grayscale=use_grayscale,
     )
     experiences, rewards, td_errors, frame_idxs, epsilon_values = [], [], [], [], []
 
@@ -175,6 +177,7 @@ def run(
     extra_files,
     reward_locations_xy,
     scaling_factor,
+    use_grayscale,
 ):
     batches_to_run = num_episodes // (num_workers * runs_per_worker)
     if batches_to_run == 0:
@@ -210,6 +213,7 @@ def run(
             extra_files,
             reward_locations_xy,
             scaling_factor,
+            use_grayscale,
         )
         memories += new_memories
         rewards.extend(new_results)
@@ -260,6 +264,7 @@ def run_batch(
     extra_files,
     reward_locations_xy,
     scaling_factor,
+    use_grayscale,
 ):
     # Prepare arguments for each worker function call
     args_list = [
@@ -284,6 +289,7 @@ def run_batch(
             extra_files,
             reward_locations_xy,
             scaling_factor,
+            use_grayscale
         )
         for i in range(num_workers)
     ]

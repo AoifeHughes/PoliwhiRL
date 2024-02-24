@@ -26,6 +26,7 @@ class Controller:
         scaling_factor=1,
         extra_files=[],
         reward_locations_xy={},
+        use_grayscale=False,
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -39,7 +40,7 @@ class Controller:
         self.reward_locations_xy = reward_locations_xy
         files_to_copy = [rom_path, state_path]
         files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
-
+        self.use_grayscale = use_grayscale
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.rom_path = self.paths[0]
         self.state_path = self.paths[1]
@@ -230,13 +231,23 @@ class Controller:
             self.reward = 0
         return next_state, self.reward, self.done
 
+
     def screen_image(self):
         # Original image
         original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
 
+        # Convert to grayscale if required
+        if self.use_grayscale:
+            # Using luminosity method for grayscale conversion
+            grayscale_image = np.dot(original_image[...,:3], [0.2989, 0.5870, 0.1140])
+            # Expanding dimensions to keep the shape as (height, width, channels)
+            grayscale_image = np.expand_dims(grayscale_image, axis=-1)
+            # Use the grayscale image as the original image
+            original_image = grayscale_image
+
         # Only resize if scaling_factor is not 1
         if self.scaling_factor == 1.0:
-            return original_image
+            return original_image.astype(np.uint8)
         else:
             # Calculate new size
             original_height, original_width, num_channels = original_image.shape

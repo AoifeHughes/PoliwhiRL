@@ -3,13 +3,13 @@
 # Define variables
 device="mps"
 model="RainbowDQN"
-checkpoint_interval=100
+checkpoint_interval=1000
 epsilon_by_location="--epsilon_by_location" # This is a flag
-num_episodes=500
-base_episode_length=500 # Base episode length before multiplication
-scale_factor=0.5
+num_episodes=10000
+base_episode_length=100 # Base episode length before multiplication
+scale_factor=0.25
 
-for ((i=1; i<=5; i++))
+for ((i=1; i<=1; i++))
 do
     # Calculate episode_length for the current iteration
     episode_length=$((base_episode_length * i))

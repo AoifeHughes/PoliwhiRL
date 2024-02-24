@@ -9,9 +9,9 @@ import argparse
 import json
 
 
-def parse_args():
+def parse_args(default_config = "config.json"):
     # Load default configuration from file if exists
-    default_config = "config.json"
+
     config = {}
     if os.path.exists(default_config):
         with open(default_config, "r") as f:
@@ -77,11 +77,19 @@ def parse_args():
         default=config.get("reward_locations_xy", "{}"),
     )
 
+    parser.add_argument("--use_grayscale", action="store_true", default=False)
+    parser.add_argument("--use_config", action="store_true", default=False)
+
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    use_config = args.use_config
+    if use_config:
+        print("Using configuration file")
+        args = parse_args()
+
     rom_path = args.rom_path
     state_path = args.state_path
     episode_length = args.episode_length
@@ -99,6 +107,8 @@ def main():
     extra_files = args.extra_files
     reward_locations_xy = {int(k): v for k, v in args.reward_locations_xy.items()}
     scaling_factor = args.scaling_factor
+    use_grayscale = args.use_grayscale
+
 
     if erase:
         print("Erasing all logs, checkpoints, runs, and results")
@@ -132,6 +142,7 @@ def main():
             extra_files,
             reward_locations_xy,
             scaling_factor,
+            use_grayscale,
         )
     elif args.model == "DQN":
         raise NotImplementedError
