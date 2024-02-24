@@ -1,0 +1,29 @@
+{
+    "rom_path": "./emu_files/Pokemon - Crystal Version.gbc",
+    "state_path": "./emu_files/states/start.state",
+    "episode_length": 25,
+    "device": "cpu",
+    "num_episodes": 10000,
+    "batch_size": 128,
+    "checkpoint": "./checkpoints/RainbowDQN.pth",
+    "model": "RainbowDQN",
+    "sight": false,
+    "erase": false,
+    "parallel": false,
+    "runs_per_worker": 4,
+    "num_workers": 6,
+    "checkpoint_interval": 100,
+    "epsilon_by_location": false,
+    "scaling_factor": 1,
+    "extra_files": [ "./emu_files/Pokemon - Crystal Version.gbc.ram", "./emu_files/Pokemon - Crystal Version.gbc.rtc"],
+    "reward_locations_xy": {
+      "1": [0, 7, 1], 
+      "2": [4, 13, 6],
+      "3": [4, 6, 4],
+      "4": [4, 0, 7],
+      "5": [4, 7, 49],
+      "6": [4, 31, 14],
+      "7": [4, 17, 6]
+  }
+  }
+  

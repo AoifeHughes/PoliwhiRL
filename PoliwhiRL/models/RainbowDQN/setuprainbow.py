@@ -30,6 +30,7 @@ def run(
     extra_files=[],
     reward_locations_xy={},
     scaling_factor=1,
+    use_grayscale=False,
 ):
     start_time = time.time()  # For computational efficiency tracking
     env = Controller(
@@ -53,16 +54,13 @@ def run(
     learning_rate = 1e-4
     capacity = 50000
     update_target_every = 1000
-    reward_threshold = 0.3
-    reward_sensitivity = 0.01
-    reward_window_size = 10
     losses = []
     epsilon_values = []  # Tracking epsilon values for exploration metrics
     beta_values = []  # For priority buffer metrics
     td_errors = []  # For DQN metrics
     rewards = []
     screen_size = env.screen_size()
-    input_shape = (3, int(screen_size[0]), int(screen_size[1]))
+    input_shape = (1 if use_grayscale else 3, int(screen_size[0]), int(screen_size[1]))
     policy_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
     target_net = RainbowDQN(input_shape, len(env.action_space), device).to(device)
     target_net.load_state_dict(policy_net.state_dict())
@@ -88,7 +86,7 @@ def run(
         start_episode = 0
 
     if not run_parallel:
-        losses, rewards_n, memories = run_single(
+        losses, _, memories = run_single(
             start_episode,
             num_episodes,
             env,
@@ -118,7 +116,7 @@ def run(
             scaling_factor,
         )
     else:
-        losses, rewards_n, memories = run_rainbow_parallel(
+        losses, _, memories = run_rainbow_parallel(
             rom_path,
             state_path,
             episode_length,
@@ -149,6 +147,7 @@ def run(
             extra_files,
             reward_locations_xy,
             scaling_factor,
+            use_grayscale
         )
 
     total_time = time.time() - start_time  # Total training time
@@ -211,6 +210,7 @@ def run(
         use_sight=sight,
         extra_files=extra_files,
         scaling_factor=scaling_factor,
+        use_grayscale=use_grayscale
     )
     _ = run_single(
         num_episodes + start_episode,

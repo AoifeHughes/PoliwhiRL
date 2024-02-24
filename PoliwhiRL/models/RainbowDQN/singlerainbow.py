@@ -4,7 +4,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     save_checkpoint,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, document
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
@@ -42,7 +42,6 @@ def run(
     checkpoint_interval,
     epsilon_by_location,
     frames_in_loc,
-    scaling_factor,
     eval_mode=False,
 ):
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
