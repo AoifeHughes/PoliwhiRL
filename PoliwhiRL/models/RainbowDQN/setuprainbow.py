@@ -11,58 +11,78 @@ from .singlerainbow import run as run_single
 from .doublerainbow import run as run_rainbow_parallel
 from PoliwhiRL.utils import plot_best_attempts
 
+
 def setup_environment(config):
     """
     Sets up the environment based on the provided configuration.
     """
     return Controller(
-        config['rom_path'],
-        config['state_path'],
-        timeout=config['episode_length'],
+        config["rom_path"],
+        config["state_path"],
+        timeout=config["episode_length"],
         log_path="./logs/rainbow_env.json",
-        use_sight=config['sight'],
-        extra_files=config['extra_files'],
-        reward_locations_xy=config['reward_locations_xy'],
-        scaling_factor=config['scaling_factor'],
-        use_grayscale=config['use_grayscale']
+        use_sight=config["sight"],
+        extra_files=config["extra_files"],
+        reward_locations_xy=config["reward_locations_xy"],
+        scaling_factor=config["scaling_factor"],
+        use_grayscale=config["use_grayscale"],
     )
+
 
 def initialize_training(config, env):
     """
     Initializes training components such as the policy and target networks, optimizer, and replay buffer.
     """
-    input_shape = (1 if config['use_grayscale'] else 3, *env.screen_size())
-    policy_net = RainbowDQN(input_shape, len(env.action_space), config['device']).to(config['device'])
-    target_net = RainbowDQN(input_shape, len(env.action_space), config['device']).to(config['device'])
-    optimizer = optim.Adam(policy_net.parameters(), lr=config['learning_rate'])
-    replay_buffer = PrioritizedReplayBuffer(config['capacity'], config['alpha'])
+    input_shape = (1 if config["use_grayscale"] else 3, *env.screen_size())
+    policy_net = RainbowDQN(input_shape, len(env.action_space), config["device"]).to(
+        config["device"]
+    )
+    target_net = RainbowDQN(input_shape, len(env.action_space), config["device"]).to(
+        config["device"]
+    )
+    optimizer = optim.Adam(policy_net.parameters(), lr=config["learning_rate"])
+    replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
 
     # Load checkpoint if available and update training components accordingly
     checkpoint = load_checkpoint(config)
     if checkpoint:
-        policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
-        target_net.load_state_dict(checkpoint['target_net_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        replay_buffer.load_state_dict(checkpoint['replay_buffer_state_dict'])
+        policy_net.load_state_dict(checkpoint["policy_net_state_dict"])
+        target_net.load_state_dict(checkpoint["target_net_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        replay_buffer.load_state_dict(checkpoint["replay_buffer_state_dict"])
         # Ensure the target_net is in eval mode
         target_net.eval()
 
     return policy_net, target_net, optimizer, replay_buffer
 
+
 def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
     """
     Runs the training loop, either in single or parallel mode based on configuration.
     """
-    if not config['run_parallel']:
-        return run_single(
-            config, env, policy_net, target_net, optimizer, replay_buffer
-        )
+    if not config["run_parallel"]:
+        return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
     else:
         return run_rainbow_parallel(
             config, policy_net, target_net, optimizer, replay_buffer
         )
 
-def finalize_training(config, start_time, rewards, losses, epsilon_values, beta_values, td_errors, frames_in_loc, epsilons_by_location, policy_net, target_net, optimizer, replay_buffer):
+
+def finalize_training(
+    config,
+    start_time,
+    rewards,
+    losses,
+    epsilon_values,
+    beta_values,
+    td_errors,
+    frames_in_loc,
+    epsilons_by_location,
+    policy_net,
+    target_net,
+    optimizer,
+    replay_buffer,
+):
     """
     Finalizes the training process by logging data, plotting results, and saving a final checkpoint.
     """
@@ -83,9 +103,24 @@ def finalize_training(config, start_time, rewards, losses, epsilon_values, beta_
         json.dump(log_data, outfile, indent=4)
     print("Training log saved to ./logs/training_log.json")
     # Plot results
-    plot_best_attempts("./results/", config['num_episodes'], f"RainbowDQN_{config['run_parallel']}_final", rewards)
+    plot_best_attempts(
+        "./results/",
+        config["num_episodes"],
+        f"RainbowDQN_{config['run_parallel']}_final",
+        rewards,
+    )
     # Save checkpoint
-    save_checkpoint(config, policy_net, target_net, optimizer, replay_buffer, frames_in_loc, rewards, epsilons_by_location)
+    save_checkpoint(
+        config,
+        policy_net,
+        target_net,
+        optimizer,
+        replay_buffer,
+        frames_in_loc,
+        rewards,
+        epsilons_by_location,
+    )
+
 
 def run(**config):
     """
@@ -95,6 +130,28 @@ def run(**config):
     env = setup_environment(config)
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
     # Start training
-    losses, epsilon_values, beta_values, td_errors, rewards, frames_in_loc, epsilons_by_location = run_training(config, env, policy_net, target_net, optimizer, replay_buffer)
+    (
+        losses,
+        epsilon_values,
+        beta_values,
+        td_errors,
+        rewards,
+        frames_in_loc,
+        epsilons_by_location,
+    ) = run_training(config, env, policy_net, target_net, optimizer, replay_buffer)
     # Finalize training
-    finalize_training(config, start_time, rewards, losses, epsilon_values, beta_values, td_errors, frames_in_loc, epsilons_by_location, policy_net, target_net, optimizer, replay_buffer)
+    finalize_training(
+        config,
+        start_time,
+        rewards,
+        losses,
+        epsilon_values,
+        beta_values,
+        td_errors,
+        frames_in_loc,
+        epsilons_by_location,
+        policy_net,
+        target_net,
+        optimizer,
+        replay_buffer,
+    )

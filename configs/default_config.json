@@ -18,7 +18,7 @@
   "epsilon_start": 1.0,
   "epsilon_min": 0.1,
    "epsilon_final": 0.1,
-   "beta_frames": 1000, 
+   "beta_frames": 1000,
    "beta_start": 0.4,
   "gamma": 0.99,
   "target_update": 1000,

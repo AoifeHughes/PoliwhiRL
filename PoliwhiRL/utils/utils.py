@@ -46,7 +46,7 @@ def document(
             os.mkdir("./runs")
     except Exception as e:
         print(e)
-    
+
     fldr = f"./runs/{phase}/"
     # Ensure all directories exist
     os.makedirs(fldr, exist_ok=True)
@@ -55,11 +55,11 @@ def document(
 
     # Determine if the image is grayscale or RGB and handle accordingly
     if img.ndim == 2:  # Grayscale
-        img = Image.fromarray(img, mode='L')  # 'L' mode for grayscale
+        img = Image.fromarray(img, mode="L")  # 'L' mode for grayscale
     elif img.ndim == 3 and img.shape[2] == 3:  # RGB
-        img = Image.fromarray(img, mode='RGB')
+        img = Image.fromarray(img, mode="RGB")
     elif img.ndim == 3 and img.shape[2] == 1:  # Also grayscale but with shape (H, W, 1)
-        img = Image.fromarray(img[:, :, 0], mode='L')
+        img = Image.fromarray(img[:, :, 0], mode="L")
     else:
         raise ValueError("Unsupported image format")
 
