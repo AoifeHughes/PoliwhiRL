@@ -14,7 +14,7 @@ from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     frame_idx = config.get("frame_idx", 0)
-    rewards, losses, epsilon_values, beta_values, td_errors = [], [], [], [], []
+    rewards, losses, epsilon_values, _, td_errors = [], [], [], [], []
     frames_in_loc = {
         i: 0 for i in range(256)
     }  # Assuming 256 possible locations, adjust as needed
@@ -61,7 +61,6 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 beta = beta_by_frame(
                     frame_idx, config["beta_start"], config["beta_frames"]
                 )
-                beta_values.append(beta)
                 # Optimize model after storing experience
                 loss = optimize_model(
                     beta,
@@ -78,7 +77,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
-
+                
             if config["record"]:
                 env.record(epsilon, "rdqn", was_random)
             state = next_state
@@ -98,7 +97,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 epsilons_by_location=None,
             )  # epsilons_by_location is not defined in this context
 
-    return losses, beta_values, td_errors, rewards
+    return losses, rewards, frame_idx
 
 
 def select_action(state, epsilon, env, policy_net, config):
@@ -146,4 +145,4 @@ def post_episode_processing(
 
     # Optionally, plot best attempts periodically
     if episode % 100 == 0:  # Example interval, adjust as needed
-        plot_best_attempts("./results/", episode, "RainbowDQN_latest_single", rewards)
+        plot_best_attempts("./results/", episode , "RainbowDQN_latest_single", rewards)
