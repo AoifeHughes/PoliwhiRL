@@ -153,7 +153,7 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
         optimizer,
         replay_buffer,
         frame_idx,
-        config["checkpoint_path"],
+        config["checkpoint"],
     )
 
     return total_rewards, total_losses, frame_idx
