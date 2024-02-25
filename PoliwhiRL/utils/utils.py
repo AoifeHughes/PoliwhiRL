@@ -30,7 +30,7 @@ def select_action(state, epsilon, device, movements, model):
 def document(
     episode_id,
     step_id,
-    img,  # Assuming img is a NumPy array in BGR format
+    img,  # img is a NumPy array, could be in grayscale or RGB format
     button_press,
     reward,
     timeout,
@@ -46,20 +46,27 @@ def document(
             os.mkdir("./runs")
     except Exception as e:
         print(e)
-    fldr = "./runs/" + str(phase) + "/"
-    # Check if all folders and subfolders exist
-    if not os.path.isdir(fldr):
-        os.mkdir(fldr)
-    save_dir = f"./{fldr}/{episode_id}"
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    # Convert BGR to RGB
-    if not isinstance(img, Image.Image):
-        img = Image.fromarray(img[..., ::-1])  # BGR to RGB conversion
+    
+    fldr = f"./runs/{phase}/"
+    # Ensure all directories exist
+    os.makedirs(fldr, exist_ok=True)
+    save_dir = f"{fldr}/{episode_id}"
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Determine if the image is grayscale or RGB and handle accordingly
+    if img.ndim == 2:  # Grayscale
+        img = Image.fromarray(img, mode='L')  # 'L' mode for grayscale
+    elif img.ndim == 3 and img.shape[2] == 3:  # RGB
+        img = Image.fromarray(img, mode='RGB')
+    elif img.ndim == 3 and img.shape[2] == 1:  # Also grayscale but with shape (H, W, 1)
+        img = Image.fromarray(img[:, :, 0], mode='L')
+    else:
+        raise ValueError("Unsupported image format")
+
+    # Construct filename with relevant information
+    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}.png"
     # Save image
-    img.save(
-        f"{save_dir}/step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}.png"
-    )
+    img.save(os.path.join(save_dir, filename))
 
 
 def save_results(results_path, episodes, results):

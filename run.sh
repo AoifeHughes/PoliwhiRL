@@ -8,6 +8,7 @@ epsilon_by_location="--epsilon_by_location" # This is a flag
 num_episodes=10000
 base_episode_length=100 # Base episode length before multiplication
 scale_factor=0.25
+gray_scale="--use_grayscale" # This is a flag
 
 for ((i=1; i<=1; i++))
 do
@@ -21,7 +22,7 @@ do
     fi
 
     # Execute the Python script with dynamic episode_length
-    python main.py --device $device --model $model --checkpoint_interval $checkpoint_interval $epsilon_by_location --num_episodes $num_episodes --episode_length $episode_length --scaling_factor $scale_factor
+    python main.py --device $device --model $model --checkpoint_interval $checkpoint_interval $epsilon_by_location --num_episodes $num_episodes --episode_length $episode_length --scaling_factor $scale_factor $gray_scale
 
     # Create directory and move files
     mkdir run_$i
