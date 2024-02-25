@@ -9,43 +9,61 @@ from .utils import (
     beta_by_frame,
     save_checkpoint,
     epsilon_by_frame,
-    store_experience
+    store_experience,
 )
 from PoliwhiRL.utils.utils import image_to_tensor
 from PoliwhiRL.environment import Controller
 
+
 def worker(worker_id, config, policy_net, target_net, frame_idx_start):
     # Assuming policy_net and target_net are reconstructed within the worker from state dicts
     env = Controller(
-        rom_path=config['rom_path'],
-        state_path=config['state_path'],
-        timeout=config['episode_length'],
-        use_sight=config['sight'],
-        extra_files=config['extra_files'],
-        reward_locations_xy=config['reward_locations_xy'],
-        scaling_factor=config['scaling_factor'],
-        use_grayscale=config['use_grayscale'],
-        log_path=f"./logs/double_rainbow_env_{worker_id}.json"
+        rom_path=config["rom_path"],
+        state_path=config["state_path"],
+        timeout=config["episode_length"],
+        use_sight=config["sight"],
+        extra_files=config["extra_files"],
+        reward_locations_xy=config["reward_locations_xy"],
+        scaling_factor=config["scaling_factor"],
+        use_grayscale=config["use_grayscale"],
+        log_path=f"./logs/double_rainbow_env_{worker_id}.json",
     )
-    
+
     experiences = []
     rewards_collected = []
     td_errors = []
     frame_idx = frame_idx_start
-    for episode in range(config['runs_per_worker']):
+    for episode in range(config["runs_per_worker"]):
         state = env.reset()
-        state = image_to_tensor(state, config['device'])
+        state = image_to_tensor(state, config["device"])
         total_reward = 0
         done = False
 
         while not done:
-            epsilon = epsilon_by_frame(frame_idx, config['epsilon_start'], config['epsilon_final'], config['epsilon_decay'])
-            beta = beta_by_frame(frame_idx, config['beta_start'], config['beta_frames'])
-            action = select_action(state, epsilon, env, policy_net, config['device'])
+            epsilon = epsilon_by_frame(
+                frame_idx,
+                config["epsilon_start"],
+                config["epsilon_final"],
+                config["epsilon_decay"],
+            )
+            beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
+            action = select_action(state, epsilon, env, policy_net, config["device"])
             next_state, reward, done = env.step(action)
-            next_state = image_to_tensor(next_state, config['device'])
+            next_state = image_to_tensor(next_state, config["device"])
 
-            store_experience(state, action, reward, next_state, done, policy_net, target_net, experiences, config, td_errors, beta)
+            store_experience(
+                state,
+                action,
+                reward,
+                next_state,
+                done,
+                policy_net,
+                target_net,
+                experiences,
+                config,
+                td_errors,
+                beta,
+            )
 
             state = next_state
             total_reward += reward
@@ -55,6 +73,8 @@ def worker(worker_id, config, policy_net, target_net, frame_idx_start):
 
     env.close()
     return experiences, rewards_collected
+
+
 def select_action(state, epsilon, env, policy_net, device):
     if random.random() > epsilon:
         with torch.no_grad():
@@ -69,18 +89,20 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
     total_rewards = []
     total_losses = []
     frame_idx = 0
-    next_target_update = frame_idx + config['target_update']
-    
-    episodes_per_batch = config['num_workers'] * config['runs_per_worker']
-    total_batches = config['num_episodes'] // episodes_per_batch + (1 if config['num_episodes'] % episodes_per_batch > 0 else 0)
+    next_target_update = frame_idx + config["target_update"]
+
+    episodes_per_batch = config["num_workers"] * config["runs_per_worker"]
+    total_batches = config["num_episodes"] // episodes_per_batch + (
+        1 if config["num_episodes"] % episodes_per_batch > 0 else 0
+    )
 
     for batch in tqdm(range(total_batches), desc="Batch Processing"):
         worker_args = [
             (i, config, policy_net, target_net, frame_idx)
-            for i in range(config['num_workers'])
+            for i in range(config["num_workers"])
         ]
-        
-        with Pool(processes=config['num_workers']) as pool:
+
+        with Pool(processes=config["num_workers"]) as pool:
             worker_results = pool.starmap(worker, worker_args)
 
         all_experiences = []
@@ -93,17 +115,33 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
             state, action, reward, next_state, done, beta, td_error = experience
             replay_buffer.add(state, action, reward, next_state, done, td_error)
 
-            loss = optimize_model(beta, policy_net, target_net, replay_buffer, optimizer, config['device'], config['batch_size'], config['gamma'])
+            loss = optimize_model(
+                beta,
+                policy_net,
+                target_net,
+                replay_buffer,
+                optimizer,
+                config["device"],
+                config["batch_size"],
+                config["gamma"],
+            )
             if loss is not None:
                 total_losses.append(loss)
 
         frame_idx += len(all_experiences)
         if frame_idx >= next_target_update:
             target_net.load_state_dict(policy_net.state_dict())
-            next_target_update = frame_idx + config['target_update']
+            next_target_update = frame_idx + config["target_update"]
 
         total_rewards.extend(all_rewards)
 
-    save_checkpoint(policy_net, target_net, optimizer, replay_buffer, frame_idx, config['checkpoint_path'])
+    save_checkpoint(
+        policy_net,
+        target_net,
+        optimizer,
+        replay_buffer,
+        frame_idx,
+        config["checkpoint_path"],
+    )
 
     return total_rewards, total_losses, frame_idx
