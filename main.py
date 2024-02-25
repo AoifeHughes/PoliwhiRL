@@ -9,10 +9,14 @@ import argparse
 import json
 
 
+class StoreBooleanAction(argparse.Action):
+    # Custom action to store boolean values from command line arguments
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values.lower() in ("yes", "true", "t", "1"))
+
+
 def load_default_config():
-    default_config_path = (
-        "./configs/default_config.json"  # Path to the default config file
-    )
+    default_config_path = "./configs/default_config.json"
     if os.path.exists(default_config_path):
         with open(default_config_path, "r") as f:
             return json.load(f)
@@ -39,6 +43,7 @@ def parse_args():
     parser.add_argument(
         "--use_config", type=str, default=None, help="Path to user config file"
     )
+
     (
         args,
         unknown,
@@ -52,7 +57,9 @@ def parse_args():
     # Dynamically add other arguments based on the merged config
     for key, value in config.items():
         if isinstance(value, bool):
-            parser.add_argument(f"--{key}", action="store_true", default=value)
+            parser.add_argument(
+                f"--{key}", type=str, action=StoreBooleanAction, default=value
+            )
         else:
             parser.add_argument(f"--{key}", type=type(value), default=value)
 

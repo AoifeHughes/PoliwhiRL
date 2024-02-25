@@ -1,32 +1,45 @@
 #!/bin/bash
 
-# Define variables
-device="mps"
-model="RainbowDQN"
-checkpoint_interval=1000
-epsilon_by_location="--epsilon_by_location" # This is a flag
-num_episodes=10000
-base_episode_length=100 # Base episode length before multiplication
-scale_factor=0.25
-gray_scale="--use_grayscale" # This is a flag
+base_episode_length=16
+num_workers=6
+runs_per_worker=1
 
-for ((i=1; i<=1; i++))
+# Array to hold grayscale usage flags
+use_grayscale_flags=("true" "false")
+
+# Array for scaling_factor values
+scaling_factors=(0.25 0.5 1)
+
+# Outermost loop for scaling_factor
+for scaling_factor in "${scaling_factors[@]}"
 do
-    # Calculate episode_length for the current iteration
-    episode_length=$((base_episode_length * i))
+    # Outer loop to toggle grayscale flag
+    for use_grayscale in "${use_grayscale_flags[@]}"
+    do
+        for ((i=1; i<=5; i++))
+        do
+            # Calculate episode_length for the current iteration, adjusted by scaling_factor
+            episode_length=$(echo "$base_episode_length * $i * $scaling_factor" | bc)
+            episode_length=${episode_length%.*}  # Convert to integer if necessary
 
-    # Check if the directory already exists
-    if [ -d "run_$i" ]; then
-        echo "Directory run_$i already exists, skipping..."
-        continue
-    fi
+            # Define a directory name that includes scaling_factor
+            dir_name="run_${i}_scale_${scaling_factor}_grayscale_${use_grayscale}"
 
-    # Execute the Python script with dynamic episode_length
-    python main.py --device $device --model $model --checkpoint_interval $checkpoint_interval $epsilon_by_location --num_episodes $num_episodes --episode_length $episode_length --scaling_factor $scale_factor $gray_scale
+            # Check if the directory already exists
+            if [ -d "$dir_name" ]; then
+                echo "Directory $dir_name already exists, skipping..."
+                continue
+            fi
 
-    # Create directory and move files
-    mkdir run_$i
-    mv results run_$i
-    mv runs/* run_$i
-    mv logs run_$i
+            # Execute the Python script with dynamic episode_length, grayscale flag, and scaling factor
+            python main.py --use_config ./configs/multi_config.json --episode_length $episode_length --num_workers $num_workers --runs_per_worker $runs_per_worker --use_grayscale $use_grayscale --scaling_factor $scaling_factor
+
+            # Create directory and move files
+            mkdir "$dir_name"
+            mv results "$dir_name"
+            mv runs/* "$dir_name"
+            mv logs "$dir_name"
+            mv checkpoints "$dir_name"
+        done
+    done
 done

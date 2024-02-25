@@ -196,7 +196,8 @@ class Controller:
         self.button = None
         self.steps = 0
         self.buttons = []
-        self.run += 1
+        if not init:
+            self.run += 1
         self.run_time = time.time()
         self.done = False
         self.step(len(self.action_space) - 1, init=True)  # pass
