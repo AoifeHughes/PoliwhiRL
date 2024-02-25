@@ -234,7 +234,6 @@ class Controller:
             self.reward = 0
         return next_state, self.reward, self.done
 
-
     def screen_image(self):
         # Original image
         original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
@@ -242,7 +241,7 @@ class Controller:
         # Convert to grayscale if required
         if self.use_grayscale:
             # Using luminosity method for grayscale conversion
-            grayscale_image = np.dot(original_image[...,:3], [0.2989, 0.5870, 0.1140])
+            grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
             # Expanding dimensions to keep the shape as (height, width, channels)
             grayscale_image = np.expand_dims(grayscale_image, axis=-1)
             # Use the grayscale image as the original image
