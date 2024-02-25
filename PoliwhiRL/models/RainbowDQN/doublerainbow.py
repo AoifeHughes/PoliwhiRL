@@ -139,13 +139,13 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
 
         total_rewards.extend(all_rewards)
         
-        plot_best_attempts(
-            "./results/",
-            episodes_per_batch * (batch + 1),
-            "DoubleRainbow",
-            total_rewards,
-        )
-        
+        for name in ["DoubleRainbowLatest", f"DobuleRainbow{episodes_per_batch * (batch + 1)}"]:
+            plot_best_attempts(
+                "./results/",
+                name,
+                "DoubleRainbow",
+                total_rewards,
+            )     
 
     save_checkpoint(
         policy_net,
