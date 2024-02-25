@@ -139,7 +139,7 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
 
         total_rewards.extend(all_rewards)
         
-        for name in ["DoubleRainbowLatest", f"DobuleRainbow{episodes_per_batch * (batch + 1)}"]:
+        for name in ["DoubleRainbowLatest", f"DoubleRainbow{episodes_per_batch * (batch + 1)}"]:
             plot_best_attempts(
                 "./results/",
                 name,
@@ -147,13 +147,5 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
                 total_rewards,
             )     
 
-    save_checkpoint(
-        policy_net,
-        target_net,
-        optimizer,
-        replay_buffer,
-        frame_idx,
-        config["checkpoint"],
-    )
 
     return total_rewards, total_losses, frame_idx
