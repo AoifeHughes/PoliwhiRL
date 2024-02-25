@@ -95,7 +95,7 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
         1 if config["num_episodes"] % episodes_per_batch > 0 else 0
     )
 
-    for batch in tqdm(range(total_batches), desc="Batch Processing"):
+    for _ in tqdm(range(total_batches), desc="Batch Processing"):
         worker_args = [
             (i, config, policy_net, target_net, frame_idx)
             for i in range(config["num_workers"])
