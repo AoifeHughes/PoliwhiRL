@@ -69,19 +69,16 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
 
 
 def finalize_training(
-    config,
-    start_time,
-    rewards,
-    losses,
-    epsilon_values,
-    beta_values,
-    td_errors,
-    frames_in_loc,
-    epsilons_by_location,
-    policy_net,
-    target_net,
-    optimizer,
-    replay_buffer,
+        config,
+        start_time,
+        rewards,
+        total_losses,
+        total_td_errors,
+        total_beta_values,
+        policy_net,
+        target_net,
+        optimizer,
+        replay_buffer,
 ):
     """
     Finalizes the training process by logging data, plotting results, and saving a final checkpoint.
@@ -90,12 +87,9 @@ def finalize_training(
     log_data = {
         "total_time": total_time,
         "average_reward": sum(rewards) / len(rewards) if rewards else 0,
-        "losses": losses,
-        "epsilon_values": epsilon_values,
-        "beta_values": beta_values,
-        "td_errors": td_errors,
-        "frames_in_loc": frames_in_loc,
-        "epsilons_by_location": epsilons_by_location,
+        "losses": total_losses,
+        "beta_values": total_beta_values,
+        "td_errors": total_td_errors,
     }
     # Ensure logs directory exists
     os.makedirs("./logs", exist_ok=True)
@@ -116,9 +110,7 @@ def finalize_training(
         target_net,
         optimizer,
         replay_buffer,
-        frames_in_loc,
         rewards,
-        epsilons_by_location,
     )
 
 
@@ -130,26 +122,15 @@ def run(**config):
     env = setup_environment(config)
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
     # Start training
-    (
-        losses,
-        epsilon_values,
-        beta_values,
-        td_errors,
-        rewards,
-        frames_in_loc,
-        epsilons_by_location,
-    ) = run_training(config, env, policy_net, target_net, optimizer, replay_buffer)
+    (total_losses, total_beta_values, total_td_errors, rewards) = run_training(config, env, policy_net, target_net, optimizer, replay_buffer)
     # Finalize training
     finalize_training(
         config,
         start_time,
         rewards,
-        losses,
-        epsilon_values,
-        beta_values,
-        td_errors,
-        frames_in_loc,
-        epsilons_by_location,
+        total_losses,
+        total_td_errors,
+        total_beta_values,
         policy_net,
         target_net,
         optimizer,

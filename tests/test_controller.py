@@ -73,12 +73,3 @@ def test_saving_and_loading_state(controller, temp_state_file):
     controller.store_controller_state(temp_state_file)
     controller.load_stored_controller_state(temp_state_file)
 
-
-# @patch('json.dump')
-# @patch('builtins.open', new_callable=MagicMock)
-# def test_write_log(mock_open, mock_json_dump, controller):
-#     log_path = 'path/to/log.json'
-#     controller.write_log(log_path)
-#     mock_open.assert_called_with(log_path, 'w')
-#     # Verify that json.dump was called with the correct arguments
-#     mock_json_dump.assert_called()

@@ -91,6 +91,8 @@ def select_action(state, epsilon, env, policy_net, device):
 def run(config, policy_net, target_net, optimizer, replay_buffer):
     total_rewards = []
     total_losses = []
+    total_beta_values = []
+    total_td_errors = []
     frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
 
@@ -110,14 +112,18 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
 
         all_experiences = []
         all_rewards = []
+        all_beta_values = []
+        all_td_errors = []
+
         for experiences, rewards in worker_results:
             all_experiences.extend(experiences)
             all_rewards.extend(rewards)
 
         for experience in tqdm(all_experiences, desc="Experience Processing"):
             state, action, reward, next_state, done, beta, td_error = experience
+            all_td_errors.append(td_error)
             replay_buffer.add(state, action, reward, next_state, done, td_error)
-
+            all_beta_values.append(beta)
             loss = optimize_model(
                 beta,
                 policy_net,
@@ -137,6 +143,8 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
             next_target_update = frame_idx + config["target_update"]
 
         total_rewards.extend(all_rewards)
+        total_beta_values.extend(all_beta_values)
+        total_td_errors.extend(all_td_errors)
         
         for name in ["DoubleRainbowLatest", f"DoubleRainbow{episodes_per_batch * (batch + 1)}"]:
             plot_best_attempts(
@@ -146,5 +154,4 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
                 total_rewards,
             )     
 
-
-    return total_rewards, total_losses, frame_idx
+    return total_losses, total_beta_values, total_td_errors, rewards
