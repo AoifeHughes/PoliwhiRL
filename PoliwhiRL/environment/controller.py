@@ -23,9 +23,10 @@ class Controller:
         timeout=100,
         log_path="./logs/log.json",
         use_sight=False,
-        scaling_factor=0.5,
+        scaling_factor=1,
         extra_files=[],
         reward_locations_xy={},
+        use_grayscale=False,
     ):
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -39,7 +40,7 @@ class Controller:
         self.reward_locations_xy = reward_locations_xy
         files_to_copy = [rom_path, state_path]
         files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
-
+        self.use_grayscale = use_grayscale
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.rom_path = self.paths[0]
         self.state_path = self.paths[1]
@@ -118,6 +119,7 @@ class Controller:
             "max_total_exp": self.max_total_exp,
             "max_total_hp": self.max_total_hp,
             "steps": self.steps,
+            "rewards": self.rewards,
             "rewards_per_location": {
                 k: v for k, v in self.rewards_per_location.items() if len(v) > 0
             },
@@ -133,8 +135,11 @@ class Controller:
         return self.imgs.check_and_store_image(self.screen_image())[0]
 
     def write_log(self, filepath):
-        if not os.path.isdir(os.path.dirname(filepath)):
-            os.mkdir(os.path.dirname(filepath))
+        try:
+            if not os.path.isdir(os.path.dirname(filepath)):
+                os.mkdir(os.path.dirname(filepath))
+        except Exception as e:
+            print(e)
 
         with open(filepath, "w") as f:
             json.dump(self.runs_data, f, indent=4)
@@ -170,8 +175,6 @@ class Controller:
             total_reward = 0
             for _, v in self.rewards_per_location.items():
                 total_reward += sum(v)
-            if total_reward > 4:
-                self.set_save_on_reset()
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
@@ -187,6 +190,7 @@ class Controller:
         self.max_money = 0
         self.locations = set()
         self.xy = set()
+        self.rewards = []
         self.rewards_per_location = {i: [] for i in range(256)}
         self.reward = 0
         self.button = None
@@ -194,14 +198,15 @@ class Controller:
         self.buttons = []
         self.run += 1
         self.run_time = time.time()
-        self.step(len(self.action_space) - 1)  # pass
+        self.done = False
+        self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
 
     def save_state(self, file):
         self.pyboy.save_state(file)
 
-    def step(self, movement, ticks_per_input=10, wait=480):
+    def step(self, movement, ticks_per_input=10, wait=480, init=False):
         self.pyboy._rendering(False)
         movement = self.action_space_buttons[movement]
         if movement != "PASS":
@@ -215,23 +220,36 @@ class Controller:
         self.pyboy.tick()
         next_state = self.screen_image()
         self.reward = calc_rewards(self, use_sight=self.use_sight)
-        self.rewards_per_location[self.get_current_location()].append(self.reward)
-        self.steps += 1
-        self.button = movement
-        self.buttons.append(movement)
-        self.frames_per_loc[self.get_current_location()] = (
-            self.frames_per_loc[self.get_current_location()] + 1
-        )
-        self.done = True if self.steps == self.timeout else False
+        if not init:
+            self.rewards.append(self.reward)
+            self.rewards_per_location[self.get_current_location()].append(self.reward)
+            self.steps += 1
+            self.button = movement
+            self.buttons.append(movement)
+            self.frames_per_loc[self.get_current_location()] = (
+                self.frames_per_loc[self.get_current_location()] + 1
+            )
+            self.done = True if self.steps == self.timeout else False
+        else:
+            self.reward = 0
         return next_state, self.reward, self.done
 
     def screen_image(self):
         # Original image
         original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
 
+        # Convert to grayscale if required
+        if self.use_grayscale:
+            # Using luminosity method for grayscale conversion
+            grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
+            # Expanding dimensions to keep the shape as (height, width, channels)
+            grayscale_image = np.expand_dims(grayscale_image, axis=-1)
+            # Use the grayscale image as the original image
+            original_image = grayscale_image
+
         # Only resize if scaling_factor is not 1
         if self.scaling_factor == 1.0:
-            return original_image
+            return original_image.astype(np.uint8)
         else:
             # Calculate new size
             original_height, original_width, num_channels = original_image.shape
@@ -353,6 +371,7 @@ class Controller:
             "timeout": self.timeout,
             "timeoutcap": self.timeoutcap,
             "frames_per_loc": self.frames_per_loc,
+            "rewards": self.rewards,
             "use_sight": self.use_sight,
             "scaling_factor": self.scaling_factor,
             "paths": self.paths,
@@ -400,9 +419,9 @@ class Controller:
         with open(f"./states/state_{i}.state", "wb") as f:
             f.write(state.read())
 
-    def record(self, ep, e, name):
+    def record(self, e, name, was_random=False):
         document(
-            ep,
+            self.run,
             self.steps,
             self.screen_image(),
             self.button,
@@ -411,6 +430,9 @@ class Controller:
             e,
             name,
             self.get_current_location(),
+            self.get_XY()[0],
+            self.get_XY()[1],
+            was_random,
         )
 
     def pkdex_seen(self):

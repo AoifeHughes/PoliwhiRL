@@ -5,7 +5,8 @@ Pillow>=10.2.0
 Pillow>=9.5.0
 pyboy>=1.6.11
 pytesseract>=0.3.10
+scikit-image>=0.0
 scikit_learn>=1.4.0
-skimage>=0.0
 torch>=2.2.0
-torchviz>=0.0.2tqdm>=4.65.0
+torchviz>=0.0.2
+tqdm>=4.65.0

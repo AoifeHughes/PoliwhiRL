@@ -9,133 +9,85 @@ import argparse
 import json
 
 
+def load_default_config():
+    default_config_path = (
+        "./configs/default_config.json"  # Path to the default config file
+    )
+    if os.path.exists(default_config_path):
+        with open(default_config_path, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def load_user_config(config_path):
+    if config_path and os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def merge_configs(default_config, user_config):
+    merged_config = default_config.copy()
+    merged_config.update(user_config)
+    return merged_config
+
+
 def parse_args():
-    # Load default configuration from file if exists
-    default_config = "config.json"
-    config = {}
-    if os.path.exists(default_config):
-        with open(default_config, "r") as f:
-            config = json.load(f)
-
+    default_config = load_default_config()
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--rom_path",
-        type=str,
-        default=config.get("rom_path", "./emu_files/Pokemon - Crystal Version.gbc"),
-    )
-    parser.add_argument(
-        "--state_path",
-        type=str,
-        default=config.get("state_path", "./emu_files/states/start.state"),
-    )
-    parser.add_argument(
-        "--episode_length", type=int, default=config.get("episode_length", 25)
-    )
-    parser.add_argument("--device", type=str, default=config.get("device", "cpu"))
-    parser.add_argument(
-        "--num_episodes", type=int, default=config.get("num_episodes", 10000)
-    )
-    parser.add_argument("--batch_size", type=int, default=config.get("batch_size", 32))
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default=config.get("checkpoint", "./checkpoints/RainbowDQN.pth"),
-    )
-    parser.add_argument("--model", type=str, default=config.get("model", "RainbowDQN"))
-    parser.add_argument(
-        "--sight", action="store_true", default=config.get("sight", False)
-    )
-    parser.add_argument(
-        "--erase", action="store_true", default=config.get("erase", False)
-    )
-    parser.add_argument(
-        "--parallel", action="store_true", default=config.get("parallel", False)
-    )
-    parser.add_argument(
-        "--runs_per_worker", type=int, default=config.get("runs_per_worker", 4)
-    )
-    parser.add_argument("--num_workers", type=int, default=config.get("num_workers", 6))
-    parser.add_argument(
-        "--checkpoint_interval",
-        type=int,
-        default=config.get("checkpoint_interval", 100),
-    )
-    parser.add_argument(
-        "--epsilon_by_location",
-        action="store_true",
-        default=config.get("epsilon_by_location", False),
-    )
-    parser.add_argument(
-        "--extra_files", type=list, default=config.get("extra_files", [])
-    )
-    parser.add_argument(
-        "--reward_locations_xy",
-        type=json.loads,
-        default=config.get("reward_locations_xy", "{}"),
-    )
 
-    return parser.parse_args()
+    parser.add_argument(
+        "--use_config", type=str, default=None, help="Path to user config file"
+    )
+    (
+        args,
+        unknown,
+    ) = (
+        parser.parse_known_args()
+    )  # Parse known args first to get config file if specified
+
+    user_config = load_user_config(args.use_config)
+    config = merge_configs(default_config, user_config)
+
+    # Dynamically add other arguments based on the merged config
+    for key, value in config.items():
+        if isinstance(value, bool):
+            parser.add_argument(f"--{key}", action="store_true", default=value)
+        else:
+            parser.add_argument(f"--{key}", type=type(value), default=value)
+
+    return vars(parser.parse_args())  # Return arguments as a dictionary
 
 
 def main():
-    args = parse_args()
-    rom_path = args.rom_path
-    state_path = args.state_path
-    episode_length = args.episode_length
-    d = device(args.device)
-    num_episodes = args.num_episodes
-    batch_size = args.batch_size
-    checkpoint = args.checkpoint
-    sight = args.sight
-    parallel = args.parallel
-    erase = args.erase
-    runs_per_worker = args.runs_per_worker
-    num_workers = args.num_workers
-    checkpoint_interval = args.checkpoint_interval
-    epsilon_by_location = args.epsilon_by_location
-    extra_files = args.extra_files
-    reward_locations_xy = {int(k): v for k, v in args.reward_locations_xy.items()}
+    config = parse_args()
 
-    if erase:
+    if config["erase"]:
         print("Erasing all logs, checkpoints, runs, and results")
         folders = ["checkpoints", "logs", "runs", "results"]
-        for f in folders:
-            if f in os.listdir():
-                shutil.rmtree(f)
+        for folder in folders:
+            if folder in os.listdir():
+                shutil.rmtree(folder)
 
-    if args.model == "RainbowDQN":
-        if parallel:
-            if d != device("cpu"):
-                print(
-                    "Parallel RainbowDQN only supports CPU devices. Switching to CPU."
-                )
-                d = device("cpu")
-        rainbow(
-            rom_path,
-            state_path,
-            episode_length,
-            d,
-            num_episodes,
-            batch_size,
-            checkpoint,
-            parallel,
-            sight,
-            runs_per_worker,
-            num_workers,
-            0,
-            checkpoint_interval,
-            epsilon_by_location,
-            extra_files,
-            reward_locations_xy,
+    config["device"] = device(config["device"])
+
+    if config["model"] == "RainbowDQN":
+        if config["run_parallel"] and config["device"] != device("cpu"):
+            print("Parallel RainbowDQN only supports CPU devices. Switching to CPU.")
+            config["device"] = device("cpu")
+        rainbow(**config)
+    elif config["model"] in ["DQN", "PPO"]:
+        raise NotImplementedError(f"{config['model']} is not implemented yet.")
+    elif config["model"] == "explore":
+        explore(
+            config["num_episodes"],
+            config["rom_path"],
+            config["state_path"],
+            config["episode_length"],
+            config["sight"],
         )
-    elif args.model == "DQN":
-        raise NotImplementedError
-    elif args.model == "PPO":
-        raise NotImplementedError
-    elif args.model == "explore":
-        explore(num_episodes, rom_path, state_path, episode_length, sight)
     else:
-        raise ValueError(f"Model {args.model} not recognized")
+        raise ValueError(f"Model {config['model']} not recognized")
 
 
 if __name__ == "__main__":

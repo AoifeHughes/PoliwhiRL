@@ -134,19 +134,111 @@ def optimize_model(
     return loss.item()  # Optional: return the loss value for monitoring
 
 
-def save_checkpoint(state, filename="checkpoint.pth.tar"):
-    """Saves the current state of training."""
-    if not os.path.exists(os.path.dirname(filename)):
-        os.makedirs(os.path.dirname(filename))
+def save_checkpoint(
+    config,
+    policy_net,
+    target_net,
+    optimizer,
+    replay_buffer,
+    frames_in_loc,
+    rewards,
+    epsilons_by_location,
+    filename=None,
+):
+    # Use filename from config if not provided
+    if filename is None:
+        filename = config["checkpoint_path"]
+
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    # Prepare the state to be saved
+    state = {
+        "episode": config.get("num_episodes", 0),
+        "frame_idx": config.get("frame_idx", 0),
+        "policy_net_state_dict": policy_net.state_dict(),
+        "target_net_state_dict": target_net.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "replay_buffer_state_dict": replay_buffer.state_dict(),
+        "frames_in_loc": frames_in_loc,
+        "rewards": rewards,
+        "epsilon_by_location": epsilons_by_location,
+    }
+
+    # Save the state to file
     torch.save(state, filename)
+    print(f"Checkpoint saved to {filename}")
 
 
-def load_checkpoint(filename="checkpoint.pth.tar", device="cpu"):
-    """Loads the checkpoint and returns the state."""
+def load_checkpoint(config):
+    filename = config.get("checkpoint", "checkpoint.pth.tar")
+    device = config.get("device", "cpu")
+
     if os.path.isfile(filename):
         checkpoint = torch.load(filename, map_location=device)
         print(f"Checkpoint loaded from {filename}")
+
+        # Update the config with loaded checkpoint info
+        config.update(
+            {
+                "start_episode": checkpoint.get("episode", 0) + 1,
+                "frame_idx": checkpoint.get("frame_idx", 0),
+                "policy_net_state_dict": checkpoint.get("policy_net_state_dict"),
+                "target_net_state_dict": checkpoint.get("target_net_state_dict"),
+                "optimizer_state_dict": checkpoint.get("optimizer_state_dict"),
+                "replay_buffer_state_dict": checkpoint.get("replay_buffer_state_dict"),
+                "frames_in_loc": checkpoint.get("frames_in_loc", {}),
+                "rewards": checkpoint.get("rewards", []),
+                "epsilon_by_location": checkpoint.get("epsilon_by_location", {}),
+            }
+        )
+
         return checkpoint
     else:
         print(f"Checkpoint file not found: {filename}")
         return None
+
+
+def store_experience(
+    state,
+    action,
+    reward,
+    next_state,
+    done,
+    policy_net,
+    target_net,
+    replay_buffer,
+    config,
+    td_errors,
+    beta=None,
+):
+    """
+    Stores the experience in the replay buffer and computes TD error.
+    """
+    action_tensor = torch.tensor([action], device=config["device"], dtype=torch.long)
+    reward_tensor = torch.tensor([reward], device=config["device"], dtype=torch.float)
+    done_tensor = torch.tensor([done], device=config["device"], dtype=torch.bool)
+    td_error = compute_td_error(
+        (state, action_tensor, reward_tensor, next_state, done_tensor),
+        policy_net,
+        target_net,
+        config["device"],
+        config["gamma"],
+    )
+    td_errors.append(td_error)
+    if type(replay_buffer).__name__ == "PrioritizedReplayBuffer":
+        replay_buffer.add(
+            state, action_tensor, reward_tensor, next_state, done_tensor, td_error
+        )
+    else:
+        replay_buffer.append(
+            (
+                state,
+                action_tensor,
+                reward_tensor,
+                next_state,
+                done_tensor,
+                beta,
+                td_error,
+            )
+        )
