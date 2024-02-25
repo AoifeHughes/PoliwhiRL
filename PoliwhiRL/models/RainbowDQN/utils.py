@@ -140,14 +140,12 @@ def save_checkpoint(
     target_net,
     optimizer,
     replay_buffer,
-    frames_in_loc,
     rewards,
-    epsilons_by_location,
     filename=None,
 ):
     # Use filename from config if not provided
     if filename is None:
-        filename = config["checkpoint_path"]
+        filename = config["checkpoint"]
 
     # Ensure the directory exists
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -160,9 +158,7 @@ def save_checkpoint(
         "target_net_state_dict": target_net.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "replay_buffer_state_dict": replay_buffer.state_dict(),
-        "frames_in_loc": frames_in_loc,
         "rewards": rewards,
-        "epsilon_by_location": epsilons_by_location,
     }
 
     # Save the state to file
