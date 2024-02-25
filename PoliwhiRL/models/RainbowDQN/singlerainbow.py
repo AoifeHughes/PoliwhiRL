@@ -77,7 +77,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
-                
+
             if config["record"]:
                 env.record(epsilon, "rdqn", was_random)
             state = next_state
@@ -145,4 +145,4 @@ def post_episode_processing(
 
     # Optionally, plot best attempts periodically
     if episode % 100 == 0:  # Example interval, adjust as needed
-        plot_best_attempts("./results/", episode , "RainbowDQN_latest_single", rewards)
+        plot_best_attempts("./results/", episode, "RainbowDQN_latest_single", rewards)
