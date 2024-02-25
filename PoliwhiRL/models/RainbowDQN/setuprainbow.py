@@ -69,16 +69,16 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
 
 
 def finalize_training(
-        config,
-        start_time,
-        rewards,
-        total_losses,
-        total_td_errors,
-        total_beta_values,
-        policy_net,
-        target_net,
-        optimizer,
-        replay_buffer,
+    config,
+    start_time,
+    rewards,
+    total_losses,
+    total_td_errors,
+    total_beta_values,
+    policy_net,
+    target_net,
+    optimizer,
+    replay_buffer,
 ):
     """
     Finalizes the training process by logging data, plotting results, and saving a final checkpoint.
@@ -122,7 +122,9 @@ def run(**config):
     env = setup_environment(config)
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
     # Start training
-    (total_losses, total_beta_values, total_td_errors, rewards) = run_training(config, env, policy_net, target_net, optimizer, replay_buffer)
+    (total_losses, total_beta_values, total_td_errors, rewards) = run_training(
+        config, env, policy_net, target_net, optimizer, replay_buffer
+    )
     # Finalize training
     finalize_training(
         config,
