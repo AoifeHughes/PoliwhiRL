@@ -185,3 +185,17 @@ def load_checkpoint(config):
     else:
         print(f"Checkpoint file not found: {filename}")
         return None
+    
+def store_experience(state, action, reward, next_state, done, policy_net, target_net, replay_buffer, config, td_errors, beta=None):
+    """
+    Stores the experience in the replay buffer and computes TD error.
+    """
+    action_tensor = torch.tensor([action], device=config['device'], dtype=torch.long)
+    reward_tensor = torch.tensor([reward], device=config['device'], dtype=torch.float)
+    done_tensor = torch.tensor([done], device=config['device'], dtype=torch.bool)
+    td_error = compute_td_error((state, action_tensor, reward_tensor, next_state, done_tensor), policy_net, target_net, config['device'], config['gamma'])
+    td_errors.append(td_error)  
+    if type(replay_buffer).__name__ == "PrioritizedReplayBuffer":
+        replay_buffer.add(state, action_tensor, reward_tensor, next_state, done_tensor, td_error)
+    else:
+        replay_buffer.append((state, action_tensor, reward_tensor, next_state, done_tensor, beta, td_error))
