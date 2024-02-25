@@ -1,16 +1,11 @@
 #!/bin/bash
 
-# Define variables
-device="mps"
-model="RainbowDQN"
-checkpoint_interval=1000
-epsilon_by_location="--epsilon_by_location" # This is a flag
-num_episodes=10000
-base_episode_length=100 # Base episode length before multiplication
-scale_factor=0.25
-gray_scale="--use_grayscale" # This is a flag
+base_episode_length=256
+num_workers=8
+runs_per_worker=4
 
-for ((i=1; i<=1; i++))
+
+for ((i=1; i<=5; i++))
 do
     # Calculate episode_length for the current iteration
     episode_length=$((base_episode_length * i))
@@ -22,11 +17,12 @@ do
     fi
 
     # Execute the Python script with dynamic episode_length
-    python main.py --device $device --model $model --checkpoint_interval $checkpoint_interval $epsilon_by_location --num_episodes $num_episodes --episode_length $episode_length --scaling_factor $scale_factor $gray_scale
+    python main.py --use_config ./configs/multi_config.json --episode_length $((base_episode_length * i)) --num_workers $num_workers --runs_per_worker $runs_per_worker 
 
     # Create directory and move files
     mkdir run_$i
     mv results run_$i
     mv runs/* run_$i
     mv logs run_$i
+    mv checkpoints run_$i
 done
