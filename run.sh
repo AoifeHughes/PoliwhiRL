@@ -1,8 +1,8 @@
 #!/bin/bash
 
-base_episode_length=256
-num_workers=8
-runs_per_worker=4
+base_episode_length=32
+num_workers=6
+runs_per_worker=1
 
 
 for ((i=1; i<=5; i++))
