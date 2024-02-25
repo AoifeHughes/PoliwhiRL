@@ -36,7 +36,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
                 if frame_idx % config['target_update'] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
-
+            env.record(epsilon, "rdqn", was_random)
             state = next_state
             total_reward += reward
             frame_idx += 1
