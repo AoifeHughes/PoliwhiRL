@@ -45,7 +45,9 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
                 config["epsilon_decay"],
             )
             beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
-            action, was_random = select_action(state, epsilon, env, policy_net, config["device"])
+            action, was_random = select_action(
+                state, epsilon, env, policy_net, config["device"]
+            )
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
 
@@ -63,8 +65,8 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
                 beta,
             )
 
-            if config['record']:
-                env.record(epsilon, f'{batch_id}_{worker_id}', was_random)
+            if config["record"]:
+                env.record(epsilon, f"{batch_id}_{worker_id}", was_random)
 
             state = next_state
             total_reward += reward
@@ -145,13 +147,16 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
         total_rewards.extend(all_rewards)
         total_beta_values.extend(all_beta_values)
         total_td_errors.extend(all_td_errors)
-        
-        for name in ["DoubleRainbowLatest", f"DoubleRainbow{episodes_per_batch * (batch + 1)}"]:
+
+        for name in [
+            "DoubleRainbowLatest",
+            f"DoubleRainbow{episodes_per_batch * (batch + 1)}",
+        ]:
             plot_best_attempts(
                 "./results/",
                 name,
                 "DoubleRainbow",
                 total_rewards,
-            )     
+            )
 
     return total_losses, total_beta_values, total_td_errors, rewards

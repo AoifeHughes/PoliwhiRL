@@ -72,4 +72,3 @@ def test_step_function_updates_state_correctly(controller):
 def test_saving_and_loading_state(controller, temp_state_file):
     controller.store_controller_state(temp_state_file)
     controller.load_stored_controller_state(temp_state_file)
-
