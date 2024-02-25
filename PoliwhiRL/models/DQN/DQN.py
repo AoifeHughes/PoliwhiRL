@@ -114,9 +114,7 @@ def optimize_model(
         )
 
     # Compute the expected Q values
-    expected_state_action_values = (
-        next_state_values * (GAMMA**n_steps)
-    ) + reward_batch
+    expected_state_action_values = (next_state_values * (GAMMA**n_steps)) + reward_batch
 
     # Compute Huber loss
     loss = F.smooth_l1_loss(
