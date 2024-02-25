@@ -6,7 +6,6 @@ import torch
 from .utils import (
     optimize_model,
     beta_by_frame,
-    save_checkpoint,
     epsilon_by_frame,
     store_experience,
 )
