@@ -59,7 +59,7 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
         )
     else:
         return run_rainbow_parallel(
-            config, env, policy_net, target_net, optimizer, replay_buffer
+            config, policy_net, target_net, optimizer, replay_buffer
         )
 
 def finalize_training(config, start_time, rewards, losses, epsilon_values, beta_values, td_errors, frames_in_loc, epsilons_by_location, policy_net, target_net, optimizer, replay_buffer):

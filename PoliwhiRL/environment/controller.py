@@ -135,8 +135,11 @@ class Controller:
         return self.imgs.check_and_store_image(self.screen_image())[0]
 
     def write_log(self, filepath):
-        if not os.path.isdir(os.path.dirname(filepath)):
-            os.mkdir(os.path.dirname(filepath))
+        try:
+            if not os.path.isdir(os.path.dirname(filepath)):
+                os.mkdir(os.path.dirname(filepath))
+        except Exception as e:
+            print(e)
 
         with open(filepath, "w") as f:
             json.dump(self.runs_data, f, indent=4)

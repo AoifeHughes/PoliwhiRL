@@ -2,7 +2,7 @@ import random
 import torch
 from tqdm import tqdm
 from PoliwhiRL.models.RainbowDQN.utils import (
-    compute_td_error, optimize_model, save_checkpoint, epsilon_by_frame, beta_by_frame
+    optimize_model, save_checkpoint, epsilon_by_frame, store_experience, beta_by_frame
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
@@ -22,14 +22,15 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             epsilon_values.append(epsilon)
             action, was_random = select_action(state, epsilon, env, policy_net, config)
             next_state, reward, done = env.step(action)
+            
             next_state = image_to_tensor(next_state, config['device'])
 
             if not config.get('eval_mode', False):
                 # Store experience using the dedicated function
                 store_experience(state, action, reward, next_state, done, policy_net, target_net, replay_buffer, config, td_errors, frame_idx)
-                
+                beta = beta_by_frame(frame_idx, config['beta_start'], config['beta_frames'])
                 # Optimize model after storing experience
-                loss = optimize_model(config['beta'], policy_net, target_net, replay_buffer, optimizer, config['device'], config['batch_size'], config['gamma'])
+                loss = optimize_model(beta, policy_net, target_net, replay_buffer, optimizer, config['device'], config['batch_size'], config['gamma'])
                 if loss is not None:
                     losses.append(loss)
 
@@ -46,16 +47,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
     return losses, rewards, frame_idx
 
-def store_experience(state, action, reward, next_state, done, policy_net, target_net, replay_buffer, config, td_errors, frame_idx):
-    """
-    Stores the experience in the replay buffer and computes TD error.
-    """
-    action_tensor = torch.tensor([action], device=config['device'], dtype=torch.long)
-    reward_tensor = torch.tensor([reward], device=config['device'], dtype=torch.float)
-    done_tensor = torch.tensor([done], device=config['device'], dtype=torch.bool)
-    td_error = compute_td_error((state, action_tensor, reward_tensor, next_state, done_tensor), policy_net, target_net, config['device'], config['gamma'])
-    td_errors.append(td_error)  
-    replay_buffer.add(state, action_tensor, reward_tensor, next_state, done_tensor, td_error)
+
 
 def select_action(state, epsilon, env, policy_net, config):
     if random.random() > epsilon:
