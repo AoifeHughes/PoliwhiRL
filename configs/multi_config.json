@@ -13,7 +13,7 @@
     "runs_per_worker": 4,
     "record": true,
     "num_workers": 6,
-    "checkpoint_interval": 100,
+    "checkpoint_interval": 5000,
     "epsilon_by_location": false,
     "epsilon_decay": 100000,
     "epsilon_start": 1.0,

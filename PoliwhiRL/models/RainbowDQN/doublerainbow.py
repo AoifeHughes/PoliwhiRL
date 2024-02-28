@@ -6,15 +6,14 @@ import torch
 from .utils import (
     optimize_model,
     beta_by_frame,
-    save_checkpoint,
     epsilon_by_frame,
     store_experience,
 )
-from PoliwhiRL.utils.utils import image_to_tensor
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from PoliwhiRL.environment import Controller
 
 
-def worker(worker_id, config, policy_net, target_net, frame_idx_start):
+def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start):
     # Assuming policy_net and target_net are reconstructed within the worker from state dicts
     env = Controller(
         rom_path=config["rom_path"],
@@ -46,7 +45,9 @@ def worker(worker_id, config, policy_net, target_net, frame_idx_start):
                 config["epsilon_decay"],
             )
             beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
-            action = select_action(state, epsilon, env, policy_net, config["device"])
+            action, was_random = select_action(
+                state, epsilon, env, policy_net, config["device"]
+            )
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
 
@@ -64,6 +65,9 @@ def worker(worker_id, config, policy_net, target_net, frame_idx_start):
                 beta,
             )
 
+            if config["record"]:
+                env.record(epsilon, f"{batch_id}_{worker_id}", was_random)
+
             state = next_state
             total_reward += reward
             frame_idx += 1
@@ -75,18 +79,22 @@ def worker(worker_id, config, policy_net, target_net, frame_idx_start):
 
 
 def select_action(state, epsilon, env, policy_net, device):
+    is_random = True
     if random.random() > epsilon:
         with torch.no_grad():
             q_values = policy_net(state.unsqueeze(0).to(device))
             action = q_values.max(1)[1].view(1, 1).item()
+        is_random = False
     else:
         action = env.random_move()
-    return action
+    return action, is_random
 
 
 def run(config, policy_net, target_net, optimizer, replay_buffer):
     total_rewards = []
     total_losses = []
+    total_beta_values = []
+    total_td_errors = []
     frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
 
@@ -95,9 +103,9 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
         1 if config["num_episodes"] % episodes_per_batch > 0 else 0
     )
 
-    for _ in tqdm(range(total_batches), desc="Batch Processing"):
+    for batch in tqdm(range(total_batches), desc="Batch Processing"):
         worker_args = [
-            (i, config, policy_net, target_net, frame_idx)
+            (i, batch, config, policy_net, target_net, frame_idx)
             for i in range(config["num_workers"])
         ]
 
@@ -106,14 +114,18 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
 
         all_experiences = []
         all_rewards = []
+        all_beta_values = []
+        all_td_errors = []
+
         for experiences, rewards in worker_results:
             all_experiences.extend(experiences)
             all_rewards.extend(rewards)
 
         for experience in all_experiences:
             state, action, reward, next_state, done, beta, td_error = experience
+            all_td_errors.append(td_error)
             replay_buffer.add(state, action, reward, next_state, done, td_error)
-
+            all_beta_values.append(beta)
             loss = optimize_model(
                 beta,
                 policy_net,
@@ -133,14 +145,18 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
             next_target_update = frame_idx + config["target_update"]
 
         total_rewards.extend(all_rewards)
+        total_beta_values.extend(all_beta_values)
+        total_td_errors.extend(all_td_errors)
 
-    save_checkpoint(
-        policy_net,
-        target_net,
-        optimizer,
-        replay_buffer,
-        frame_idx,
-        config["checkpoint_path"],
-    )
+        for name in [
+            "DoubleRainbowLatest",
+            f"DoubleRainbow{episodes_per_batch * (batch + 1)}",
+        ]:
+            plot_best_attempts(
+                "./results/",
+                name,
+                "DoubleRainbow",
+                total_rewards,
+            )
 
-    return total_rewards, total_losses, frame_idx
+    return total_losses, total_beta_values, total_td_errors, rewards

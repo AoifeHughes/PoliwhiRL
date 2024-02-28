@@ -12,6 +12,7 @@
   "run_parallel": false,
   "runs_per_worker": 2,
   "document": true,
+  "record": true,
   "num_workers": 6,
   "checkpoint_interval": 100,
   "epsilon_by_location": false,

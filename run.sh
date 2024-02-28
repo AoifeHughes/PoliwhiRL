@@ -34,14 +34,14 @@ do
                 fi
 
                 # Execute the Python script with dynamic episode_length, grayscale flag, and scaling factor
-                python main.py --use_config ./configs/multi_config.json --episode_length $episode_length --num_workers $num_workers --runs_per_worker $runs_per_worker --use_grayscale $use_grayscale --scaling_factor $scaling_factor --run_parallel $run_parallel
+                python main.py --use_config ./configs/multi_config.json --episode_length $episode_length --num_workers $num_workers --runs_per_worker $runs_per_worker --use_grayscale $use_grayscale --scaling_factor $scaling_factor --run_parallel $run_parallel 
 
                 # Create directory and move files
                 mkdir "$dir_name"
                 mv results "$dir_name"
                 mv runs/* "$dir_name"
                 mv logs "$dir_name"
-                mv checkpoints "$dir_name"
+                rm -r checkpoints
             done
         done
     done
