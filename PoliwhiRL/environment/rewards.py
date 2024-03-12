@@ -88,9 +88,12 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
             ):
                 return total_reward
             else:
+                print("Reached a new named XY checkpoint")
+                print("Checkpoint reached at: ", controller.get_XY())
                 controller.has_reached_reward_locations_xy[
                     controller.get_current_location()
                 ][controller.get_XY()] = True
+                controller.extend_timeout(500)
                 return total_reward + default_reward * 100
     return total_reward
 

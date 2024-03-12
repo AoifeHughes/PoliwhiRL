@@ -142,6 +142,7 @@ def save_checkpoint(
     replay_buffer,
     rewards,
     filename=None,
+    epsilons_by_location=None,
 ):
     # Use filename from config if not provided
     if filename is None:
