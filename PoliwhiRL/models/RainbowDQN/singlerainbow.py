@@ -85,64 +85,30 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             frame_idx += 1
 
         rewards.append(total_reward)
-        if episode % config["checkpoint_interval"] == 0 and episode > 0:
+        if episode % config["checkpoint_interval"] == 0:
             save_checkpoint(
                 config,
                 policy_net,
                 target_net,
                 optimizer,
                 replay_buffer,
-                frames_in_loc,
                 rewards,
-                epsilons_by_location=None,
-            )  # epsilons_by_location is not defined in this context
+            )  
+
+            plot_best_attempts("./results/", episode, "RainbowDQN_latest_single", rewards)
 
     return losses, rewards, frame_idx
 
 
 def select_action(state, epsilon, env, policy_net, config):
+    was_random = False
     if random.random() > epsilon:
         with torch.no_grad():
             q_values = policy_net(state.unsqueeze(0).to(config["device"]))
             action = q_values.max(1)[1].view(1, 1).item()
     else:
+        was_random = True
         action = env.random_move()
-    return action, random.random() > epsilon
+    return action, was_random
 
 
-def post_episode_processing(
-    episode,
-    total_reward,
-    rewards,
-    config,
-    policy_net,
-    target_net,
-    optimizer,
-    replay_buffer,
-    frames_in_loc,
-    epsilons_by_location,
-):
-    """
-    Handles logging, checkpointing, and plotting after each episode.
-    """
-    rewards.append(
-        total_reward
-    )  # Assume rewards is a list tracking rewards per episode
-
-    # Adjust for compatibility with the provided save_checkpoint function
-    if episode % config["checkpoint_interval"] == 0 and episode > 0:
-        save_checkpoint(
-            config=config,
-            policy_net=policy_net,
-            target_net=target_net,
-            optimizer=optimizer,
-            replay_buffer=replay_buffer,
-            frames_in_loc=frames_in_loc,  # Ensure this is tracked throughout the training
-            rewards=rewards,
-            epsilons_by_location=epsilons_by_location,  # Ensure this is properly managed
-            filename=None,  # Optional: Specify a filename or leave None to use default from config
-        )
-
-    # Optionally, plot best attempts periodically
-    if episode % 100 == 0:  # Example interval, adjust as needed
-        plot_best_attempts("./results/", episode, "RainbowDQN_latest_single", rewards)
