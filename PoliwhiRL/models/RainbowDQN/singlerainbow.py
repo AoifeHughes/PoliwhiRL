@@ -19,11 +19,11 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         i: 0 for i in range(256)
     }  # Assuming 256 possible locations, adjust as needed
 
-    for episode in tqdm(
+    for episode in (pbar := tqdm(
         range(
             config.get("start_episode", 0),
             config.get("start_episode", 0) + config["num_episodes"],
-        )
+        ))
     ):
         state = env.reset()
         state = image_to_tensor(state, config["device"])
@@ -85,6 +85,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             frame_idx += 1
 
         rewards.append(total_reward)
+        pbar.set_description(f"Episode: {episode}, Reward: {total_reward}, Epsilon: {epsilon}, Best reward: {max(rewards)}, Avg reward: {sum(rewards) / len(rewards)}")
         if episode % config["checkpoint_interval"] == 0:
             save_checkpoint(
                 config,
