@@ -61,7 +61,8 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
-
+            if config["record"]:
+                env.record(epsilon, "rdqn", was_random)
             state = next_state
             total_reward += reward
             frame_idx += 1
@@ -71,6 +72,9 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
         if episode % config["checkpoint_interval"] == 0:
             save_checkpoint(config, policy_net, target_net, optimizer, replay_buffer, rewards)
+            plot_best_attempts(
+                "./results/", episode, "RainbowDQN_latest_single", rewards
+            )
 
     return losses, rewards, frame_idx
 
