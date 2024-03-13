@@ -21,7 +21,7 @@ def update_for_locations(controller, total_reward, default_reward):
 
 def update_for_vision(controller, total_reward, default_reward):
     if controller.is_new_vision():
-        total_reward += default_reward * 5
+        total_reward += default_reward * 1
     return total_reward
 
 
@@ -45,7 +45,7 @@ def update_for_party_pokemon(controller, total_reward, default_reward):
 def update_for_movement(controller, total_reward, default_reward):
     cur_xy = controller.get_XY()
     if cur_xy not in controller.xy:
-        total_reward += default_reward * 10
+        total_reward += default_reward * 2
         controller.xy.add(cur_xy)
     return total_reward
 
@@ -88,13 +88,18 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
             ):
                 return total_reward
             else:
-                print("Reached a new named XY checkpoint")
-                print("Checkpoint reached at: ", controller.get_XY())
+
                 controller.has_reached_reward_locations_xy[
                     controller.get_current_location()
                 ][controller.get_XY()] = True
-                controller.extend_timeout(500)
-                return total_reward + default_reward * 100
+                # count the number of reached reward locations
+                count = 0
+                for k, v in controller.has_reached_reward_locations_xy.items():
+                    for k2, v2 in v.items():
+                        if v2 is True:
+                            count += 1
+
+                return total_reward + default_reward * 100 * count
     return total_reward
 
 
