@@ -11,6 +11,8 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+import numpy as np
+import math
 
 from collections import deque
 
@@ -18,6 +20,9 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     frame_idx = config.get("frame_idx", 0)
     rewards, losses, epsilon_values, td_errors = [], [], [], []
     is_n_step = config.get("n_steps", 1) > 1
+    num_actions = len(env.action_space)  # Get the number of actions from the environment
+    action_counts = np.zeros(num_actions)
+    action_rewards = np.zeros(num_actions)
 
     # Initialize n-step buffer if needed
     if is_n_step:
@@ -34,9 +39,13 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
         while not done:
             epsilon = epsilon_by_frame(frame_idx, config["epsilon_start"], config["epsilon_final"], config["epsilon_decay"])
-            action, was_random = select_action(state, epsilon, env, policy_net, config)
+
+            action, q_val = select_action_ucb(state, policy_net, config, frame_idx, action_counts, action_rewards, num_actions)
+
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
+
+            action_rewards[action] += reward
 
             if not config.get("eval_mode", False):
                 # Use store_experience function, passing n_step_buffer when applicable
@@ -62,7 +71,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
             if config["record"]:
-                env.record(epsilon, "rdqn", was_random)
+                env.record(epsilon, "rdqn")
             state = next_state
             total_reward += reward
             frame_idx += 1
@@ -78,13 +87,27 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
     return losses, rewards, frame_idx
 
-def select_action(state, epsilon, env, policy_net, config):
-    was_random = False
-    if random.random() > epsilon:
-        with torch.no_grad():
-            q_values = policy_net(state.unsqueeze(0).to(config["device"]))
-            action = q_values.max(1)[1].view(1, 1).item()
-    else:
-        was_random = True
-        action = env.random_move()
-    return action, was_random
+
+def select_action_ucb(state, policy_net, config, frame_idx, action_counts, action_rewards, num_actions):
+    exploration_rate = np.sqrt(2 * math.log(frame_idx + 1))
+
+    ucb_values = np.zeros(num_actions)
+    for action in range(num_actions):
+        if action_counts[action] > 0:
+            average_reward = action_rewards[action] / action_counts[action]
+            ucb_bonus = exploration_rate / np.sqrt(action_counts[action])
+            ucb_values[action] = average_reward + ucb_bonus
+        else:
+            ucb_values[action] = np.inf
+
+    action = np.argmax(ucb_values)
+
+    with torch.no_grad():
+        q_values = policy_net(state.unsqueeze(0).to(config["device"]))
+        # This ensures we are selecting a valid action according to the policy network, but guided by UCB
+        q_values = q_values.cpu().numpy()
+        action_q_value = q_values[0][action]
+
+    action_counts[action] += 1
+
+    return action, action_q_value
