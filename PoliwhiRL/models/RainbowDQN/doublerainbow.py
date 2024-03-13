@@ -33,6 +33,7 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
     frame_idx = frame_idx_start
     for episode in range(config["runs_per_worker"]):
         state = env.reset()
+        policy_net.reset_noise()
         state = image_to_tensor(state, config["device"])
         total_reward = 0
         done = False
@@ -45,6 +46,7 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
                 config["epsilon_decay"],
             )
             beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
+
             action, was_random = select_action(
                 state, epsilon, env, policy_net, config["device"]
             )

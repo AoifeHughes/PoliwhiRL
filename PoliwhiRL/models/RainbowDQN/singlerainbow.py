@@ -27,6 +27,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             )
         )
     ):
+        policy_net.reset_noise()
         state = env.reset()
         state = image_to_tensor(state, config["device"])
         total_reward = 0
