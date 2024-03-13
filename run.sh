@@ -34,7 +34,7 @@ do
                 fi
 
                 # Execute the Python script with dynamic episode_length, grayscale flag, and scaling factor
-                python main.py --use_config ./configs/multi_config.json --episode_length $episode_length --num_workers $num_workers --runs_per_worker $runs_per_worker --use_grayscale $use_grayscale --scaling_factor $scaling_factor --run_parallel $run_parallel 
+                python main.py --use_config ./configs/multi_config.json --episode_length $episode_length --num_workers $num_workers --runs_per_worker $runs_per_worker --use_grayscale $use_grayscale --scaling_factor $scaling_factor --run_parallel $run_parallel
 
                 # Create directory and move files
                 mkdir "$dir_name"
