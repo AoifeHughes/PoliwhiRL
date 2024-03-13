@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from collections import deque
+import torch
 
 
 class PrioritizedReplayBuffer:
@@ -23,7 +24,7 @@ class PrioritizedReplayBuffer:
         self.priorities[self.pos] = max_prio if error is None else error
         self.pos = (self.pos + 1) % self.capacity
 
-    def sample(self, batch_size, beta=0.4):
+    def sample(self, batch_size, beta=0.4, device='cpu'):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
@@ -106,7 +107,7 @@ class NStepPrioritizedReplayBuffer:
         self.priorities[self.pos] = max_prio if error is None else error
         self.pos = (self.pos + 1) % self.capacity
 
-    def sample(self, batch_size, beta=0.4):
+    def sample(self, batch_size, beta=0.4, device='cpu'):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
@@ -122,12 +123,32 @@ class NStepPrioritizedReplayBuffer:
         weights = (total * probs[indices]) ** (-beta)
         weights /= weights.max()  # Normalize for stability
 
+        # Convert samples to tensors
         states, actions, rewards, next_states, dones = zip(*samples)
-        return np.array(states), np.array(actions), np.array(rewards), np.array(next_states), np.array(dones), indices, weights
+
+        # Assuming 's' is already a tensor. If not, your original approach was correct.
+        states = torch.stack([s.clone().detach() for s in states]).to(device)
+        actions = torch.tensor(actions, dtype=torch.long).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        next_states = torch.stack([s.clone().detach() for s in next_states]).to(device)
+        dones = torch.tensor(dones, dtype=torch.bool).to(device)
+        weights = torch.tensor(weights, dtype=torch.float32).to(device)
+
+        return states, actions, rewards, next_states, dones, indices, weights
 
     def update_priorities(self, indices, errors):
+        # Ensure 'indices' is iterable
+        if not isinstance(indices, (list, np.ndarray)):
+            indices = [indices]
+        
+        # If 'errors' is a scalar (0-dimensional array), convert it to a 1-dimensional array with a single value
+        if np.isscalar(errors) or errors.ndim == 0:
+            errors = np.array([errors])
+        
+        # Update priorities
         for idx, error in zip(indices, errors):
             self.priorities[idx] = error
+
 
     def __len__(self):
         return len(self.buffer)
