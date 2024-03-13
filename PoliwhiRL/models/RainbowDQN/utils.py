@@ -239,3 +239,40 @@ def store_experience(
                 td_error,
             )
         )
+
+
+def add_n_step_experience(state, action, reward, next_state, done, replay_buffer, n_step_buffer, config, gamma=0.99):
+    """
+    Adds an experience to the n-step buffer and updates the replay buffer with n-step experiences.
+    """
+    n_step_buffer.append((state, action, reward, next_state, done))
+    
+    if len(n_step_buffer) >= config['n_steps']:
+        R = sum([n_step_buffer[i][2] * (gamma ** i) for i in range(config['n_steps'])])
+        n_step_state, n_step_action, _, _, _ = n_step_buffer.popleft()
+        
+        # Compute TD error for n-step return
+        _, _, _, n_step_next_state, n_step_done = n_step_buffer[-1]  # Get next_state and done from n-step ahead
+        td_error = compute_n_step_td_error(n_step_state, n_step_action, R, n_step_next_state, n_step_done, policy_net, target_net, config['device'], gamma ** config['n_steps'])
+        
+        # Add the n-step experience to the replay buffer
+        replay_buffer.add(n_step_state, n_step_action, R, n_step_next_state, n_step_done, td_error)
+
+def compute_n_step_td_error(state, action, reward, next_state, done, policy_net, target_net, device, gamma):
+    """
+    Computes the TD error for an n-step return.
+    """
+    state = torch.tensor(state, device=device).unsqueeze(0)
+    next_state = torch.tensor(next_state, device=device).unsqueeze(0)
+    action = torch.tensor([action], device=device, dtype=torch.long)
+    reward = torch.tensor([reward], device=device, dtype=torch.float)
+    done = torch.tensor([done], device=device, dtype=torch.bool)
+
+    current_q_values = policy_net(state).gather(1, action.unsqueeze(-1)).squeeze(-1)
+    with torch.no_grad():
+        next_q_values = target_net(next_state).max(1)[0].detach()
+        next_q_values[done] = 0.0
+        expected_q_values = reward + gamma * next_q_values
+
+    td_error = (expected_q_values - current_q_values).abs().item()
+    return td_error

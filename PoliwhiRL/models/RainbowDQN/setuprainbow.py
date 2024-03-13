@@ -5,7 +5,7 @@ import time
 import json
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
-from .replaybuffer import PrioritizedReplayBuffer
+from .replaybuffer import PrioritizedReplayBuffer, NStepPrioritizedReplayBuffer
 from .utils import save_checkpoint, load_checkpoint
 from .singlerainbow import run as run_single
 from .doublerainbow import run as run_rainbow_parallel
@@ -41,7 +41,13 @@ def initialize_training(config, env):
         config["device"]
     )
     optimizer = optim.Adam(policy_net.parameters(), lr=config["learning_rate"])
-    replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
+
+    if config.get("n_steps", 1) > 1:
+        replay_buffer = NStepPrioritizedReplayBuffer(
+            config["capacity"], config["n_steps"], config["alpha"]
+        )
+    else:
+        replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
 
     # Load checkpoint if available and update training components accordingly
     checkpoint = load_checkpoint(config)

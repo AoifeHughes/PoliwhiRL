@@ -3,6 +3,7 @@
     "state_path": "./emu_files/states/start.state",
     "episode_length": 1000,
     "device": "mps",
+    "n_steps": 3,
     "num_episodes": 1000,
     "batch_size": 32,
     "checkpoint": "./checkpoints/RainbowDQN.pth",
