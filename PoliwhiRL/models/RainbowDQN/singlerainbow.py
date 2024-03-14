@@ -74,7 +74,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             frame_idx += 1
 
         rewards.append(total_reward)
-        pbar.set_description(f"Episode: {episode}, Reward: {total_reward}, Frame: {frame_idx}, Best reward: {max(rewards)}, Avg reward: {sum(rewards)/len(rewards)}")
+        pbar.set_description(f"Episode: {episode}, Reward: {total_reward:.2f}, Frame: {frame_idx}, Best reward: {max(rewards):.2f}, Avg reward: {sum(rewards)/len(rewards):.2f}")
 
         if episode % config["checkpoint_interval"] == 0:
             save_checkpoint(config, policy_net, target_net, optimizer, replay_buffer, rewards)

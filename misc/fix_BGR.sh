@@ -7,10 +7,10 @@ convert_bgr_to_rgb() {
         # Use ImageMagick's convert command to swap the red and blue channels
         # This effectively converts an image from BGR to RGB
         # The converted image overwrites the original file
-        convert "$file" -channel RGB -separate -channel BGR -combine "$file"
+        convert "$file" -channel RGB -separate -channel GBR -combine "$file"
     done
 
     echo "All PNG files have been converted from BGR to RGB."
 }
 
-convert_bgr_to_rgb "runs/DoubleDQN/2"
+convert_bgr_to_rgb "./misc/testset/"

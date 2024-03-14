@@ -18,34 +18,27 @@ import pickle
 class Controller:
     def __init__(
         self,
-        rom_path,
-        state_path=None,
-        timeout=100,
-        log_path="./logs/log.json",
-        use_sight=False,
-        scaling_factor=1,
-        extra_files=[],
-        reward_locations_xy={},
-        use_grayscale=False,
+        config,
     ):
+        self.config = config
         # Create a temporary directory
         self.temp_dir = tempfile.mkdtemp()
-        self.log_path = log_path
-        self.ogTimeout = timeout
-        self.timeout = timeout
-        self.timeoutcap = timeout * 1000
+        self.log_path = config["log_path"]
+        self.ogTimeout = config["episode_length"]
+        self.timeout = self.ogTimeout
+        self.timeoutcap = self.timeout * 1000
         self.frames_per_loc = {i: 0 for i in range(256)}
-        self.use_sight = use_sight
-        self.scaling_factor = scaling_factor
-        self.reward_locations_xy = reward_locations_xy
-        files_to_copy = [rom_path, state_path]
-        files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
-        self.use_grayscale = use_grayscale
+        self.use_sight = config["sight"]
+        self.scaling_factor = config["scaling_factor"]
+        self.reward_locations_xy = config['reward_locations_xy']
+        files_to_copy = [config['rom_path'], config['state_path']]
+        files_to_copy.extend([file for file in config['extra_files'] if os.path.isfile(file)])
+        self.use_grayscale = config['use_grayscale']
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.rom_path = self.paths[0]
         self.state_path = self.paths[1]
         # Initialize PyBoy with the ROM in the temporary directory
-        self.pyboy = PyBoy(rom_path, debug=False, window_type="headless")
+        self.pyboy = PyBoy(self.rom_path, debug=False, window_type="headless")
         self.pyboy.set_emulation_speed(0)
 
         self.action_space_buttons = np.array(
@@ -237,7 +230,7 @@ class Controller:
 
     def screen_image(self):
         # Original image
-        original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
+        original_image = np.array(self.pyboy.screen_image())
 
         # Convert to grayscale if required
         if self.use_grayscale:

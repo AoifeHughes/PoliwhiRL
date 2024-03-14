@@ -17,15 +17,7 @@ def setup_environment(config):
     Sets up the environment based on the provided configuration.
     """
     return Controller(
-        config["rom_path"],
-        config["state_path"],
-        timeout=config["episode_length"],
-        log_path="./logs/rainbow_env.json",
-        use_sight=config["sight"],
-        extra_files=config["extra_files"],
-        reward_locations_xy=config["reward_locations_xy"],
-        scaling_factor=config["scaling_factor"],
-        use_grayscale=config["use_grayscale"],
+        config
     )
 
 

@@ -1,25 +1,37 @@
 #!/bin/bash
 
-# Check for proper number of command line args.
 if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 images_directory output_gif"
+    echo "Usage: $0 <folder_location> <output_filename.gif>"
     exit 1
 fi
 
-# Command line arguments
-images_directory="$1"
-output_gif="$2"
+FOLDER_LOCATION=$1
+OUTPUT_FILENAME=$2
 
-# Frame rate (5 fps)
-fps=60
+if [ ! -d "$FOLDER_LOCATION" ]; then
+    echo "The specified folder does not exist."
+    exit 1
+fi
 
-# Create a temporary palette for better quality
-palette="/tmp/palette.png"
+cd "$FOLDER_LOCATION"
 
-# Generate palette
-ffmpeg -i "${images_directory}/%*.jpg" -vf "fps=$fps,scale=320:-1:flags=lanczos,palettegen" -y $palette
+# Sort files based on the number between the first two underscores
+sorted_files=($(ls *.png | sort -t '_' -k2n))
 
-# Create GIF using ffmpeg and the generated palette
-ffmpeg -i "${images_directory}/%*.jpg" -i $palette -filter_complex "fps=$fps,scale=320:-1:flags=lanczos[x];[x][1:v]paletteuse" -y $output_gif
+# Swapping the red and blue channels for each file and adding them to a new array
+prepared_files=()
+for file in "${sorted_files[@]}"; do
+    # Swap the red (R) and blue (B) channels to correct the color space
+    corrected_file="corrected_$file"
+    convert "$file" -channel RGB -separate -channel BGR -combine "$corrected_file"
+    prepared_files+=("$corrected_file")
+done
 
-echo "GIF created: $output_gif"
+# Calculate delay for approximately 60 FPS
+# 100 / 60 = 1.67, ImageMagick's delay unit is in hundredths of a second. Use 2 for simplicity.
+convert -delay 2 -loop 0 "${prepared_files[@]}" "$OUTPUT_FILENAME"
+
+# Cleanup: remove the corrected temporary files
+rm corrected_*.png
+
+echo "GIF created successfully: $OUTPUT_FILENAME"
