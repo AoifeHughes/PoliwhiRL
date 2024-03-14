@@ -38,13 +38,10 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         done = False
 
         while not done:
-            epsilon = epsilon_by_frame(frame_idx, config["epsilon_start"], config["epsilon_final"], config["epsilon_decay"])
-
-            action, q_val = select_action_ucb(state, policy_net, config, frame_idx, action_counts, action_rewards, num_actions)
-
+            ep = epsilon_by_frame(frame_idx, config["epsilon_start"], config["epsilon_final"], config["epsilon_decay"])
+            action, q = select_action_hybrid(state, policy_net, config, frame_idx, action_counts, num_actions, ep)
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
-
             action_rewards[action] += reward
 
             if not config.get("eval_mode", False):
@@ -71,13 +68,13 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
             if config["record"]:
-                env.record(epsilon, "rdqn")
+                env.record(ep, "rdqn", False if q is not None else True)
             state = next_state
             total_reward += reward
             frame_idx += 1
 
         rewards.append(total_reward)
-        pbar.set_description(f"Episode: {episode}, Reward: {total_reward}, Epsilon: {epsilon}, Best reward: {max(rewards)}, Avg reward: {sum(rewards)/len(rewards)}")
+        pbar.set_description(f"Episode: {episode}, Reward: {total_reward}, Frame: {frame_idx}, Best reward: {max(rewards)}, Avg reward: {sum(rewards)/len(rewards)}")
 
         if episode % config["checkpoint_interval"] == 0:
             save_checkpoint(config, policy_net, target_net, optimizer, replay_buffer, rewards)
@@ -88,26 +85,25 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     return losses, rewards, frame_idx
 
 
-def select_action_ucb(state, policy_net, config, frame_idx, action_counts, action_rewards, num_actions):
-    exploration_rate = np.sqrt(2 * math.log(frame_idx + 1))
-
-    ucb_values = np.zeros(num_actions)
-    for action in range(num_actions):
-        if action_counts[action] > 0:
-            average_reward = action_rewards[action] / action_counts[action]
-            ucb_bonus = exploration_rate / np.sqrt(action_counts[action])
-            ucb_values[action] = average_reward + ucb_bonus
-        else:
-            ucb_values[action] = np.inf
-
-    action = np.argmax(ucb_values)
+def select_action_hybrid(state, policy_net, config, frame_idx, action_counts, num_actions, epsilon):
+    # Decide to take a random action with probability epsilon
+    if random.random() < epsilon:
+        return random.randrange(num_actions), None  # Return a random action
 
     with torch.no_grad():
-        q_values = policy_net(state.unsqueeze(0).to(config["device"]))
-        # This ensures we are selecting a valid action according to the policy network, but guided by UCB
-        q_values = q_values.cpu().numpy()
-        action_q_value = q_values[0][action]
+        # Obtain Q-values from the policy network for the current state
+        q_values = policy_net(state.unsqueeze(0).to(config["device"])).cpu().numpy()[0]
 
-    action_counts[action] += 1
+    exploration_rate = np.sqrt(2 * math.log(frame_idx + 1) / (action_counts + 1))  # Avoid division by zero
+    hybrid_values = q_values + exploration_rate  # Combine Q-values with exploration bonus
 
-    return action, action_q_value
+    for action in range(num_actions):
+        if action_counts[action] == 0:
+            # Ensure untried actions are considered
+            hybrid_values[action] += np.inf
+
+    action = np.argmax(hybrid_values)
+    action_counts[action] += 1  # Update the counts for the selected action
+
+    return action, q_values[action]
+
