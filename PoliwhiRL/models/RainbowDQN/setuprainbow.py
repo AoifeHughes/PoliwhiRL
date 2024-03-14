@@ -16,9 +16,7 @@ def setup_environment(config):
     """
     Sets up the environment based on the provided configuration.
     """
-    return Controller(
-        config
-    )
+    return Controller(config)
 
 
 def initialize_training(config, env):
@@ -35,7 +33,9 @@ def initialize_training(config, env):
     optimizer = optim.Adam(policy_net.parameters(), lr=config["learning_rate"])
 
     if config.get("n_steps", 1) > 1:
-        replay_buffer = NStepPrioritizedReplayBuffer(config["capacity"], config["alpha"], config["n_steps"], config["gamma"])
+        replay_buffer = NStepPrioritizedReplayBuffer(
+            config["capacity"], config["alpha"], config["n_steps"], config["gamma"]
+        )
     else:
         replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
 

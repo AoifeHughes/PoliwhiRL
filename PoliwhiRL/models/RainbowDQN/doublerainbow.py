@@ -100,7 +100,9 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
     frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
     if config.get("n_steps", 1) > 1:
-        raise NotImplementedError("N-step learning not supported in DoubleRainbow... open a PR!")
+        raise NotImplementedError(
+            "N-step learning not supported in DoubleRainbow... open a PR!"
+        )
 
     episodes_per_batch = config["num_workers"] * config["runs_per_worker"]
     total_batches = config["num_episodes"] // episodes_per_batch + (

@@ -5,6 +5,7 @@ import numpy as np
 from .replaybuffer import PrioritizedReplayBuffer
 import torch.nn.functional as F
 
+
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
 
@@ -79,7 +80,9 @@ def optimize_model(
     if next_states.dim() == 5:
         next_states = next_states.squeeze(1)  # Remove the extra dimension
 
-    weights = weights.unsqueeze(-1)  # Ensure weights are correctly shaped for the loss calculation
+    weights = weights.unsqueeze(
+        -1
+    )  # Ensure weights are correctly shaped for the loss calculation
 
     # Current Q values
     current_q_values = policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(-1)
@@ -89,13 +92,18 @@ def optimize_model(
     _, best_actions = next_q_values.max(1, keepdim=True)
 
     # Next Q values from target_net for actions chosen by policy_net
-    next_q_values_target = target_net(next_states).detach().gather(1, best_actions).squeeze(-1)
+    next_q_values_target = (
+        target_net(next_states).detach().gather(1, best_actions).squeeze(-1)
+    )
 
     # Expected Q values
     expected_q_values = rewards + (gamma * next_q_values_target * (~dones))
 
     # Compute the loss using SmoothL1Loss for stability
-    loss = (weights * F.smooth_l1_loss(current_q_values, expected_q_values, reduction='none')).mean()
+    loss = (
+        weights
+        * F.smooth_l1_loss(current_q_values, expected_q_values, reduction="none")
+    ).mean()
 
     # Calculate priorities for experience replay
     prios = loss.detach() + 1e-5  # Ensure positive priorities with a small constant
@@ -108,9 +116,7 @@ def optimize_model(
     # Update priorities in the buffer
     replay_buffer.update_priorities(indices, prios.cpu().numpy())
 
-
     return loss.item()  # Optional: return the loss value for monitoring
-
 
 
 def save_checkpoint(
@@ -187,7 +193,7 @@ def store_experience(
     config,
     td_errors,
     beta,
-    n_step_buffer=None  # Add n_step_buffer as a parameter
+    n_step_buffer=None,  # Add n_step_buffer as a parameter
 ):
     """
     Stores the experience in the replay buffer and computes TD error.
@@ -207,7 +213,16 @@ def store_experience(
     if n_step_buffer is not None:
         # If n_step_buffer is provided, use it to store n-step experiences
         add_n_step_experience(
-            state, action, reward, next_state, done, replay_buffer, n_step_buffer, policy_net, target_net, config
+            state,
+            action,
+            reward,
+            next_state,
+            done,
+            replay_buffer,
+            n_step_buffer,
+            policy_net,
+            target_net,
+            config,
         )
     else:
         # Otherwise, add the experience as usual
@@ -223,53 +238,84 @@ def store_experience(
                     reward_tensor,
                     next_state,
                     done_tensor,
-                    beta,  
+                    beta,
                     td_error,
                 )
             )
 
 
 def add_n_step_experience(
-    state, action, reward, next_state, done, 
-    replay_buffer, n_step_buffer, policy_net, target_net, config
+    state,
+    action,
+    reward,
+    next_state,
+    done,
+    replay_buffer,
+    n_step_buffer,
+    policy_net,
+    target_net,
+    config,
 ):
     """
     Adds an experience to the n-step buffer and updates the replay buffer with n-step experiences.
     """
     # Append the current experience to the n_step_buffer
     n_step_buffer.append((state, action, reward, next_state, done))
-    gamma = config['gamma']
+    gamma = config["gamma"]
     # If the buffer has enough experiences, calculate the n-step return
-    if len(n_step_buffer) >= config['n_steps']:
+    if len(n_step_buffer) >= config["n_steps"]:
         R = 0
-        for i in range(config['n_steps']):
+        for i in range(config["n_steps"]):
             _, _, r, _, _ = n_step_buffer[i]
-            R += (gamma ** i) * r
-        
+            R += (gamma**i) * r
+
         n_step_state, n_step_action, _, _, _ = n_step_buffer.popleft()
-        
+
         # The next state and done flag from the last experience in the n-step sequence
         _, _, _, n_step_next_state, n_step_done = n_step_buffer[-1]
-        
+
         # Preparing tensors for TD error computation
         n_step_state_tensor = n_step_state.to(config["device"]).unsqueeze(0)
         n_step_next_state_tensor = n_step_next_state.to(config["device"]).unsqueeze(0)
-        n_step_action_tensor = torch.tensor([n_step_action], device=config["device"], dtype=torch.long)
-        n_step_reward_tensor = torch.tensor([R], device=config["device"], dtype=torch.float)
-        n_step_done_tensor = torch.tensor([n_step_done], device=config["device"], dtype=torch.bool)
+        n_step_action_tensor = torch.tensor(
+            [n_step_action], device=config["device"], dtype=torch.long
+        )
+        n_step_reward_tensor = torch.tensor(
+            [R], device=config["device"], dtype=torch.float
+        )
+        n_step_done_tensor = torch.tensor(
+            [n_step_done], device=config["device"], dtype=torch.bool
+        )
 
         # Compute TD error for the n-step experience using a modified compute_td_error to handle n-step rewards
         td_error = compute_n_step_td_error(
-            (n_step_state_tensor, n_step_action_tensor, n_step_reward_tensor, n_step_next_state_tensor, n_step_done_tensor),
-            policy_net, target_net, config['device'], gamma ** config['n_steps']
+            (
+                n_step_state_tensor,
+                n_step_action_tensor,
+                n_step_reward_tensor,
+                n_step_next_state_tensor,
+                n_step_done_tensor,
+            ),
+            policy_net,
+            target_net,
+            config["device"],
+            gamma ** config["n_steps"],
         )
 
         # Add the n-step experience to the replay buffer
         replay_buffer.add(
-            n_step_state_tensor, n_step_action_tensor, n_step_reward_tensor, n_step_next_state_tensor, n_step_done_tensor, td_error
+            n_step_state_tensor,
+            n_step_action_tensor,
+            n_step_reward_tensor,
+            n_step_next_state_tensor,
+            n_step_done_tensor,
+            td_error,
         )
 
-def compute_n_step_td_error(experience, policy_net, target_net, device, effective_gamma):
+
+def compute_n_step_td_error(
+    experience, policy_net, target_net, device, effective_gamma
+):
     state, action, reward, next_state, done = experience
 
     # Compute current Q values: Q(s, a)
@@ -284,7 +330,6 @@ def compute_n_step_td_error(experience, policy_net, target_net, device, effectiv
     # TD error
     td_error = (expected_q_values - current_q_values).abs()
     return td_error.item()  # Return absolute TD error as scalar
-
 
 
 def compute_td_error(experience, policy_net, target_net, device, gamma=0.99):
@@ -309,5 +354,3 @@ def compute_td_error(experience, policy_net, target_net, device, gamma=0.99):
     # TD error
     td_error = (expected_q_values - current_q_values).abs()
     return td_error.item()  # Return absolute TD error as scalar
-
-

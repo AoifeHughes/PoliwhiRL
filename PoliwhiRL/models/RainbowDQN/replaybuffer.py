@@ -24,7 +24,7 @@ class PrioritizedReplayBuffer:
         self.priorities[self.pos] = max_prio if error is None else error
         self.pos = (self.pos + 1) % self.capacity
 
-    def sample(self, batch_size, beta=0.4, device='cpu'):
+    def sample(self, batch_size, beta=0.4, device="cpu"):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
@@ -69,7 +69,6 @@ class PrioritizedReplayBuffer:
         self.priorities = state_dict["priorities"]
 
 
-
 class NStepPrioritizedReplayBuffer:
     def __init__(self, capacity, alpha=0.6, n_steps=3, gamma=0.99):
         self.capacity = capacity
@@ -84,21 +83,27 @@ class NStepPrioritizedReplayBuffer:
     def add(self, state, action, reward, next_state, done, error):
         # Add to the n-step buffer
         self.n_step_buffer.append((state, action, reward, next_state, done))
-        
+
         if len(self.n_step_buffer) < self.n_steps:
             return
-        
+
         # Calculate n-step return and the final state
-        R = sum([self.n_step_buffer[i][2] * (self.gamma ** i) for i in range(self.n_steps)])
+        R = sum(
+            [self.n_step_buffer[i][2] * (self.gamma**i) for i in range(self.n_steps)]
+        )
         final_state, final_action, _, _, final_done = self.n_step_buffer[-1]
 
         # The state to add is the oldest state in the buffer
         state_to_add, action_to_add = self.n_step_buffer[0][:2]
 
-        self._add_to_buffer(state_to_add, action_to_add, R, final_state, final_done, error)
+        self._add_to_buffer(
+            state_to_add, action_to_add, R, final_state, final_done, error
+        )
 
     def _add_to_buffer(self, state, action, reward, next_state, done, error):
-        max_prio = self.priorities.max() if self.buffer else 1.0  # Max priority for new entry
+        max_prio = (
+            self.priorities.max() if self.buffer else 1.0
+        )  # Max priority for new entry
         if len(self.buffer) < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
         else:
@@ -107,13 +112,13 @@ class NStepPrioritizedReplayBuffer:
         self.priorities[self.pos] = max_prio if error is None else error
         self.pos = (self.pos + 1) % self.capacity
 
-    def sample(self, batch_size, beta=0.4, device='cpu'):
+    def sample(self, batch_size, beta=0.4, device="cpu"):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[:self.pos]
+            prios = self.priorities[: self.pos]
 
-        probs = prios ** self.alpha
+        probs = prios**self.alpha
         probs /= probs.sum()
 
         indices = np.random.choice(len(self.buffer), batch_size, p=probs)
@@ -140,15 +145,14 @@ class NStepPrioritizedReplayBuffer:
         # Ensure 'indices' is iterable
         if not isinstance(indices, (list, np.ndarray)):
             indices = [indices]
-        
+
         # If 'errors' is a scalar (0-dimensional array), convert it to a 1-dimensional array with a single value
         if np.isscalar(errors) or errors.ndim == 0:
             errors = np.array([errors])
-        
+
         # Update priorities
         for idx, error in zip(indices, errors):
             self.priorities[idx] = error
-
 
     def __len__(self):
         return len(self.buffer)

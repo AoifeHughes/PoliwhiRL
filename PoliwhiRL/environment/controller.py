@@ -30,10 +30,12 @@ class Controller:
         self.frames_per_loc = {i: 0 for i in range(256)}
         self.use_sight = config["sight"]
         self.scaling_factor = config["scaling_factor"]
-        self.reward_locations_xy = config['reward_locations_xy']
-        files_to_copy = [config['rom_path'], config['state_path']]
-        files_to_copy.extend([file for file in config['extra_files'] if os.path.isfile(file)])
-        self.use_grayscale = config['use_grayscale']
+        self.reward_locations_xy = config["reward_locations_xy"]
+        files_to_copy = [config["rom_path"], config["state_path"]]
+        files_to_copy.extend(
+            [file for file in config["extra_files"] if os.path.isfile(file)]
+        )
+        self.use_grayscale = config["use_grayscale"]
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.rom_path = self.paths[0]
         self.state_path = self.paths[1]
