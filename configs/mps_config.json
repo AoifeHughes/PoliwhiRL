@@ -11,6 +11,7 @@
     "sight": false,
     "erase": true,
     "run_parallel": false,
+    "log_path": "./logs/RainbowDQN",
     "runs_per_worker": 2,
     "document": true,
     "record": true,
