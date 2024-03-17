@@ -13,18 +13,19 @@ from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
-    frame_idx = config.get("frame_idx", 0)
     rewards, losses, epsilon_values, beta_values, td_errors = [], [], [], [], []
 
     num_actions = len(env.action_space)
     action_counts = np.zeros(num_actions)
     action_rewards = np.zeros(num_actions)
+    episodes = config.get("start_episode", 0)
+    frame_idx = config.get("frame_idx", 0)
 
     for episode in (
         pbar := tqdm(
             range(
-                config.get("start_episode", 0),
-                config.get("start_episode", 0) + config["num_episodes"],
+                episodes,
+                episodes + config["num_episodes"],
             )
         )
     ):
@@ -105,7 +106,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
         rewards.append(total_reward)
         pbar.set_description(
-            f"Episode: {episode}, Reward: {total_reward:.2f}, Epsilon: {epsilon:.2f}, Best reward: {max(rewards):.2f}, Avg reward: {sum(rewards) / len(rewards):.2f}"
+            f"Episode: {episode}, Frame: {frame_idx}, Reward: {total_reward:.2f}, Epsilon: {epsilon:.2f}, Best reward: {max(rewards):.2f}, Avg reward: {sum(rewards) / len(rewards):.2f}, Frame_idx: {frame_idx}"
         )
         if episode % config["checkpoint_interval"] == 0 and episode > 0:
             save_checkpoint(
@@ -115,8 +116,16 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 optimizer,
                 replay_buffer,
                 rewards,
+                episodes=episode,
+                frames=frame_idx,
             )
 
             plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
 
+    config.update(
+        {
+            "start_episode": episodes,
+            "frame_idx": frame_idx,
+        }
+    )
     return losses, beta_values, td_errors, rewards

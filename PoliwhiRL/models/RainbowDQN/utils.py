@@ -179,7 +179,8 @@ def save_checkpoint(
     replay_buffer,
     rewards,
     filename=None,
-    epsilons_by_location=None,
+    episodes=None,
+    frames=None,
 ):
     # Use filename from config if not provided
     if filename is None:
@@ -190,8 +191,8 @@ def save_checkpoint(
 
     # Prepare the state to be saved
     state = {
-        "episode": config.get("num_episodes", 0),
-        "frame_idx": config.get("frame_idx", 0),
+        "episode": episodes,
+        "frame_idx": frames,
         "policy_net_state_dict": policy_net.state_dict(),
         "target_net_state_dict": target_net.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
@@ -223,7 +224,6 @@ def load_checkpoint(config):
                 "replay_buffer_state_dict": checkpoint.get("replay_buffer_state_dict"),
                 "frames_in_loc": checkpoint.get("frames_in_loc", {}),
                 "rewards": checkpoint.get("rewards", []),
-                "epsilon_by_location": checkpoint.get("epsilon_by_location", {}),
             }
         )
 

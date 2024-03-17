@@ -1,6 +1,6 @@
 {
-  "episode_length": 25,
-  "num_episodes": 100,
+  "episode_length": 100,
+  "num_episodes": 10,
   "device": "mps",
   "n_steps": 1,
   "checkpoint_interval": 500,
@@ -8,5 +8,6 @@
   "use_grayscale": false,
   "extend_on_reward": false,
   "update_frequency": 10,
+  "erase": false,
   "reward_image_folder": "./configs/reward_images"
 }

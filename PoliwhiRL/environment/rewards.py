@@ -83,6 +83,7 @@ class Rewards:
     def update_for_menuing(self, total_reward, default_reward):
         if self.button_pressed == "start" or self.button_pressed == "select":
             total_reward += -default_reward * 5
+        return total_reward
 
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
