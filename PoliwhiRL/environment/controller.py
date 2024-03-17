@@ -26,6 +26,7 @@ class Controller:
         scaling_factor=1,
         extra_files=[],
         reward_locations_xy={},
+        reward_images=[],
         use_grayscale=False,
     ):
         # Create a temporary directory
@@ -38,6 +39,9 @@ class Controller:
         self.use_sight = use_sight
         self.scaling_factor = scaling_factor
         self.reward_locations_xy = reward_locations_xy
+        self.reward_images = reward_images
+
+
         files_to_copy = [rom_path, state_path]
         files_to_copy.extend([file for file in extra_files if os.path.isfile(file)])
         self.use_grayscale = use_grayscale
@@ -89,6 +93,7 @@ class Controller:
 
     def get_has_reached_reward_locations_xy(self):
         return self.has_reached_reward_locations_xy
+
 
     def get_reward_locations_xy(self):
         return self.reward_locations_xy
@@ -170,6 +175,9 @@ class Controller:
             self.imgs = ImageMemory()
             self.run = 0
             self.runs_data = {}
+            self.reward_image_memory = ImageMemory()
+            for img_loc in self.reward_images:
+                 self.reward_image_memory.check_and_store_image(img_loc)
         else:
             self.log_info_on_reset()
             total_reward = 0

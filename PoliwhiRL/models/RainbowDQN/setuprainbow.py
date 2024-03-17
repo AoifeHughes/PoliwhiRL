@@ -16,6 +16,11 @@ def setup_environment(config):
     """
     Sets up the environment based on the provided configuration.
     """
+    if config['reward_image_folder'] is not None:
+        fldr = config['reward_image_folder']
+        image_files = [f'{fldr}/{f}' for f in os.listdir(config['reward_image_folder'])]
+    else:
+        image_files = []
     return Controller(
         config["rom_path"],
         config["state_path"],
@@ -26,6 +31,7 @@ def setup_environment(config):
         reward_locations_xy=config["reward_locations_xy"],
         scaling_factor=config["scaling_factor"],
         use_grayscale=config["use_grayscale"],
+        reward_images=image_files,
     )
 
 
