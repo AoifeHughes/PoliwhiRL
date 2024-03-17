@@ -21,7 +21,7 @@ def update_for_locations(controller, total_reward, default_reward):
 
 def update_for_vision(controller, total_reward, default_reward):
     if controller.is_new_vision():
-        total_reward += default_reward * 1
+        total_reward += default_reward * 10
     return total_reward
 
 
@@ -45,7 +45,7 @@ def update_for_party_pokemon(controller, total_reward, default_reward):
 def update_for_movement(controller, total_reward, default_reward):
     cur_xy = controller.get_XY()
     if cur_xy not in controller.xy:
-        total_reward += default_reward * 2
+        total_reward += default_reward * 10
         controller.xy.add(cur_xy)
     return total_reward
 
@@ -104,7 +104,7 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
 
 
 def calc_rewards(controller, default_reward=0.01, use_sight=False):
-    total_reward = -default_reward * 1
+    total_reward = -default_reward  # penalty for doing nothing
 
     if use_sight:
         total_reward = update_for_vision(controller, total_reward, default_reward)
