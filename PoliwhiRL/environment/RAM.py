@@ -6,16 +6,16 @@ import numpy as np
 class RAMManagement:
     def __init__(self, pyboy):
         self.pyboy = pyboy
-        self.location = 0xD148
-        self.X = 0xDCB8
-        self.Y = 0xDCB7
-        self.stairs = (7, 1)
-        self.frontdoor1 = (7, 7)
-        self.frontdoor2 = (6, 7)
-        self.received = 0xCF60
-        self.money = 0xD84E
-        self.party_base = 0xDCDF
-        self.num_pokemon = 0xDCD7
+        self.location_mem_loc = 0xD148
+        self.X_mem_loc = 0xDCB8
+        self.Y_mem_loc = 0xDCB7
+        self.received_mem_loc = 0xCF60
+        self.money_mem_loc = 0xD84E
+        self.party_base_mem_loc = 0xDCDF
+        self.num_pokemon_mem_loc = 0xDCD7
+        self.pokedex_seen_mem_loc = (0xDEB9, 0xDED8)
+        self.pokedex_owned_mem_loc = (0xDE99, 0xDEB8)
+        self.update_variables()
 
         self.locations = {
             "DownstairsPlayersHouse": 6,
@@ -26,32 +26,25 @@ class RAMManagement:
             "MrPokemonsHouse": 10,
         }
 
-        self.pokedex_seen = (0xDEB9, 0xDED8)
-        self.pokedex_owned = (0xDE99, 0xDEB8)
+
 
     def get_memory_value(self, address):
         return self.pyboy.memory[address]
 
     def get_current_location(self):
-        loc = self.get_memory_value(self.location)
+        loc = self.get_memory_value(self.location_mem_loc)
         if loc == 7:  # starting zone is also 7 if you leave and come back
             loc = 0
         return loc
-
-    def has_gotten_out_of_house(self):
-        return self.get_memory_value(self.outside_house) == 4
-
-    def player_received(self):
-        return self.get_memory_value(self.received)
-
+    
     def get_XY(self):
-        x_coord = self.get_memory_value(self.X)
-        y_coord = self.get_memory_value(self.Y)
+        x_coord = self.get_memory_value(self.X_mem_loc)
+        y_coord = self.get_memory_value(self.Y_mem_loc)
         return x_coord, y_coord
 
     def get_player_money(self):
         money_bytes = [
-            self.get_memory_value(self.money + i) for i in range(3)
+            self.get_memory_value(self.money_mem_loc + i) for i in range(3)
         ]
         money = self.bytes_to_int(money_bytes[::-1])
         return money
@@ -67,7 +60,7 @@ class RAMManagement:
         return raw_bytes
 
     def get_party_info(self):
-        num_pokemon = self.get_memory_value(self.num_pokemon)
+        num_pokemon = self.get_memory_value(self.num_pokemon_mem_loc)
         total_level = 0
         total_hp = 0
         total_exp = 0
@@ -88,7 +81,7 @@ class RAMManagement:
         return int(total_level), int(total_hp), int(total_exp)
 
     def get_pkdex_seen(self):
-        start_address, end_address = self.pokedex_seen
+        start_address, end_address = self.pokedex_seen_mem_loc
 
         total_seen = 0
         for address in range(start_address, end_address + 1):
@@ -103,7 +96,7 @@ class RAMManagement:
         return total_seen
 
     def get_pkdex_owned(self):
-        start_address, end_address = self.pokedex_owned
+        start_address, end_address = self.pokedex_owned_mem_loc
 
         total_owned = 0
         for address in range(start_address, end_address + 1):

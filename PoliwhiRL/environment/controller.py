@@ -199,7 +199,7 @@ class Controller:
         document(
             self.run,
             self.steps,
-            self.screen_image(),
+            self.screen_image(no_resize=True),
             self.button,
             self.reward,
             self.timeoutcap,
