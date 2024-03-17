@@ -1,129 +1,99 @@
-# -*- coding: utf-8 -*-
 import numpy as np
-from PoliwhiRL.environment.RAM_locations import locations
 
+class Rewards:
+    def __init__(self, controller):
+        self.controller = controller
+        self.rewards = []
+        self.screen = None
+        self.total_reward = 0
+        self.img_memory = controller.imgs
+        self.img_rewards = controller.reward_image_memory
+        self.xy = set()
+        self.env_vars = {}  # Initialize as an empty dictionary
+        self.pkdex_seen = 0
+        self.pkdex_owned = 0
+        self.money = 0
+        self.total_level = 0
+        self.total_hp = 0
+        self.total_exp = 0
+        self.locations = set()
 
-def update_for_locations(controller, total_reward, default_reward):
-    if controller.get_current_location() not in controller.locations:
-        controller.locations.add(controller.get_current_location())
-        if controller.get_current_location() == locations["MrPokemonsHouse"]:
+    def update_env_vars(self):
+        self.screen = self.controller.screen_image(no_resize=True)
+        self.env_vars = self.controller.get_RAM_variables()
+
+    def update_for_vision(self, total_reward, default_reward):
+        is_new_vision, _ = self.img_memory.check_and_store_image()
+        if is_new_vision:
+            total_reward += default_reward * 10
+        return total_reward
+
+    def update_for_party_pokemon(self, total_reward, default_reward):
+        total_level, total_hp, total_exp = self.env_vars["party_info"]
+        if total_level > np.sum(self.total_level):
+            total_reward += default_reward * 200
+            self.total_level = total_level
+
+        if total_hp > np.sum(self.total_hp):
             total_reward += default_reward * 100
-            controller.reset_has_reached_reward_locations_xy()
-            try:
-                controller.store_controller_state("./PerfectRunState.pkl")
-                print("Made it to Mr. Pokemon's House")
-            except Exception as e:
-                print(e)
-                print("Could not save state")
+            self.total_hp = total_hp
 
-    return total_reward
+        if total_exp > np.sum(self.total_exp):
+            total_reward += default_reward * 100
+            self.total_exp = total_exp
 
+        return total_reward
 
-def update_for_vision(controller, total_reward, default_reward):
-    if controller.is_new_vision():
-        total_reward += default_reward * 10
-    return total_reward
+    def update_for_movement(self, total_reward, default_reward):
+        cur_xy = (self.env_vars["X"], self.env_vars["Y"])
+        if cur_xy not in self.xy:
+            total_reward += default_reward * 10
+            self.xy.add(cur_xy)
+        return total_reward
 
+    def update_for_image_reward(self, total_reward, default_reward):
+        is_reward_image, img_hash = self.img_rewards.check_if_image_exists(
+            self.screen
+        )
+        if is_reward_image:
+            total_reward += default_reward * 100
+            self.img_rewards.pop_image(img_hash)
+        return total_reward
 
-def update_for_party_pokemon(controller, total_reward, default_reward):
-    total_level, total_hp, total_exp = controller.party_info()
-    if total_level > np.sum(controller.max_total_level):
-        total_reward += default_reward * 200
-        controller.max_total_level = total_level
+    def update_for_pokedex(self, total_reward, default_reward):
+        if self.env_vars["pkdex_seen"] > self.pkdex_seen:
+            total_reward += default_reward * 100
+            self.pkdex_seen = self.env_vars["pkdex_seen"]
 
-    if total_hp > np.sum(controller.max_total_hp):
-        total_reward += default_reward * 100
-        controller.max_total_hp = total_hp
+        if self.env_vars["pkdex_owned"] > self.pkdex_owned:
+            total_reward += default_reward * 200
+            self.pkdex_owned = self.env_vars["pkdex_owned"]
+        return total_reward
 
-    if total_exp > np.sum(controller.max_total_exp):
-        total_reward += default_reward * 100
-        controller.max_total_exp = total_exp
+    def update_for_money(self, total_reward, default_reward):
+        player_money = self.env_vars["money"]
+        if player_money > self.money:
+            total_reward += default_reward * 100
+            self.money = player_money
+        elif player_money < self.money:
+            total_reward -= default_reward * 100
+            self.money = player_money
+        return total_reward
 
-    return total_reward
+    def calc_rewards(self, default_reward=0.01, use_sight=False):
+        self.update_env_vars()  # Update env_vars at the start
+        total_reward = -default_reward  # Penalty for doing nothing
 
+        if use_sight:
+            total_reward = self.update_for_vision(total_reward, default_reward)
 
-def update_for_movement(controller, total_reward, default_reward):
-    cur_xy = controller.get_XY()
-    if cur_xy not in controller.xy:
-        total_reward += default_reward * 10
-        controller.xy.add(cur_xy)
-    return total_reward
+        for func in [
+            self.update_for_party_pokemon,
+            self.update_for_movement,
+            self.update_for_pokedex,
+            self.update_for_money,
+            self.update_for_image_reward,
+        ]:
+            total_reward = func(total_reward, default_reward)
 
-def update_for_image_reward(controller, total_reward, default_reward):
-    is_reward_image, img_hash = controller.reward_image_memory.check_if_image_exists( controller.screen_image(no_resize=True) )
-    if is_reward_image:
-        total_reward += default_reward * 100
-        controller.reward_image_memory.pop_image(img_hash)
-    return total_reward
-
-
-def update_for_pokedex(controller, total_reward, default_reward):
-    if controller.pkdex_seen() > controller.max_pkmn_seen:
-        total_reward += default_reward * 100
-        controller.max_pkmn_seen = controller.pkdex_seen()
-
-    if controller.pkdex_owned() > controller.max_pkmn_owned:
-        total_reward += default_reward * 200
-        controller.max_pkmn_owned = controller.pkdex_owned()
-    return total_reward
-
-
-def update_for_money(controller, total_reward, default_reward):
-    if controller.get_player_money() > controller.max_money:
-        total_reward += default_reward * 100
-        controller.max_money = controller.get_player_money()
-    elif controller.get_player_money() < controller.max_money:
-        total_reward -= default_reward * 100
-        controller.max_money = controller.get_player_money()
-    return total_reward
-
-
-def update_for_xy_checkpoints(controller, total_reward, default_reward):
-    if controller.get_current_location() in controller.has_reached_reward_locations_xy:
-        # we are in a location we want to be in now check xy
-        if (
-            controller.get_XY()
-            in controller.has_reached_reward_locations_xy[
-                controller.get_current_location()
-            ]
-        ):
-            if (
-                controller.has_reached_reward_locations_xy[
-                    controller.get_current_location()
-                ][controller.get_XY()]
-                is True
-            ):
-                return total_reward
-            else:
-                controller.has_reached_reward_locations_xy[
-                    controller.get_current_location()
-                ][controller.get_XY()] = True
-                # count the number of reached reward locations
-                count = 0
-                for k, v in controller.has_reached_reward_locations_xy.items():
-                    for k2, v2 in v.items():
-                        if v2 is True:
-                            count += 1
-
-                return total_reward + default_reward * 100 * count
-    return total_reward
-
-
-def calc_rewards(controller, default_reward=0.01, use_sight=False):
-    total_reward = -default_reward  # penalty for doing nothing
-
-    if use_sight:
-        total_reward = update_for_vision(controller, total_reward, default_reward)
-
-    for func in [
-        update_for_party_pokemon,
-        update_for_movement,
-        update_for_pokedex,
-        update_for_money,
-        update_for_xy_checkpoints,
-        update_for_locations,
-        update_for_image_reward,
-    ]:
-        total_reward = func(controller, total_reward, default_reward)
-
-    return total_reward
+        return total_reward
