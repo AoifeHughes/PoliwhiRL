@@ -1,36 +1,35 @@
 # -*- coding: utf-8 -*-
 from multiprocessing import Pool
-import random
+import numpy as np
 from tqdm import tqdm
-import torch
 from .utils import (
     optimize_model,
     beta_by_frame,
     epsilon_by_frame,
     store_experience,
+    select_action_hybrid,
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from PoliwhiRL.environment import Controller
 
 
-def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start):
-    # Assuming policy_net and target_net are reconstructed within the worker from state dicts
-    env = Controller(
-        rom_path=config["rom_path"],
-        state_path=config["state_path"],
-        timeout=config["episode_length"],
-        use_sight=config["sight"],
-        extra_files=config["extra_files"],
-        reward_locations_xy=config["reward_locations_xy"],
-        scaling_factor=config["scaling_factor"],
-        use_grayscale=config["use_grayscale"],
-        log_path=f"./logs/double_rainbow_env_{worker_id}.json",
-    )
+def worker(
+    worker_id,
+    batch_id,
+    config,
+    policy_net,
+    target_net,
+    frame_idx_start,
+    action_counts,
+    action_rewards,
+):
 
+    env = Controller(config)
     experiences = []
     rewards_collected = []
     td_errors = []
     frame_idx = frame_idx_start
+
     for episode in range(config["runs_per_worker"]):
         state = env.reset()
         policy_net.reset_noise()
@@ -47,11 +46,18 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
             )
             beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
 
-            action, was_random = select_action(
-                state, epsilon, env, policy_net, config["device"]
+            action, was_random = select_action_hybrid(
+                state,
+                policy_net,
+                config,
+                frame_idx,
+                action_counts,
+                len(action_counts),
+                epsilon,
             )
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
+            action_rewards[action] += reward
 
             store_experience(
                 state,
@@ -77,28 +83,20 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
         rewards_collected.append(total_reward)
 
     env.close()
-    return experiences, rewards_collected
+    return experiences, rewards_collected, action_counts, action_rewards
 
 
-def select_action(state, epsilon, env, policy_net, device):
-    is_random = True
-    if random.random() > epsilon:
-        with torch.no_grad():
-            q_values = policy_net(state.unsqueeze(0).to(device))
-            action = q_values.max(1)[1].view(1, 1).item()
-        is_random = False
-    else:
-        action = env.random_move()
-    return action, is_random
-
-
-def run(config, policy_net, target_net, optimizer, replay_buffer):
+def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions):
     total_rewards = []
     total_losses = []
     total_beta_values = []
     total_td_errors = []
+
     frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
+
+    action_counts = np.zeros(num_actions, dtype=int)
+    action_rewards = np.zeros(num_actions, dtype=float)
 
     episodes_per_batch = config["num_workers"] * config["runs_per_worker"]
     total_batches = config["num_episodes"] // episodes_per_batch + (
@@ -107,7 +105,16 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
 
     for batch in tqdm(range(total_batches), desc="Batch Processing"):
         worker_args = [
-            (i, batch, config, policy_net, target_net, frame_idx)
+            (
+                i,
+                batch,
+                config,
+                policy_net,
+                target_net,
+                frame_idx,
+                action_counts.copy(),
+                action_rewards.copy(),
+            )
             for i in range(config["num_workers"])
         ]
 
@@ -118,10 +125,19 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
         all_rewards = []
         all_beta_values = []
         all_td_errors = []
+        action_counts = np.zeros(num_actions, dtype=int)
+        action_rewards = np.zeros(num_actions, dtype=float)
 
-        for experiences, rewards in worker_results:
+        for (
+            experiences,
+            rewards,
+            worker_action_counts,
+            worker_action_rewards,
+        ) in worker_results:
             all_experiences.extend(experiences)
             all_rewards.extend(rewards)
+            action_counts += worker_action_counts
+            action_rewards += worker_action_rewards
 
         for experience in all_experiences:
             state, action, reward, next_state, done, beta, td_error = experience
@@ -154,11 +170,6 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
             "DoubleRainbowLatest",
             f"DoubleRainbow{episodes_per_batch * (batch + 1)}",
         ]:
-            plot_best_attempts(
-                "./results/",
-                name,
-                "DoubleRainbow",
-                total_rewards,
-            )
+            plot_best_attempts("./results/", name, "DoubleRainbow", total_rewards)
 
-    return total_losses, total_beta_values, total_td_errors, rewards
+    return total_losses, total_beta_values, total_td_errors, total_rewards

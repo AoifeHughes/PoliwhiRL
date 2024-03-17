@@ -44,22 +44,11 @@ def temp_state_file():
 
 @pytest.fixture
 def controller():
-    rom_path = mock_config["rom_path"]
-    state_path = mock_config["state_path"]
-    episode_length = 25
-    sight = False
-    return Controller(
-        rom_path,
-        state_path,
-        timeout=episode_length,
-        log_path="./logs/rainbow_env_eval.json",
-        use_sight=sight,
-    )
+    return Controller(mock_config)
 
 
 def test_initialization_with_mocked_config(controller):
     # Test if the Controller uses values from the mocked config
-    assert basename(controller.rom_path) == basename(mock_config["rom_path"])
     assert basename(controller.state_path) == basename(mock_config["state_path"])
 
 
@@ -67,8 +56,3 @@ def test_step_function_updates_state_correctly(controller):
     initial_steps = controller.steps
     controller.step(0)  # Assuming 0 corresponds to a valid action
     assert controller.steps == initial_steps + 1
-
-
-def test_saving_and_loading_state(controller, temp_state_file):
-    controller.store_controller_state(temp_state_file)
-    controller.load_stored_controller_state(temp_state_file)

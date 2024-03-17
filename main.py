@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
-from PoliwhiRL.environment import explore
 from torch import device
 import os
 import shutil
 import argparse
 import json
+import pprint
 
 
 class StoreBooleanAction(argparse.Action):
@@ -78,21 +78,17 @@ def main():
 
     config["device"] = device(config["device"])
 
+    pprint.pprint(config)
+
     if config["model"] == "RainbowDQN":
         if config["run_parallel"] and config["device"] != device("cpu"):
             print("Parallel RainbowDQN only supports CPU devices. Switching to CPU.")
             config["device"] = device("cpu")
+        # if config["run_parallel"]:
+        #     raise NotImplementedError("Parallel RainbowDQN is not implemented yet with the new action selection")
         rainbow(**config)
     elif config["model"] in ["DQN", "PPO"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
-    elif config["model"] == "explore":
-        explore(
-            config["num_episodes"],
-            config["rom_path"],
-            config["state_path"],
-            config["episode_length"],
-            config["sight"],
-        )
     else:
         raise ValueError(f"Model {config['model']} not recognized")
 
