@@ -149,3 +149,7 @@ states/*
 *.synctex.gz
 *.out
 *.jpg
+
+# profiling
+*.prof
+*.pstats

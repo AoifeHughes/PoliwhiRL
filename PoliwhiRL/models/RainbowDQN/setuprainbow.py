@@ -16,17 +16,7 @@ def setup_environment(config):
     """
     Sets up the environment based on the provided configuration.
     """
-    return Controller(
-        config["rom_path"],
-        config["state_path"],
-        timeout=config["episode_length"],
-        log_path="./logs/rainbow_env.json",
-        use_sight=config["sight"],
-        extra_files=config["extra_files"],
-        reward_locations_xy=config["reward_locations_xy"],
-        scaling_factor=config["scaling_factor"],
-        use_grayscale=config["use_grayscale"],
-    )
+    return Controller(config)
 
 
 def initialize_training(config, env):
@@ -64,7 +54,12 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
         return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
     else:
         return run_rainbow_parallel(
-            config, policy_net, target_net, optimizer, replay_buffer
+            config,
+            policy_net,
+            target_net,
+            optimizer,
+            replay_buffer,
+            len(env.action_space),
         )
 
 
