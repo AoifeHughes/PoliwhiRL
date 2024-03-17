@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 import numpy as np
+
 
 class Rewards:
     def __init__(self, controller):
@@ -8,16 +10,15 @@ class Rewards:
         self.img_memory = controller.imgs
         self.img_rewards = controller.reward_image_memory
         self.xy = set()
-        self.env_vars = {}  
+        self.env_vars = {}
         self.pkdex_seen = 0
         self.pkdex_owned = 0
-        self.money = 0 
+        self.money = 0
         self.total_level = 0
         self.total_hp = 0
         self.total_exp = 0
         self.button_pressed = None
         self.locations = set()
-
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -53,9 +54,7 @@ class Rewards:
         return total_reward
 
     def update_for_image_reward(self, total_reward, default_reward):
-        is_reward_image, img_hash = self.img_rewards.check_if_image_exists(
-            self.screen
-        )
+        is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             total_reward += default_reward * 100
             self.img_rewards.pop_image(img_hash)
@@ -80,7 +79,7 @@ class Rewards:
             total_reward -= default_reward * 100
             self.money = player_money
         return total_reward
-    
+
     def update_for_menuing(self, total_reward, default_reward):
         if self.button_pressed == "start" or self.button_pressed == "select":
             total_reward += -default_reward * 5

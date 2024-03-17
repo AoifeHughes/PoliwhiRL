@@ -117,10 +117,6 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 rewards,
             )
 
-            plot_best_attempts(
-                "./results/", 0, "RainbowDQN_latest_single", rewards
-            )
+            plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
 
     return losses, beta_values, td_errors, rewards
-
-

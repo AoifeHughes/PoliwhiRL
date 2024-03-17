@@ -31,11 +31,13 @@ class Controller:
         self.runs_data = {}
         self.reset_reward_images()
         files_to_copy = [config.get("rom_path"), config.get("state_path")]
-        files_to_copy.extend([file for file in config.get("extra_files", []) if os.path.isfile(file)])
+        files_to_copy.extend(
+            [file for file in config.get("extra_files", []) if os.path.isfile(file)]
+        )
         self.use_grayscale = config.get("use_grayscale", False)
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.state_path = self.paths[1]
-        self.pyboy = PyBoy(self.paths[0] , debug=False, window='null')
+        self.pyboy = PyBoy(self.paths[0], debug=False, window="null")
         self.pyboy.set_emulation_speed(0)
         self.ram = RAM.RAMManagement(self.pyboy)
         self.rewards = Rewards(self)
@@ -58,7 +60,10 @@ class Controller:
         self.reset(init=True)
 
     def setup_reward_images(self):
-        if 'reward_image_folder' in self.config and self.config['reward_image_folder'] != '':
+        if (
+            "reward_image_folder" in self.config
+            and self.config["reward_image_folder"] != ""
+        ):
             fldr = self.config["reward_image_folder"]
             self.reward_images = [
                 f"{fldr}/{f}"
@@ -72,10 +77,12 @@ class Controller:
     def get_RAM_variables(self):
         return self.ram.get_variables()
 
-
     def reset_reward_images(self):
         self.reward_image_memory = ImageMemory()
-        if 'reward_image_folder' in self.config and self.config['reward_image_folder'] != '':
+        if (
+            "reward_image_folder" in self.config
+            and self.config["reward_image_folder"] != ""
+        ):
             for img_loc in self.reward_images:
                 self.reward_image_memory.check_and_store_image(img_loc)
 
@@ -119,7 +126,9 @@ class Controller:
         return next_state, self.reward, self.done
 
     def screen_image(self, no_resize=False):
-        original_image = np.array(self.pyboy.screen.image)[:, :, :3]  # Remove alpha channel
+        original_image = np.array(self.pyboy.screen.image)[
+            :, :, :3
+        ]  # Remove alpha channel
         if self.use_grayscale:
             grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
             grayscale_image = np.expand_dims(grayscale_image, axis=-1)

@@ -150,6 +150,6 @@ states/*
 *.out
 *.jpg
 
-# profiling 
+# profiling
 *.prof
 *.pstats
