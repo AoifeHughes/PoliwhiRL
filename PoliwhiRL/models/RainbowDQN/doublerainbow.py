@@ -86,13 +86,12 @@ def worker(
     return experiences, rewards_collected, action_counts, action_rewards
 
 
-def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions):
+def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions, frame_idx=0, episodes=0):
     total_rewards = []
     total_losses = []
     total_beta_values = []
     total_td_errors = []
 
-    frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
 
     action_counts = np.zeros(num_actions, dtype=int)
@@ -171,5 +170,7 @@ def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions):
             f"DoubleRainbow{episodes_per_batch * (batch + 1)}",
         ]:
             plot_best_attempts("./results/", name, "DoubleRainbow", total_rewards)
+        episodes += len(all_rewards)
+        
 
-    return total_losses, total_beta_values, total_td_errors, total_rewards
+    return total_losses, total_beta_values, total_td_errors, total_rewards, frame_idx, episodes
