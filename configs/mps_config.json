@@ -1,13 +1,13 @@
 {
-  "episode_length": 100,
-  "num_episodes": 10,
+  "episode_length": 500,
+  "num_episodes": 2500,
   "device": "mps",
   "n_steps": 1,
   "log_path": "./logs/RainbowDQN",
-  "checkpoint_interval": 25,
+  "checkpoint_interval": 500,
   "scaling_factor": 0.5,
   "use_grayscale": false,
   "extend_on_reward": false,
-  "update_frequency": 5,
+  "update_frequency": 10,
   "reward_image_folder": "./configs/reward_images"
 }

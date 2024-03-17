@@ -96,13 +96,14 @@ class Controller:
         self.done = False
         self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
+        self.rewards = Rewards(self)
         return self.screen_image()
 
     def step(self, movement, ticks_per_input=10, wait=60, init=False):
         movement = self.action_space_buttons[movement]
         if movement != "pass":
             self.pyboy.button_press(movement)
-            self.pyboy.tick(wait, False)
+            self.pyboy.tick(ticks_per_input, False)
             self.pyboy.button_release(movement)
         else:
             self.pyboy.tick(ticks_per_input, False)
