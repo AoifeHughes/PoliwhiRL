@@ -7,6 +7,7 @@ import os
 import shutil
 import argparse
 import json
+import pprint
 
 
 class StoreBooleanAction(argparse.Action):
@@ -77,6 +78,8 @@ def main():
                 shutil.rmtree(folder)
 
     config["device"] = device(config["device"])
+
+    pprint.pprint(config)
 
     if config["model"] == "RainbowDQN":
         if config["run_parallel"] and config["device"] != device("cpu"):
