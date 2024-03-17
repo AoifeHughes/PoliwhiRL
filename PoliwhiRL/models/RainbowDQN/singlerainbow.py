@@ -64,7 +64,6 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             next_state = image_to_tensor(next_state, config["device"])
             action_rewards[action] += reward
 
-
             if not config.get("eval_mode", False):
                 # Store experience using the dedicated function
                 store_experience(
@@ -137,6 +136,7 @@ def select_action(state, epsilon, env, policy_net, config):
         was_random = True
         action = env.random_move()
     return action, was_random
+
 
 def select_action_hybrid(
     state, policy_net, config, frame_idx, action_counts, num_actions, epsilon
