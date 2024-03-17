@@ -61,6 +61,10 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
             if not config.get("eval_mode", False):
                 # Store experience using the dedicated function
+                beta = beta_by_frame(
+                    frame_idx, config["beta_start"], config["beta_frames"]
+                )
+                beta_values.append(beta)
                 store_experience(
                     state,
                     action,
@@ -75,10 +79,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     beta,
                 )
                 if frame_idx % config["update_frequency"] == 0:
-                    beta = beta_by_frame(
-                        frame_idx, config["beta_start"], config["beta_frames"]
-                    )
-                    beta_values.append(beta)
+
                     # Optimize model after storing experience
                     loss = optimize_model(
                         beta,
@@ -116,9 +117,9 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 rewards,
             )
 
-        plot_best_attempts(
-            "./results/", 0, "RainbowDQN_latest_single", rewards
-        )
+            plot_best_attempts(
+                "./results/", 0, "RainbowDQN_latest_single", rewards
+            )
 
     return losses, beta_values, td_errors, rewards
 

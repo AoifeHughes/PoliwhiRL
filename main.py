@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
-from PoliwhiRL.environment import explore
 from torch import device
 import os
 import shutil
@@ -90,14 +89,6 @@ def main():
         rainbow(**config)
     elif config["model"] in ["DQN", "PPO"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
-    elif config["model"] == "explore":
-        explore(
-            config["num_episodes"],
-            config["rom_path"],
-            config["state_path"],
-            config["episode_length"],
-            config["sight"],
-        )
     else:
         raise ValueError(f"Model {config['model']} not recognized")
 
