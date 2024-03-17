@@ -96,5 +96,4 @@ class Rewards:
         ]:
             total_reward = func(total_reward, default_reward)
 
-        print(f"Total Reward: {total_reward}")
         return total_reward
