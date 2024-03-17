@@ -237,8 +237,7 @@ class Controller:
 
     def screen_image(self):
         # Original image
-        original_image = self.pyboy.botsupport_manager().screen().screen_ndarray()
-
+        original_image = np.array(self.pyboy.screen_image())
         # Convert to grayscale if required
         if self.use_grayscale:
             # Using luminosity method for grayscale conversion
