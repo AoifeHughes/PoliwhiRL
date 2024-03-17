@@ -18,7 +18,6 @@ class Controller:
     def __init__(self, config):
         self.config = config
         self.temp_dir = tempfile.mkdtemp()
-        self.log_path = config.get("log_path", "./logs/log.json")
         self.ogTimeout = config.get("episode_length", 100)
         self.timeout = self.ogTimeout
         self.timeoutcap = self.ogTimeout * 1000
@@ -215,9 +214,3 @@ class Controller:
     def close(self):
         self.pyboy.stop()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
-        try:
-            if not os.path.isdir(os.path.dirname(self.log_path)):
-                os.mkdir(os.path.dirname(self.log_path))
-        except Exception as e:
-            print(e)
-        self.write_log(self.log_path)

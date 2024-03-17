@@ -269,3 +269,14 @@ def select_action_hybrid(
     action_counts[action] += 1  # Update the counts for the selected action
 
     return action, q_values[action]
+
+def select_action_eval(state, policy_net, config):
+
+    with torch.no_grad():
+        # Obtain Q-values from the policy network for the current state
+        q_values = policy_net(state.unsqueeze(0).to(config["device"])).cpu().numpy()[0]
+
+    # Select the action with the highest Q-value
+    action = np.argmax(q_values)
+
+    return action, q_values[action]

@@ -5,7 +5,6 @@
   "n_steps": 1,
   "run_parallel": true,
   "num_workers": 6,
-  "log_path": "./logs/RainbowDQN",
   "checkpoint_interval": 500,
   "scaling_factor": 0.5,
   "use_grayscale": false,
