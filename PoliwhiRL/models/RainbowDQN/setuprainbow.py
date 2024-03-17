@@ -16,23 +16,7 @@ def setup_environment(config):
     """
     Sets up the environment based on the provided configuration.
     """
-    if config['reward_image_folder'] is not None:
-        fldr = config['reward_image_folder']
-        image_files = [f'{fldr}/{f}' for f in os.listdir(config['reward_image_folder']) if f.endswith('.png')]
-    else:
-        image_files = []
-    return Controller(
-        config["rom_path"],
-        config["state_path"],
-        timeout=config["episode_length"],
-        log_path="./logs/rainbow_env.json",
-        use_sight=config["sight"],
-        extra_files=config["extra_files"],
-        reward_locations_xy=config["reward_locations_xy"],
-        scaling_factor=config["scaling_factor"],
-        use_grayscale=config["use_grayscale"],
-        reward_images=image_files,
-    )
+    return Controller(config)
 
 
 def initialize_training(config, env):

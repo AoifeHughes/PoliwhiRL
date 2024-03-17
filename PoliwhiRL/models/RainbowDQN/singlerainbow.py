@@ -17,9 +17,6 @@ from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     frame_idx = config.get("frame_idx", 0)
     rewards, losses, epsilon_values, beta_values, td_errors = [], [], [], [], []
-    frames_in_loc = {
-        i: 0 for i in range(256)
-    }  # Assuming 256 possible locations, adjust as needed
 
     num_actions = len(env.action_space)
     action_counts = np.zeros(num_actions)
@@ -64,7 +61,6 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             next_state = image_to_tensor(next_state, config["device"])
             action_rewards[action] += reward
 
-
             if not config.get("eval_mode", False):
                 # Store experience using the dedicated function
                 store_experience(
@@ -80,23 +76,24 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     td_errors,
                     frame_idx,
                 )
-                beta = beta_by_frame(
-                    frame_idx, config["beta_start"], config["beta_frames"]
-                )
-                beta_values.append(beta)
-                # Optimize model after storing experience
-                loss = optimize_model(
-                    beta,
-                    policy_net,
-                    target_net,
-                    replay_buffer,
-                    optimizer,
-                    config["device"],
-                    config["batch_size"],
-                    config["gamma"],
-                )
-                if loss is not None:
-                    losses.append(loss)
+                if frame_idx % config["update_frequency"] == 0:
+                    beta = beta_by_frame(
+                        frame_idx, config["beta_start"], config["beta_frames"]
+                    )
+                    beta_values.append(beta)
+                    # Optimize model after storing experience
+                    loss = optimize_model(
+                        beta,
+                        policy_net,
+                        target_net,
+                        replay_buffer,
+                        optimizer,
+                        config["device"],
+                        config["batch_size"] * config["update_frequency"],
+                        config["gamma"],
+                    )
+                    if loss is not None:
+                        losses.append(loss)
 
                 if frame_idx % config["target_update"] == 0:
                     target_net.load_state_dict(policy_net.state_dict())
@@ -138,6 +135,7 @@ def select_action(state, epsilon, env, policy_net, config):
         was_random = True
         action = env.random_move()
     return action, was_random
+
 
 def select_action_hybrid(
     state, policy_net, config, frame_idx, action_counts, num_actions, epsilon

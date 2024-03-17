@@ -16,15 +16,7 @@ from PoliwhiRL.environment import Controller
 def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start):
     # Assuming policy_net and target_net are reconstructed within the worker from state dicts
     env = Controller(
-        rom_path=config["rom_path"],
-        state_path=config["state_path"],
-        timeout=config["episode_length"],
-        use_sight=config["sight"],
-        extra_files=config["extra_files"],
-        reward_locations_xy=config["reward_locations_xy"],
-        scaling_factor=config["scaling_factor"],
-        use_grayscale=config["use_grayscale"],
-        log_path=f"./logs/double_rainbow_env_{worker_id}.json",
+        config
     )
 
     experiences = []
