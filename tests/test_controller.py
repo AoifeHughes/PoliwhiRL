@@ -44,9 +44,7 @@ def temp_state_file():
 
 @pytest.fixture
 def controller():
-    return Controller(
-        mock_config
-    )
+    return Controller(mock_config)
 
 
 def test_initialization_with_mocked_config(controller):
@@ -58,4 +56,3 @@ def test_step_function_updates_state_correctly(controller):
     initial_steps = controller.steps
     controller.step(0)  # Assuming 0 corresponds to a valid action
     assert controller.steps == initial_steps + 1
-

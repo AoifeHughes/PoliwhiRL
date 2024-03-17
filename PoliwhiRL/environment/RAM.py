@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 
 # -*- coding: utf-8 -*-
@@ -26,8 +27,6 @@ class RAMManagement:
             "MrPokemonsHouse": 10,
         }
 
-
-
     def get_memory_value(self, address):
         return self.pyboy.memory[address]
 
@@ -36,16 +35,14 @@ class RAMManagement:
         if loc == 7:  # starting zone is also 7 if you leave and come back
             loc = 0
         return loc
-    
+
     def get_XY(self):
         x_coord = self.get_memory_value(self.X_mem_loc)
         y_coord = self.get_memory_value(self.Y_mem_loc)
         return x_coord, y_coord
 
     def get_player_money(self):
-        money_bytes = [
-            self.get_memory_value(self.money_mem_loc + i) for i in range(3)
-        ]
+        money_bytes = [self.get_memory_value(self.money_mem_loc + i) for i in range(3)]
         money = self.bytes_to_int(money_bytes[::-1])
         return money
 
@@ -108,7 +105,7 @@ class RAMManagement:
                 total_owned += byte_value & 1
                 byte_value >>= 1
         return total_owned
-    
+
     def update_variables(self):
         self.money = self.get_player_money()
         self.location = self.get_current_location()

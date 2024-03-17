@@ -52,6 +52,7 @@ def epsilon_by_frame_cyclic(frame_idx, epsilon_start, epsilon_final, epsilon_dec
 
     return epsilon
 
+
 def store_experience(
     state,
     action,
@@ -73,7 +74,7 @@ def store_experience(
     action_tensor = torch.tensor([action], device=config["device"], dtype=torch.long)
     reward_tensor = torch.tensor([reward], device=config["device"], dtype=torch.float)
     done_tensor = torch.tensor([done], device=config["device"], dtype=torch.bool)
-    
+
     # Compute TD error with reduced redundant operations
     td_error = compute_td_error(
         state.unsqueeze(0),  # Adding batch dimension here, assuming state is a tensor
@@ -86,13 +87,15 @@ def store_experience(
         config["gamma"],
     )
     td_errors.append(td_error)
-    
 
-    replay_buffer.add(state, action_tensor, reward_tensor, next_state, done_tensor, td_error)
+    replay_buffer.add(
+        state, action_tensor, reward_tensor, next_state, done_tensor, td_error
+    )
 
 
-
-def compute_td_error(state, action, reward, next_state, done, policy_net, target_net, gamma=0.99):
+def compute_td_error(
+    state, action, reward, next_state, done, policy_net, target_net, gamma=0.99
+):
     """
     Optimized TD error computation to minimize redundant tensor operations and ensure efficiency.
     """
@@ -107,6 +110,7 @@ def compute_td_error(state, action, reward, next_state, done, policy_net, target
 
     td_error = (expected_q_values - current_q_values).abs()
     return td_error.item()  # Keep as scalar if necessary for external use
+
 
 def optimize_model(
     beta,
@@ -229,8 +233,6 @@ def load_checkpoint(config):
         return None
 
 
-
-
 def select_action_hybrid(
     state, policy_net, config, frame_idx, action_counts, num_actions, epsilon
 ):
@@ -258,6 +260,7 @@ def select_action_hybrid(
     action_counts[action] += 1  # Update the counts for the selected action
 
     return action, q_values[action]
+
 
 def select_action_eval(state, policy_net, config):
 
