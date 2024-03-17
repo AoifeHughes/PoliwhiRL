@@ -170,14 +170,17 @@ class Controller:
             else:
                 self.has_reached_reward_locations_xy[loc][(x, y)] = False
 
+    def reset_reward_images(self):
+        self.reward_image_memory = ImageMemory()
+        for img_loc in self.reward_images:
+            self.reward_image_memory.check_and_store_image(img_loc)
+
     def reset(self, init=False):
         if init:
             self.imgs = ImageMemory()
             self.run = 0
             self.runs_data = {}
-            self.reward_image_memory = ImageMemory()
-            for img_loc in self.reward_images:
-                 self.reward_image_memory.check_and_store_image(img_loc)
+            self.reset_reward_images()
         else:
             self.log_info_on_reset()
             total_reward = 0
@@ -186,6 +189,7 @@ class Controller:
             if self.save_on_reset:
                 self.imgs.save_all_images(f"./runs/good_locs{self.run}")
             self.imgs.reset()
+            self.reset_reward_images()
         with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.reset_has_reached_reward_locations_xy()
@@ -243,7 +247,7 @@ class Controller:
             self.reward = 0
         return next_state, self.reward, self.done
 
-    def screen_image(self):
+    def screen_image(self, no_resize=False):
         # Original image
         original_image = np.array(self.pyboy.screen_image())
         # Convert to grayscale if required
@@ -256,7 +260,7 @@ class Controller:
             original_image = grayscale_image
 
         # Only resize if scaling_factor is not 1
-        if self.scaling_factor == 1.0:
+        if self.scaling_factor == 1.0 or no_resize:
             return original_image.astype(np.uint8)
         else:
             # Calculate new size

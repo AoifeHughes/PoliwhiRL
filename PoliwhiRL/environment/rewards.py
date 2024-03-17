@@ -50,12 +50,9 @@ def update_for_movement(controller, total_reward, default_reward):
     return total_reward
 
 def update_for_image_reward(controller, total_reward, default_reward):
-    is_reward_image, img_hash = controller.reward_image_memory.check_if_image_exists()
+    is_reward_image, img_hash = controller.reward_image_memory.check_if_image_exists( controller.screen_image(no_resize=True) )
     if is_reward_image:
         total_reward += default_reward * 100
-        print("Found a reward image")
-        print(controller.get_current_location())
-        print(controller.get_XY())
         controller.reward_image_memory.pop_image(img_hash)
     return total_reward
 
@@ -98,7 +95,6 @@ def update_for_xy_checkpoints(controller, total_reward, default_reward):
             ):
                 return total_reward
             else:
-
                 controller.has_reached_reward_locations_xy[
                     controller.get_current_location()
                 ][controller.get_XY()] = True
@@ -126,6 +122,7 @@ def calc_rewards(controller, default_reward=0.01, use_sight=False):
         update_for_money,
         update_for_xy_checkpoints,
         update_for_locations,
+        update_for_image_reward,
     ]:
         total_reward = func(controller, total_reward, default_reward)
 

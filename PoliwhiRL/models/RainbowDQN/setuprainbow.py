@@ -18,7 +18,7 @@ def setup_environment(config):
     """
     if config['reward_image_folder'] is not None:
         fldr = config['reward_image_folder']
-        image_files = [f'{fldr}/{f}' for f in os.listdir(config['reward_image_folder'])]
+        image_files = [f'{fldr}/{f}' for f in os.listdir(config['reward_image_folder']) if f.endswith('.png')]
     else:
         image_files = []
     return Controller(

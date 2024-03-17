@@ -42,15 +42,20 @@ class ImageMemory:
             if distances[0][0] < threshold:
                 # Found a similar image, return its identifier
                 target_hash = self.ids[indices[0][0]]
+
                 return True, target_hash
         return False, None
     
     def pop_image(self, image_hash):
         """Remove an image from memory based on its hash."""
         if image_hash in self.images:
-            self.images.pop(image_hash)
-            self.ids.remove(image_hash)
-            self.image_order.remove(image_hash)
+            del self.images[image_hash]  # Remove image from memory
+            self.image_order.remove(image_hash)  # Remove image from order
+            index = self.ids.index(image_hash)  # Find index of image in features and ids
+            self.features = np.delete(self.features, index, axis=0)  # Remove image from features
+            self.ids.pop(index)  # Remove image from ids
+            self.feature_index.fit(self.features)  # Update nearest neighbors index
+
 
     def check_and_store_image(self, target_image, threshold=100):
         """Check if a similar image exists; store the new image in memory if
@@ -58,6 +63,7 @@ class ImageMemory:
         if type(target_image) == str:
             target_image = cv2.imread(target_image)
             target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB)
+            target_image = target_image.astype(np.uint8)
         exists, target_hash = self.check_if_image_exists(target_image, threshold)
         if exists:
             return False, target_hash
