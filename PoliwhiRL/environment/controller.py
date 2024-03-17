@@ -25,7 +25,6 @@ class Controller:
         self.use_sight = config.get("use_sight", False)
         self.scaling_factor = config.get("scaling_factor", 1)
         self.reward_locations_xy = config.get("reward_locations_xy", {})
-        self.state_path = config.get("state_path", "./emu_files/states/start.state")
         self.setup_reward_images()
         self.imgs = ImageMemory()
         self.run = 0
@@ -35,7 +34,8 @@ class Controller:
         files_to_copy.extend([file for file in config.get("extra_files", []) if os.path.isfile(file)])
         self.use_grayscale = config.get("use_grayscale", False)
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
-        self.pyboy = PyBoy(config.get("rom_path"), debug=False, window='null')
+        self.state_path = self.paths[1]
+        self.pyboy = PyBoy(self.paths[0] , debug=False, window='null')
         self.pyboy.set_emulation_speed(0)
         self.ram = RAM.RAMManagement(self.pyboy)
         self.rewards = Rewards(self)
@@ -119,27 +119,17 @@ class Controller:
         return next_state, self.reward, self.done
 
     def screen_image(self, no_resize=False):
-        # Original image
         original_image = np.array(self.pyboy.screen.image)[:, :, :3]  # Remove alpha channel
-        # Convert to grayscale if required
         if self.use_grayscale:
-            # Using luminosity method for grayscale conversion
             grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
-            # Expanding dimensions to keep the shape as (height, width, channels)
             grayscale_image = np.expand_dims(grayscale_image, axis=-1)
-            # Use the grayscale image as the original image
             original_image = grayscale_image
-
-        # Only resize if scaling_factor is not 1
         if self.scaling_factor == 1.0 or no_resize:
             return original_image.astype(np.uint8)
         else:
-            # Calculate new size
             original_height, original_width, num_channels = original_image.shape
             new_height = int(original_height * self.scaling_factor)
             new_width = int(original_width * self.scaling_factor)
-
-            # Reshape and average to downscale the image
             resized_image = original_image.reshape(
                 new_height,
                 original_height // new_height,
@@ -147,7 +137,6 @@ class Controller:
                 original_width // new_width,
                 num_channels,
             ).mean(axis=(1, 3))
-
             return resized_image.astype(np.uint8)
 
     def get_frames_in_current_location(self):
@@ -176,9 +165,6 @@ class Controller:
             self.state_path = statefile
         else:
             self.state_path = shutil.copy(statefile, self.temp_dir)
-
-    def set_save_on_reset(self):
-        self.save_on_reset = True
 
     def save_state(self, file):
         self.pyboy.save_state(file)
