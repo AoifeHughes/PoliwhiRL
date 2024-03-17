@@ -8,13 +8,14 @@ class Rewards:
         self.img_memory = controller.imgs
         self.img_rewards = controller.reward_image_memory
         self.xy = set()
-        self.env_vars = {}  # Initialize as an empty dictionary
+        self.env_vars = {}  
         self.pkdex_seen = 0
         self.pkdex_owned = 0
-        self.money = 0 # needs initalized properly and is horribly broken...
+        self.money = 0 
         self.total_level = 0
         self.total_hp = 0
         self.total_exp = 0
+        self.button_pressed = None
         self.locations = set()
 
 
@@ -79,11 +80,15 @@ class Rewards:
             total_reward -= default_reward * 100
             self.money = player_money
         return total_reward
+    
+    def update_for_menuing(self, total_reward, default_reward):
+        if self.button_pressed == "start" or self.button_pressed == "select":
+            total_reward += -default_reward * 5
 
-    def calc_rewards(self, default_reward=0.01, use_sight=False):
+    def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
+        self.button_pressed = button_pressed
         total_reward = -default_reward  # Penalty for doing nothing
-
         if use_sight:
             total_reward = self.update_for_vision(total_reward, default_reward)
 
@@ -93,6 +98,7 @@ class Rewards:
             self.update_for_pokedex,
             self.update_for_money,
             self.update_for_image_reward,
+            self.update_for_menuing,
         ]:
             total_reward = func(total_reward, default_reward)
 
