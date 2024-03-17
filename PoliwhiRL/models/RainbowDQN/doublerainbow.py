@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 from multiprocessing import Pool
-import random
+import numpy as np
 from tqdm import tqdm
-import torch
 from .utils import (
     optimize_model,
     beta_by_frame,
     epsilon_by_frame,
     store_experience,
+    select_action_hybrid
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from PoliwhiRL.environment import Controller
 
 
-def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start):
+def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start, action_counts, action_rewards):
     # Assuming policy_net and target_net are reconstructed within the worker from state dicts
     env = Controller(
         config
@@ -23,6 +23,7 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
     rewards_collected = []
     td_errors = []
     frame_idx = frame_idx_start
+
     for episode in range(config["runs_per_worker"]):
         state = env.reset()
         policy_net.reset_noise()
@@ -39,11 +40,18 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
             )
             beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
 
-            action, was_random = select_action(
-                state, epsilon, env, policy_net, config["device"]
+            action, was_random = select_action_hybrid(
+                state,
+                policy_net,
+                config,
+                frame_idx,
+                action_counts,
+                len(action_counts),
+                epsilon,
             )
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
+            action_rewards[action] += reward
 
             store_experience(
                 state,
@@ -69,19 +77,9 @@ def worker(worker_id, batch_id, config, policy_net, target_net, frame_idx_start)
         rewards_collected.append(total_reward)
 
     env.close()
-    return experiences, rewards_collected
+    return experiences, rewards_collected, 
 
 
-def select_action(state, epsilon, env, policy_net, device):
-    is_random = True
-    if random.random() > epsilon:
-        with torch.no_grad():
-            q_values = policy_net(state.unsqueeze(0).to(device))
-            action = q_values.max(1)[1].view(1, 1).item()
-        is_random = False
-    else:
-        action = env.random_move()
-    return action, is_random
 
 
 def run(config, policy_net, target_net, optimizer, replay_buffer):
@@ -89,6 +87,8 @@ def run(config, policy_net, target_net, optimizer, replay_buffer):
     total_losses = []
     total_beta_values = []
     total_td_errors = []
+
+
     frame_idx = 0
     next_target_update = frame_idx + config["target_update"]
 
