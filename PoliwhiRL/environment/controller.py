@@ -19,7 +19,7 @@ class Controller:
         self.config = config
         self.temp_dir = tempfile.mkdtemp()
         self.log_path = config.get("log_path", "./logs/log.json")
-        self.ogTimeout = config.get("timeout", 100)
+        self.ogTimeout = config.get("episode_length", 100)
         self.timeout = self.ogTimeout
         self.timeoutcap = self.ogTimeout * 1000
         self.frames_per_loc = {i: 0 for i in range(256)}
@@ -94,9 +94,9 @@ class Controller:
             self.run += 1
         self.run_time = time.time()
         self.done = False
+        self.rewards = Rewards(self)
         self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
-        self.rewards = Rewards(self)
         return self.screen_image()
 
     def step(self, movement, ticks_per_input=10, wait=60, init=False):

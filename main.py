@@ -85,6 +85,8 @@ def main():
         if config["run_parallel"] and config["device"] != device("cpu"):
             print("Parallel RainbowDQN only supports CPU devices. Switching to CPU.")
             config["device"] = device("cpu")
+        if config["run_parallel"]:
+            raise NotImplementedError("Parallel RainbowDQN is not implemented yet with the new action selection")
         rainbow(**config)
     elif config["model"] in ["DQN", "PPO"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")

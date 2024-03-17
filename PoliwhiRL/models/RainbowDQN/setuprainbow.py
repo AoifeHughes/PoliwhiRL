@@ -54,7 +54,7 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
         return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
     else:
         return run_rainbow_parallel(
-            config, policy_net, target_net, optimizer, replay_buffer
+            config, policy_net, target_net, optimizer, replay_buffer, len(env.action_space)
         )
 
 

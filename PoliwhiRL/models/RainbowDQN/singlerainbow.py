@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
-import random
-import torch
 from tqdm import tqdm
 import numpy as np
-import math
 from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     save_checkpoint,
     epsilon_by_frame,
     store_experience,
     beta_by_frame,
+    select_action_hybrid,
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
@@ -74,7 +72,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     replay_buffer,
                     config,
                     td_errors,
-                    frame_idx,
+                    beta,
                 )
                 if frame_idx % config["update_frequency"] == 0:
                     beta = beta_by_frame(
@@ -106,7 +104,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
         rewards.append(total_reward)
         pbar.set_description(
-            f"Episode: {episode}, Reward: {total_reward}, Epsilon: {epsilon}, Best reward: {max(rewards)}, Avg reward: {sum(rewards) / len(rewards)}"
+            f"Episode: {episode}, Reward: {total_reward:.2f}, Epsilon: {epsilon:.2f}, Best reward: {max(rewards):.2f}, Avg reward: {sum(rewards) / len(rewards):.2f}"
         )
         if episode % config["checkpoint_interval"] == 0 and episode > 0:
             save_checkpoint(
@@ -125,42 +123,3 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     return losses, beta_values, td_errors, rewards
 
 
-def select_action(state, epsilon, env, policy_net, config):
-    was_random = False
-    if random.random() > epsilon:
-        with torch.no_grad():
-            q_values = policy_net(state.unsqueeze(0).to(config["device"]))
-            action = q_values.max(1)[1].view(1, 1).item()
-    else:
-        was_random = True
-        action = env.random_move()
-    return action, was_random
-
-
-def select_action_hybrid(
-    state, policy_net, config, frame_idx, action_counts, num_actions, epsilon
-):
-    # Decide to take a random action with probability epsilon
-    if random.random() < epsilon:
-        return random.randrange(num_actions), None  # Return a random action
-
-    with torch.no_grad():
-        # Obtain Q-values from the policy network for the current state
-        q_values = policy_net(state.unsqueeze(0).to(config["device"])).cpu().numpy()[0]
-
-    exploration_rate = np.sqrt(
-        2 * math.log(frame_idx + 1) / (action_counts + 1)
-    )  # Avoid division by zero
-    hybrid_values = (
-        q_values + exploration_rate
-    )  # Combine Q-values with exploration bonus
-
-    for action in range(num_actions):
-        if action_counts[action] == 0:
-            # Ensure untried actions are considered
-            hybrid_values[action] += np.inf
-
-    action = np.argmax(hybrid_values)
-    action_counts[action] += 1  # Update the counts for the selected action
-
-    return action, q_values[action]
