@@ -5,18 +5,18 @@ class Rewards:
         self.controller = controller
         self.rewards = []
         self.screen = None
-        self.total_reward = 0
         self.img_memory = controller.imgs
         self.img_rewards = controller.reward_image_memory
         self.xy = set()
         self.env_vars = {}  # Initialize as an empty dictionary
         self.pkdex_seen = 0
         self.pkdex_owned = 0
-        self.money = 0
+        self.money = 0 # needs initalized properly and is horribly broken...
         self.total_level = 0
         self.total_hp = 0
         self.total_exp = 0
         self.locations = set()
+
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -96,4 +96,5 @@ class Rewards:
         ]:
             total_reward = func(total_reward, default_reward)
 
+        print(f"Total Reward: {total_reward}")
         return total_reward
