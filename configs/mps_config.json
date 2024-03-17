@@ -11,5 +11,6 @@
   "extend_on_reward": false,
   "sight": false,
   "learn_every": 1,
-  "erase": false
+  "erase": false,
+  "reward_image_folder" : "./configs/reward_images"
 }

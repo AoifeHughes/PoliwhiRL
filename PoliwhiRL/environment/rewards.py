@@ -49,6 +49,16 @@ def update_for_movement(controller, total_reward, default_reward):
         controller.xy.add(cur_xy)
     return total_reward
 
+def update_for_image_reward(controller, total_reward, default_reward):
+    is_reward_image, img_hash = controller.reward_image_memory.check_if_image_exists()
+    if is_reward_image:
+        total_reward += default_reward * 100
+        print("Found a reward image")
+        print(controller.get_current_location())
+        print(controller.get_XY())
+        controller.reward_image_memory.pop_image(img_hash)
+    return total_reward
+
 
 def update_for_pokedex(controller, total_reward, default_reward):
     if controller.pkdex_seen() > controller.max_pkmn_seen:
