@@ -2,14 +2,16 @@
 from pyboy import PyBoy
 import os
 from pynput import keyboard
-
+import numpy as np
 
 # Function to capture the screen and save it with detailed logging information
 def capture_and_save_screen(pyboy, log_data):
-    screen_image = pyboy.botsupport_manager().screen().screen_image()
+    screen_image = np.array(pyboy.screen.image)[
+            :, :, :3
+        ]
     # Generate a filename using log data (e.g., location, coordinates, and steps)
-    current_location = pyboy.get_memory_value(0xD148)
-    x_coord, y_coord = pyboy.get_memory_value(0xDCB8), pyboy.get_memory_value(0xDCB7)
+    current_location = pyboy.memory[0xD148]
+    x_coord, y_coord = pyboy.memory[0xDCB8], pyboy.memory[0xDCB7]
     steps = len(
         log_data["entries"]
     )  # Using the length of entries as an approximation for steps
@@ -40,7 +42,7 @@ def start_key_listener(pyboy, log_data):
 
 # Main function (assuming your script starts here)
 def main():
-    pyboy = PyBoy("emu_files/Pokemon - Crystal Version.gbc", window_scale=1)
+    pyboy = PyBoy("emu_files/Pokemon - Crystal Version.gbc", window="SDL2")
     pyboy.set_emulation_speed(target_speed=2)
     log_data = {"entries": []}  # Initialize log data
 
@@ -49,8 +51,7 @@ def main():
     with open("emu_files/states/start.state", "rb") as state:
         pyboy.load_state(state)
 
-    while not pyboy.tick():
-        # Your game logic here
+    while pyboy.tick():
         pass
 
     pyboy.stop()

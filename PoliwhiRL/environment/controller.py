@@ -105,7 +105,7 @@ class Controller:
         self.timeout = self.ogTimeout
         return self.screen_image()
 
-    def step(self, movement, ticks_per_input=10, wait=30, init=False):
+    def step(self, movement, ticks_per_input=10, wait=75, init=False):
         movement = self.action_space_buttons[movement]
         if movement != "pass":
             self.pyboy.button_press(movement)

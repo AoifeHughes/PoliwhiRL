@@ -13,7 +13,7 @@ class PrioritizedReplayBuffer:
     def add(self, state, action, reward, next_state, done, error):
         max_prio = (
             self.priorities.max() if self.buffer else 1.0
-        )  # Max priority for new entry
+        )  
         if len(self.buffer) < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
         else:
