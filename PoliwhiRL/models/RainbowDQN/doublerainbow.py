@@ -86,7 +86,16 @@ def worker(
     return experiences, rewards_collected, action_counts, action_rewards
 
 
-def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions, frame_idx=0, episodes=0):
+def run(
+    config,
+    policy_net,
+    target_net,
+    optimizer,
+    replay_buffer,
+    num_actions,
+    frame_idx=0,
+    episodes=0,
+):
     total_rewards = []
     total_losses = []
     total_beta_values = []
@@ -171,6 +180,12 @@ def run(config, policy_net, target_net, optimizer, replay_buffer, num_actions, f
         ]:
             plot_best_attempts("./results/", name, "DoubleRainbow", total_rewards)
         episodes += len(all_rewards)
-        
 
-    return total_losses, total_beta_values, total_td_errors, total_rewards, frame_idx, episodes
+    return (
+        total_losses,
+        total_beta_values,
+        total_td_errors,
+        total_rewards,
+        frame_idx,
+        episodes,
+    )
