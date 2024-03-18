@@ -3,6 +3,7 @@ from pyboy import PyBoy
 import os
 from pynput import keyboard
 import numpy as np
+from PIL import Image
 
 # Function to capture the screen and save it with detailed logging information
 def capture_and_save_screen(pyboy, log_data):
@@ -19,7 +20,11 @@ def capture_and_save_screen(pyboy, log_data):
     # Save the image
     if not os.path.exists("captures"):
         os.makedirs("captures")
-    screen_image.save(os.path.join("captures", filename))
+    
+    img = Image.fromarray(screen_image)
+    # save img
+    img.save(f"captures/{filename}")
+
     print(f"Screen captured and saved as {filename}")
 
 
@@ -51,9 +56,12 @@ def main():
     with open("emu_files/states/start.state", "rb") as state:
         pyboy.load_state(state)
 
-    while pyboy.tick():
-        pass
-
+    c = 0
+    while True:
+        pyboy.tick()
+        c += 1
+        if c % 100 == 0:
+            capture_and_save_screen(pyboy, log_data)
     pyboy.stop()
 
 
