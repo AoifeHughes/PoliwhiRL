@@ -60,49 +60,46 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             next_state = image_to_tensor(next_state, config["device"])
             action_rewards[action] += reward
 
-            if not config.get("eval_mode", False):
                 # Store experience using the dedicated function
-                beta = beta_by_frame(
-                    frame_idx, config["beta_start"], config["beta_frames"]
-                )
-                beta_values.append(beta)
-                store_experience(
-                    state,
-                    action,
-                    reward,
-                    next_state,
-                    done,
-                    policy_net,
-                    target_net,
-                    replay_buffer,
-                    config,
-                    td_errors,
-                    beta,
-                )
-                if frame_idx % config["update_frequency"] == 0:
-
-                    # Optimize model after storing experience
-                    loss = optimize_model(
-                        beta,
-                        policy_net,
-                        target_net,
-                        replay_buffer,
-                        optimizer,
-                        config["device"],
-                        config["batch_size"] * config["update_frequency"],
-                        config["gamma"],
-                    )
-                    if loss is not None:
-                        losses.append(loss)
-
-                if frame_idx % config["target_update"] == 0:
-                    target_net.load_state_dict(policy_net.state_dict())
-
+            beta = beta_by_frame(
+                frame_idx, config["beta_start"], config["beta_frames"]
+            )
+            beta_values.append(beta)
+            priority_val = store_experience(
+                state,
+                action,
+                reward,
+                next_state,
+                done,
+                policy_net,
+                target_net,
+                replay_buffer,
+                config,
+                td_errors,
+                beta,
+            )
             if config["record"]:
-                env.record(epsilon, "rdqn", was_random)
+                env.record(epsilon, "rdqn", was_random, priority_val)
             state = next_state
             total_reward += reward
             frame_idx += 1
+
+        # Optimize model after storing experience
+        loss = optimize_model(
+            beta,
+            policy_net,
+            target_net,
+            replay_buffer,
+            optimizer,
+            config["device"],
+            config["batch_size"],
+            config["gamma"],
+        )
+        if loss is not None:
+            losses.append(loss)
+
+        if episode % config["target_update"] == 0:
+            target_net.load_state_dict(policy_net.state_dict())
 
         rewards.append(total_reward)
         pbar.set_description(
@@ -120,6 +117,8 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 frames=frame_idx,
             )
 
+        if episode % config["plot_interval"] == 0 and episode > 0:
+            print("Plotting best attempts...")
             plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
 
     config.update(

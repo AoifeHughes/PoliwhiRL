@@ -190,7 +190,7 @@ class Controller:
         with open(f"./states/state_{i}.state", "wb") as f:
             f.write(state.read())
 
-    def record(self, e, name, was_random=False):
+    def record(self, e, name, was_random=False, priority_val=0):
         document(
             self.run,
             self.steps,
@@ -204,6 +204,7 @@ class Controller:
             self.ram.get_XY()[0],
             self.ram.get_XY()[1],
             was_random,
+            priority_val,
         )
 
     def close(self):

@@ -21,6 +21,7 @@ class PrioritizedReplayBuffer:
 
         self.priorities[self.pos] = max_prio if error is None else error
         self.pos = (self.pos + 1) % self.capacity
+        return self.priorities[self.pos - 1]
 
     def sample(self, batch_size, beta=0.4):
         if len(self.buffer) == self.capacity:
