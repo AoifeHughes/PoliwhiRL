@@ -62,18 +62,10 @@ class RainbowDQN(nn.Module):
     def forward(self, x):
         batch_size = x.size(0)
         x = self.feature_layer(x)
-        
-        # Apply attention
         x = self.attention(x.view(batch_size, -1, self.fc_input_dim))
-
-        # Reshape x to (batch, seq_len, features) for LSTM
         x = x.view(batch_size, 1, -1)
-
         lstm_out, _ = self.lstm(x)
-        
-        # Take the output for the last time step
         x = lstm_out[:, -1, :]
-        
         dist = self.get_distribution(x)
         q_values = torch.sum(dist * self.support, dim=2)
         return q_values
@@ -92,6 +84,6 @@ class RainbowDQN(nn.Module):
 
     def reset_noise(self):
         """Reset all noisy layers"""
-        for name, module in self.named_children():
+        for _, module in self.named_children():
             if isinstance(module, NoisyLinear):
                 module.reset_noise()
