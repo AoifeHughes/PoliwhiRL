@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .noisylinear import NoisyLinear
+
 
 class Attention(nn.Module):
     def __init__(self, feature_dim, attention_dim):
@@ -10,7 +12,7 @@ class Attention(nn.Module):
         self.attention_layer = nn.Sequential(
             nn.Linear(feature_dim, attention_dim),
             nn.Tanh(),
-            nn.Linear(attention_dim, 1)
+            nn.Linear(attention_dim, 1),
         )
 
     def forward(self, x):
@@ -18,6 +20,7 @@ class Attention(nn.Module):
         attention_weights = F.softmax(attention_scores, dim=1)
         weighted_features = x * attention_weights
         return weighted_features.sum(1)
+
 
 class RainbowDQN(nn.Module):
     def __init__(self, input_dim, num_actions, device, atom_size=51, Vmin=-10, Vmax=10):
@@ -47,7 +50,9 @@ class RainbowDQN(nn.Module):
         self.attention = Attention(self.fc_input_dim, 256)
 
         # Modify LSTM input size to match the flattened feature dimension
-        self.lstm = nn.LSTM(input_size=self.fc_input_dim, hidden_size=512, batch_first=True)
+        self.lstm = nn.LSTM(
+            input_size=self.fc_input_dim, hidden_size=512, batch_first=True
+        )
 
         self.value_stream = nn.Sequential(
             nn.Linear(512, 512), nn.ReLU(), nn.Linear(512, atom_size)

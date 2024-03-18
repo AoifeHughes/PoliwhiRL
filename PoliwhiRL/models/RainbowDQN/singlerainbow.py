@@ -43,15 +43,20 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                 config["epsilon_decay"],
             )
             epsilon_values.append(epsilon)
-            action, q_value = select_action_hybrid(
-                state,
-                policy_net,
-                config,
-                frame_idx,
-                action_counts,
-                num_actions,
-                epsilon,
-            )
+
+            action, q_value = (
+                select_action_hybrid(
+                    state,
+                    policy_net,
+                    config,
+                    frame_idx,
+                    action_counts,
+                    num_actions,
+                    epsilon,
+                )
+                if episode > config["hybrid_start"]
+                else np.random.choice(num_actions)
+            ), None
             if q_value is None:
                 was_random = True
             else:
@@ -60,10 +65,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             next_state = image_to_tensor(next_state, config["device"])
             action_rewards[action] += reward
 
-                # Store experience using the dedicated function
-            beta = beta_by_frame(
-                frame_idx, config["beta_start"], config["beta_frames"]
-            )
+            beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
             beta_values.append(beta)
             priority_val = store_experience(
                 state,
