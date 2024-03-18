@@ -2,17 +2,15 @@
 from tqdm import tqdm
 import numpy as np
 from PoliwhiRL.models.RainbowDQN.utils import (
-    optimize_model,
     save_checkpoint,
     epsilon_by_frame,
-    store_experience,
     beta_by_frame,
     select_action_hybrid,
 )
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
 
-def run(config, env, policy_net, target_net, optimizer, replay_buffer):
+def run(config, env, policy_net, target_net, optimizer, replay_buffer, training_manager):
     rewards, losses, epsilon_values, beta_values, td_errors = [], [], [], [], []
 
     num_actions = len(env.action_space)
@@ -29,7 +27,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             )
         )
     ):
-        policy_net.reset_noise()
+        training_manager.reset_nets()
         state = env.reset()
         state = image_to_tensor(state, config["device"])
         total_reward = 0
@@ -66,31 +64,16 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     frame_idx, config["beta_start"], config["beta_frames"]
                 )
                 beta_values.append(beta)
-                store_experience(
-                    state,
-                    action,
-                    reward,
-                    next_state,
-                    done,
-                    policy_net,
-                    target_net,
-                    replay_buffer,
-                    config,
-                    td_errors,
-                    beta,
+                
+                training_manager.store_experience(
+                    state, action, reward, next_state, done
                 )
+
                 if frame_idx % config["update_frequency"] == 0:
 
                     # Optimize model after storing experience
-                    loss = optimize_model(
-                        beta,
-                        policy_net,
-                        target_net,
-                        replay_buffer,
-                        optimizer,
-                        config["device"],
-                        config["batch_size"] * config["update_frequency"],
-                        config["gamma"],
+                    loss = training_manager.optimize_model(
+                        beta
                     )
                     if loss is not None:
                         losses.append(loss)

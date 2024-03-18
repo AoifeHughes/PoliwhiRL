@@ -19,7 +19,10 @@ class PrioritizedReplayBuffer:
         else:
             self.buffer[self.pos] = (state, action, reward, next_state, done)
 
+
         self.priorities[self.pos] = max_prio if error is None else error
+        self.priorities[self.pos] = max_prio if error is None else error.item()
+
         self.pos = (self.pos + 1) % self.capacity
 
     def sample(self, batch_size, beta=0.4):

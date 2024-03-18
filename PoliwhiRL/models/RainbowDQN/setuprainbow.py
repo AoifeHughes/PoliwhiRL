@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import torch.optim as optim
+import torch
 import time
 import json
 from PoliwhiRL.environment.controller import Controller
@@ -10,6 +11,7 @@ from .utils import save_checkpoint, load_checkpoint
 from .singlerainbow import run as run_single
 from .doublerainbow import run as run_rainbow_parallel
 from PoliwhiRL.utils import plot_best_attempts
+from .trainingmanager import TrainingManager
 
 
 def setup_environment(config):
@@ -50,9 +52,11 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
     """
     Runs the training loop, either in single or parallel mode based on configuration.
     """
+    training_manager = TrainingManager(policy_net, target_net, replay_buffer, optimizer, config)
     if not config["run_parallel"]:
-        return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
+        return run_single(config, env, policy_net, target_net, optimizer, replay_buffer, training_manager)
     else:
+        raise NotImplementedError("Parallel training is not yet implemented.")
         return run_rainbow_parallel(
             config,
             policy_net,

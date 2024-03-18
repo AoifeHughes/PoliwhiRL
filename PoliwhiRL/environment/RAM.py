@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-# -*- coding: utf-8 -*-
-
-
 class RAMManagement:
     def __init__(self, pyboy):
         self.pyboy = pyboy
