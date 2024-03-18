@@ -16,10 +16,16 @@ fps=60
 # Create a temporary palette for better quality
 palette="/tmp/palette.png"
 
+# Check if ffmpeg is installed
+if ! command -v ffmpeg &> /dev/null; then
+    echo "Error: ffmpeg is not installed. Please install ffmpeg and try again."
+    exit 1
+fi
+
 # Generate palette
-ffmpeg -i "${images_directory}/%*.jpg" -vf "fps=$fps,scale=320:-1:flags=lanczos,palettegen" -y $palette
+ffmpeg -i "${images_directory}/%*.png" -vf "fps=$fps,scale=320:-1:flags=lanczos,palettegen" -y $palette
 
 # Create GIF using ffmpeg and the generated palette
-ffmpeg -i "${images_directory}/%*.jpg" -i $palette -filter_complex "fps=$fps,scale=320:-1:flags=lanczos[x];[x][1:v]paletteuse" -y $output_gif
+ffmpeg -i "${images_directory}/%*.png" -i $palette -filter_complex "fps=$fps,scale=320:-1:flags=lanczos[x];[x][1:v]paletteuse" -y $output_gif
 
 echo "GIF created: $output_gif"

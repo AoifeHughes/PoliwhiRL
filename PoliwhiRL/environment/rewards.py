@@ -49,14 +49,14 @@ class Rewards:
     def update_for_movement(self, total_reward, default_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += default_reward * 10
+            total_reward += default_reward * 5
             self.xy.add(cur_xy)
         return total_reward
 
     def update_for_image_reward(self, total_reward, default_reward):
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
-            total_reward += default_reward * 100
+            total_reward += default_reward * 500
             self.img_rewards.pop_image(img_hash)
         return total_reward
 

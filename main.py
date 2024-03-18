@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
+from PoliwhiRL.models.RainbowDQNRNN import run as rainbow_rnn
 from torch import device
 import os
 import shutil
@@ -79,14 +80,18 @@ def main():
     config["device"] = device(config["device"])
 
     pprint.pprint(config)
+    print("\n"*2)
 
     if config["model"] == "RainbowDQN":
         if config["run_parallel"] and config["device"] != device("cpu"):
             print("Parallel RainbowDQN only supports CPU devices. Switching to CPU.")
             config["device"] = device("cpu")
-        # if config["run_parallel"]:
-        #     raise NotImplementedError("Parallel RainbowDQN is not implemented yet with the new action selection")
         rainbow(**config)
+
+    elif config["model"] == "RainbowDQNRNN":
+        if config["run_parallel"]:
+            print("Parallel RainbowDQNRNN only single processes")
+        rainbow_rnn(**config)
     elif config["model"] in ["DQN", "PPO"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
     else:
