@@ -11,9 +11,7 @@ class PrioritizedReplayBuffer:
         self.priorities = np.zeros((capacity,), dtype=np.float32)  # Store priorities
 
     def add(self, state, action, reward, next_state, done, error):
-        max_prio = (
-            self.priorities.max() if self.buffer else 1.0
-        )  
+        max_prio = self.priorities.max() if self.buffer else 1.0
         if len(self.buffer) < self.capacity:
             self.buffer.append((state, action, reward, next_state, done))
         else:

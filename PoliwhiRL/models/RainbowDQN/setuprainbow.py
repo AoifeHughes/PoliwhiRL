@@ -106,8 +106,8 @@ def finalize_training(
         optimizer,
         replay_buffer,
         rewards,
-        episodes= config.get("start_episode", 0) + len(rewards),
-        frames= config.get("frame_idx", 0),
+        episodes=config.get("start_episode", 0) + len(rewards),
+        frames=config.get("frame_idx", 0),
     )
 
 

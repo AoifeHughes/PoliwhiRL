@@ -5,11 +5,10 @@ from pynput import keyboard
 import numpy as np
 from PIL import Image
 
+
 # Function to capture the screen and save it with detailed logging information
 def capture_and_save_screen(pyboy, log_data):
-    screen_image = np.array(pyboy.screen.image)[
-            :, :, :3
-        ]
+    screen_image = np.array(pyboy.screen.image)[:, :, :3]
     # Generate a filename using log data (e.g., location, coordinates, and steps)
     current_location = pyboy.memory[0xD148]
     x_coord, y_coord = pyboy.memory[0xDCB8], pyboy.memory[0xDCB7]
@@ -20,7 +19,7 @@ def capture_and_save_screen(pyboy, log_data):
     # Save the image
     if not os.path.exists("captures"):
         os.makedirs("captures")
-    
+
     img = Image.fromarray(screen_image)
     # save img
     img.save(f"captures/{filename}")

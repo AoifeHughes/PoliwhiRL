@@ -40,7 +40,7 @@ def document(
     x,
     y,
     was_random,
-    priority_val
+    priority_val,
 ):
     try:
         if not os.path.isdir("./runs"):
