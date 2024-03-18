@@ -34,7 +34,7 @@ class Rewards:
     def update_for_party_pokemon(self, total_reward, default_reward):
         total_level, total_hp, total_exp = self.env_vars["party_info"]
         if total_level > np.sum(self.total_level):
-            total_reward += default_reward * 200
+            total_reward += default_reward * 1000
             self.total_level = total_level
 
         if total_hp > np.sum(self.total_hp):
