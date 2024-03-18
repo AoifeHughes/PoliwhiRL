@@ -18,6 +18,11 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer, training_
     action_rewards = np.zeros(num_actions)
     episodes = config.get("start_episode", 0)
     frame_idx = config.get("frame_idx", 0)
+    config.update(
+        {
+            "batch_size": config.get("batch_size", 32) * config.get("update_frequency", 1)
+        }
+    )
 
     for episode in (
         pbar := tqdm(
@@ -59,7 +64,6 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer, training_
             action_rewards[action] += reward
 
             if not config.get("eval_mode", False):
-                # Store experience using the dedicated function
                 beta = beta_by_frame(
                     frame_idx, config["beta_start"], config["beta_frames"]
                 )
@@ -68,10 +72,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer, training_
                 training_manager.store_experience(
                     state, action, reward, next_state, done
                 )
-
                 if frame_idx % config["update_frequency"] == 0:
-
-                    # Optimize model after storing experience
                     loss = training_manager.optimize_model(
                         beta
                     )

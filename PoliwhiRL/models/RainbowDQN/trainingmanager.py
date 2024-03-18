@@ -62,9 +62,7 @@ class TrainingManager:
             next_state_values = self.target_net(next_states).max(1)[0]
             # Properly use the boolean mask to zero out values for terminal states
             next_state_values = next_state_values * (~dones)
-
             expected_q_values = rewards + gamma * next_state_values
-
         td_errors = (expected_q_values - current_q_values).abs()
         return td_errors  # Return as a tensor
 
