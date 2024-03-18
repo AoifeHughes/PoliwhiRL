@@ -88,9 +88,10 @@ def store_experience(
     )
     td_errors.append(td_error)
 
-    replay_buffer.add(
+    return replay_buffer.add(
         state, action_tensor, reward_tensor, next_state, done_tensor, td_error
     )
+
 
 
 def compute_td_error(

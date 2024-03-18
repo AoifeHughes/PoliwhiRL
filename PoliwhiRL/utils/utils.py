@@ -40,6 +40,7 @@ def document(
     x,
     y,
     was_random,
+    priority_val
 ):
     try:
         if not os.path.isdir("./runs"):
@@ -64,7 +65,7 @@ def document(
         raise ValueError("Unsupported image format")
 
     # Construct filename with relevant information
-    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}.png"
+    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}_priority_val_{priority_val}.png"
     # Save image
     img.save(os.path.join(save_dir, filename))
 
