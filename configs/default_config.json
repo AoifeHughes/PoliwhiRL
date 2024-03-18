@@ -16,11 +16,11 @@
   "num_workers": 6,
   "checkpoint_interval": 100,
   "epsilon_by_location": false,
-  "epsilon_decay": 100000,
+  "epsilon_decay": 1000000,
   "epsilon_start": 1.0,
   "epsilon_min": 0.1,
    "epsilon_final": 0.1,
-   "beta_frames": 1000,
+   "beta_frames": 100000,
    "beta_start": 0.4,
   "gamma": 0.99,
   "target_update": 1000,
@@ -39,5 +39,6 @@
   "use_grayscale": true,
   "learning_rate": 1e-4,
   "capacity": 100000,
-  "plot_interval": 10
+  "plot_interval": 10,
+  "hybrid_start": 10
 }

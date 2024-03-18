@@ -7,7 +7,7 @@
   "scaling_factor": 0.5,
   "use_grayscale": false,
   "extend_on_reward": false,
-  "batch_size": 2048,
+  "batch_size": 4096,
   "update_frequency": 5,
   "erase": false,
   "reward_image_folder": "./configs/reward_images",
