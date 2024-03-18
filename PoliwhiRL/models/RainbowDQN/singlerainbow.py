@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from tqdm import tqdm
 import numpy as np
+from PoliwhiRL.models.RainbowDQN.evaluate import evaluate_model
 from PoliwhiRL.models.RainbowDQN.utils import (
     optimize_model,
     save_checkpoint,
@@ -13,7 +14,7 @@ from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
-    rewards, losses, epsilon_values, beta_values, td_errors = [], [], [], [], []
+    rewards, losses, epsilon_values, beta_values, td_errors, eval_rewards = [], [], [], [], [], []
 
     num_actions = len(env.action_space)
     action_counts = np.zeros(num_actions)
@@ -44,8 +45,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             )
             epsilon_values.append(epsilon)
 
-            action, q_value = (
-                select_action_hybrid(
+            action, q_value = select_action_hybrid(
                     state,
                     policy_net,
                     config,
@@ -54,9 +54,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     num_actions,
                     epsilon,
                 )
-                if episode > config["hybrid_start"]
-                else np.random.choice(num_actions)
-            ), None
+
             if q_value is None:
                 was_random = True
             else:
@@ -122,6 +120,11 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         if episode % config["plot_interval"] == 0 and episode > 0:
             print("Plotting best attempts...")
             plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
+
+        if episode % config['eval_interval'] == 0 and episode > 0:
+            print("Evaluating model...")
+            avg_eval = evaluate_model(config, env, policy_net)
+            eval_rewards.append(avg_eval)
 
     config.update(
         {
