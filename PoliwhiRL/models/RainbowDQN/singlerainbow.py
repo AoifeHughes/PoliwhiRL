@@ -125,6 +125,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             print("Evaluating model...")
             avg_eval = evaluate_model(config, env, policy_net)
             eval_rewards.append(avg_eval)
+            plot_best_attempts("./results/", 0, "RainbowDQN_latest_single_eval", eval_rewards)
 
     config.update(
         {
