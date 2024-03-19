@@ -7,12 +7,12 @@
   "scaling_factor": 1,
   "use_grayscale": false,
   "extend_on_reward": false,
-  "batch_size": 10,
+  "batch_size":64,
   "erase": false,
   "reward_image_folder": "./configs/reward_images",
-  "capacity": 10000,
+  "capacity": 2000,
   "target_update": 100,
-  "sequence_length": 10,
+  "sequence_length": 12,
   "eval_episodes": 1
 
 }

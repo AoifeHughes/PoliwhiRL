@@ -22,9 +22,17 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     episodes = config.get("start_episode", 0)
     frame_idx = config.get("frame_idx", 0)
 
+    print("\nPopulating replay buffer...\n")
+    for _ in tqdm(range(10)):
+        populate_replay_buffer(config, env, replay_buffer, policy_net, target_net, td_errors)
+        if len(replay_buffer) >= config["capacity"]:
+            break
+
+    print(f"\n Number of memories stored: {len(replay_buffer)} / {config['capacity']}\n")
+
+    print("\nTraining...\n")
     for episode in (pbar := tqdm(range(episodes, episodes + config["num_episodes"]))):
         frame_idx = run_episode(
-            episode,
             config,
             env,
             buttons,
@@ -45,7 +53,49 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     return losses, beta_values, td_errors, rewards
 
 
-def run_episode(episode, config, env, buttons, policy_net, target_net, replay_buffer, rewards, frame_idx, epsilon_values, beta_values, action_counts, action_rewards, td_errors):
+def populate_replay_buffer(config, env, replay_buffer, policy_net, target_net, td_errors):
+    policy_net.reset_noise()
+    state_sequence = []
+    action_sequence = []
+    reward_sequence = []
+    next_state_sequence = []
+    done_sequence = []
+    state = env.reset()
+    env.extend_timeout(1000)
+    state = image_to_tensor(state, config["device"])
+    sequence_length = config.get("sequence_length", 4)
+    num_actions = len(env.action_space)
+    done = False
+    while not done:
+        action = np.random.choice(num_actions)
+        next_state, reward, done = env.step(action)
+        next_state = image_to_tensor(next_state, config["device"])
+        state_sequence.append(state)
+        action_sequence.append(action)
+        reward_sequence.append(reward)
+        next_state_sequence.append(next_state)
+        done_sequence.append(done)
+        if len(state_sequence) == sequence_length:
+            store_experience_sequence(
+                state_sequence,
+                action_sequence,
+                reward_sequence,
+                next_state_sequence,
+                done_sequence,
+                policy_net,
+                target_net,
+                replay_buffer,
+                config,
+                td_errors
+            )
+            state_sequence = []
+            action_sequence = []
+            reward_sequence = []    
+            next_state_sequence = []
+            done_sequence = []
+
+
+def run_episode(config, env, buttons, policy_net, target_net, replay_buffer, rewards, frame_idx, epsilon_values, beta_values, action_counts, action_rewards, td_errors):
 
     policy_net.reset_noise()
     state_sequence = []
@@ -106,11 +156,11 @@ def run_episode(episode, config, env, buttons, policy_net, target_net, replay_bu
                 config,
                 td_errors
             )
-            state_sequence.pop(0)
-            action_sequence.pop(0)
-            reward_sequence.pop(0)
-            next_state_sequence.pop(0)
-            done_sequence.pop(0)
+            state_sequence = []
+            action_sequence = []
+            reward_sequence = []    
+            next_state_sequence = []
+            done_sequence = []
     rewards.append(total_reward)
     buttons.append(env.buttons)
     return frame_idx
