@@ -106,6 +106,7 @@ class Controller:
         return self.screen_image()
 
     def step(self, movement, ticks_per_input=10, wait=75, init=False):
+        movement_int = movement
         movement = self.action_space_buttons[movement]
         if movement != "pass":
             self.pyboy.button_press(movement)
@@ -119,11 +120,15 @@ class Controller:
         if not init:
             self.steps += 1
             self.button = movement
-            self.buttons.append(movement)
+            self.buttons.append(movement_int)
             self.done = True if self.steps == self.timeout else False
         else:
             self.reward = 0
         return next_state, self.reward, self.done
+
+    def get_buttons(self):
+        return self.buttons
+
 
     def screen_image(self, no_resize=False):
         original_image = np.array(self.pyboy.screen.image)[
@@ -152,8 +157,7 @@ class Controller:
         return self.frames_per_loc[self.get_current_location()]
 
     def extend_timeout(self, time):
-        if self.timeout < self.timeoutcap:
-            self.timeout += time
+        self.timeout += time
 
     def screen_size(self):
         return self.screen_image().shape[:2]
