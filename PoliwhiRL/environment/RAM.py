@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-# -*- coding: utf-8 -*-
-
 
 class RAMManagement:
     def __init__(self, pyboy):
@@ -62,7 +60,7 @@ class RAMManagement:
         total_hp = 0
         total_exp = 0
         for i in range(num_pokemon):
-            base_address = self.party_base + 0x30 * i
+            base_address = self.party_base_mem_loc + 0x30 * i
             level = self.get_memory_value(base_address + 0x1F)
             hp = np.sum(
                 self.read_little_endian(base_address + 0x22, base_address + 0x23)

@@ -40,6 +40,7 @@ def document(
     x,
     y,
     was_random,
+    priority_val,
 ):
     try:
         if not os.path.isdir("./runs"):
@@ -64,7 +65,7 @@ def document(
         raise ValueError("Unsupported image format")
 
     # Construct filename with relevant information
-    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}.png"
+    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}_priority_val_{priority_val}.png"
     # Save image
     img.save(os.path.join(save_dir, filename))
 
@@ -105,6 +106,30 @@ def plot_best_attempts(results_path, episodes, phase, results):
     plt.close(fig)
 
 
+def plot_losses(results_path, episodes, losses):
+    # Ensure the results directory exists
+    if not os.path.isdir(results_path):
+        os.mkdir(results_path)
+    results_path = os.path.join(results_path, f"losses_{episodes}.png")
+
+    # Create plot
+    fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
+    ax.plot(losses, label="Loss", color="red", linewidth=2)
+
+    ax.set_title("Loss Over Episodes")
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Loss")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax.legend()
+
+    fig.tight_layout()
+
+    fig.savefig(results_path)
+    np.savetxt(results_path.replace(".png", ".csv"), losses, delimiter=",")
+
+    plt.close(fig)
+
+
 def log_rewards(batch_rewards):
     return f"Average reward for last batch: {np.mean(batch_rewards)} | Best reward: {np.max(batch_rewards)}"
 
@@ -113,3 +138,15 @@ def chunked_iterable(iterable, size):
     it = iter(iterable)
     for _ in range(0, len(iterable), size):
         yield tuple(itertools.islice(it, size))
+
+
+def weighted_random_indices(rewards, size=1):
+    min_reward = min(rewards)
+    if min_reward < 0:
+        adjusted_rewards = [reward + abs(min_reward) for reward in rewards]
+    else:
+        adjusted_rewards = rewards
+
+    # Calculate probabilities
+    probabilities = np.array(adjusted_rewards) / np.sum(adjusted_rewards)
+    return np.random.choice(len(rewards), size=size, p=probabilities).tolist()

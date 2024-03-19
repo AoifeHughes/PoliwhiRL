@@ -10,23 +10,22 @@ class PrioritizedReplayBuffer:
         self.pos = 0
         self.priorities = np.zeros((capacity,), dtype=np.float32)  # Store priorities
 
-    def add(self, state, action, reward, next_state, done, error):
-        max_prio = (
-            self.priorities.max() if self.buffer else 1.0
-        )  # Max priority for new entry
+    def add(self, sequence, error):
+        max_prio = self.priorities.max() if self.buffer else 1.0
         if len(self.buffer) < self.capacity:
-            self.buffer.append((state, action, reward, next_state, done))
+            self.buffer.append(sequence)
         else:
-            self.buffer[self.pos] = (state, action, reward, next_state, done)
+            self.buffer[self.pos] = sequence
 
-        self.priorities[self.pos] = max_prio if error is None else error
+        self.priorities[self.pos] = max(max_prio, error)  # Assign batch priority
         self.pos = (self.pos + 1) % self.capacity
+        return self.priorities[self.pos - 1]
 
     def sample(self, batch_size, beta=0.4):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[: self.pos]
+            prios = self.priorities[: self.pos]  # Only consider non-zero priorities
 
         probs = prios**self.alpha
         probs /= probs.sum()
@@ -38,12 +37,27 @@ class PrioritizedReplayBuffer:
         weights = (total * probs[indices]) ** (-beta)
         weights /= weights.max()  # Normalize for stability
 
-        states, actions, rewards, next_states, dones = zip(*samples)
-        return states, actions, rewards, next_states, dones, indices, weights
+        # Unpack sequences
+        (
+            state_sequences,
+            action_sequences,
+            reward_sequences,
+            next_state_sequences,
+            done_sequences,
+        ) = zip(*samples)
+        return (
+            state_sequences,
+            action_sequences,
+            reward_sequences,
+            next_state_sequences,
+            done_sequences,
+            indices,
+            weights,
+        )
 
     def update_priorities(self, indices, errors):
         for idx, error in zip(indices, errors):
-            self.priorities[idx] = error
+            self.priorities[idx] = error.mean()
 
     def __len__(self):
         return len(self.buffer)

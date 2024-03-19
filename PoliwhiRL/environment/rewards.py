@@ -18,6 +18,7 @@ class Rewards:
         self.total_hp = 0
         self.total_exp = 0
         self.button_pressed = None
+        self.N_images_rewarded = 0
         self.locations = set()
 
     def update_env_vars(self):
@@ -33,7 +34,7 @@ class Rewards:
     def update_for_party_pokemon(self, total_reward, default_reward):
         total_level, total_hp, total_exp = self.env_vars["party_info"]
         if total_level > np.sum(self.total_level):
-            total_reward += default_reward * 200
+            total_reward += default_reward * 1000
             self.total_level = total_level
 
         if total_hp > np.sum(self.total_hp):
@@ -56,7 +57,8 @@ class Rewards:
     def update_for_image_reward(self, total_reward, default_reward):
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
-            total_reward += default_reward * 100
+            self.N_images_rewarded += 1
+            total_reward += default_reward * 100 * self.N_images_rewarded
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
