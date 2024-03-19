@@ -38,7 +38,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
 
         if episode % config["replay_frequency"] == 0 and episode > 0:
             steps_to_take = weighted_random_indices(rewards)[0]
-            env.extend_timeout(len(buttons[steps_to_take]))
+            env.extend_timeout(len(buttons[steps_to_take]) + env.steps )
 
             for steps in buttons[steps_to_take]:
                 next_state, reward, done = env.step(steps)

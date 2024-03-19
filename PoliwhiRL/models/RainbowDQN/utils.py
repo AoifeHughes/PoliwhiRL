@@ -66,10 +66,6 @@ def store_experience(
     td_errors,
     beta=None,
 ):
-    """
-    Optimized function to store the experience in the replay buffer and computes TD error.
-    Avoids redundant tensor operations and ensures efficient device transfers.
-    """
     # Assuming state, next_state are already tensors and correctly placed on the device
     action_tensor = torch.tensor([action], device=config["device"], dtype=torch.long)
     reward_tensor = torch.tensor([reward], device=config["device"], dtype=torch.float)
