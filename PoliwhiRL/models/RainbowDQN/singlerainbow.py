@@ -10,7 +10,7 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
     select_action_hybrid,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
@@ -120,6 +120,8 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         if episode % config["plot_interval"] == 0 and episode > 0:
             print("Plotting best attempts...")
             plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
+
+            plot_losses("./results/", 0, losses)
 
         if episode % config['eval_interval'] == 0 and episode > 0:
             print("Evaluating model...")
