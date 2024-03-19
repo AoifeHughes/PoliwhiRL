@@ -6,6 +6,122 @@ import os
 import numpy as np
 
 
+def store_experience_sequence(
+    state_sequence,
+    action_sequence,
+    reward_sequence,
+    next_state_sequence,
+    done_sequence,
+    policy_net,
+    target_net,
+    replay_buffer,
+    config,
+    td_errors,
+    beta=None,
+):
+    # Convert sequences to tensors with the appropriate device and dtype
+    state_sequence_tensor = torch.stack(state_sequence).to(config["device"])
+    action_sequence_tensor = torch.tensor(action_sequence, device=config["device"], dtype=torch.long)
+    reward_sequence_tensor = torch.tensor(reward_sequence, device=config["device"], dtype=torch.float)
+    next_state_sequence_tensor = torch.stack(next_state_sequence).to(config["device"])
+    done_sequence_tensor = torch.tensor(done_sequence, device=config["device"], dtype=torch.bool)
+    
+    # Compute TD error for the entire sequence
+    td_error = compute_td_error_sequence(
+        state_sequence_tensor,
+        action_sequence_tensor,
+        reward_sequence_tensor,
+        next_state_sequence_tensor,
+        done_sequence_tensor,
+        policy_net,
+        target_net,
+        config["gamma"],
+        config["device"],
+    )
+    td_errors.append(td_error)
+
+    # Add the entire sequence to the replay buffer
+    # The sequences are now tensors, ready for efficient storage and retrieval
+    return replay_buffer.add(
+        state_sequence_tensor,
+        action_sequence_tensor,
+        reward_sequence_tensor,
+        next_state_sequence_tensor,
+        done_sequence_tensor,
+        td_error
+    )
+
+def compute_td_error_sequence(
+    state_sequence_tensor, action_sequence_tensor, reward_sequence_tensor, next_state_sequence_tensor, done_sequence_tensor, policy_net, target_net, gamma, device
+):
+    
+    current_q_values_all = policy_net(state_sequence_tensor)
+    current_q_values = current_q_values_all.gather(1, action_sequence_tensor.unsqueeze(1)).squeeze(1)
+    
+    with torch.no_grad():
+        next_q_values_all = target_net(next_state_sequence_tensor)
+        next_q_values = next_q_values_all.max(1)[0].detach()
+        next_q_values[done_sequence_tensor] = 0.0  # Zero-out values for done states
+        expected_q_values = reward_sequence_tensor + (gamma * next_q_values)
+
+    td_error = (expected_q_values - current_q_values).abs().mean()
+    return td_error
+
+
+def optimize_model_sequence(
+    beta,
+    policy_net,
+    target_net,
+    replay_buffer,
+    optimizer,
+    device,
+    batch_size=32,
+    gamma=0.99,
+):
+    # Check if the replay buffer has enough samples
+    if len(replay_buffer) < batch_size:
+        print("Not enough samples in the replay buffer.")
+        return
+    
+    # Sample a batch of sequences from the replay buffer
+    states, actions, rewards, next_states, dones, indices, weights = replay_buffer.sample(batch_size, beta)
+    
+    # No need to reshape since we expect the replay buffer to provide the correct shape
+    # and the model's forward method has been adjusted to handle it directly
+    states = torch.stack(states).to(device)
+    actions = torch.stack(actions).to(device)
+    rewards = torch.stack(rewards).to(device)
+    next_states = torch.stack(next_states).to(device)
+    dones = torch.stack(dones).to(device)
+    weights = torch.tensor(weights, dtype=torch.float32).unsqueeze(-1).to(device)
+
+    # Current Q values as predicted by the policy net
+    current_q_values = policy_net(states).gather(-1, actions.unsqueeze(-1)).squeeze(-1)
+    
+    # Next Q values as predicted by the target net for all next states
+    with torch.no_grad():
+        next_q_values = target_net(next_states).max(-1)[0].detach()
+        # Apply mask for dones. Since dones are provided as a tensor of the same batch and sequence shape,
+        # use it to zero out the next Q values for done states
+        next_q_values[dones] = 0.0
+        expected_q_values = rewards + (gamma * next_q_values)
+
+    # Compute the loss, taking into account the importance sampling weights
+    loss = ((current_q_values - expected_q_values.detach()) ** 2 * weights).mean()
+    
+    # Prioritize samples based on the TD error, adding a small value to ensure no zero priorities
+    prios = loss.detach() + 1e-5
+    
+    # Backpropagation
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    # Update priorities in the replay buffer using the squared TD errors
+    replay_buffer.update_priorities(indices, prios.squeeze().cpu().numpy())
+
+    return loss.item()
+
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
 
@@ -238,7 +354,7 @@ def select_action_hybrid(
 
     with torch.no_grad():
         # Obtain Q-values from the policy network for the current state
-        q_values = policy_net(state.unsqueeze(0).to(config["device"])).cpu().numpy()[0]
+        q_values = policy_net(state).cpu().numpy()[0]
 
     exploration_rate = np.sqrt(
         2 * math.log(frame_idx + 1) / (action_counts + 1)
