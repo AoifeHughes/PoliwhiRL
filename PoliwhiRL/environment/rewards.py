@@ -19,6 +19,8 @@ class Rewards:
         self.total_exp = 0
         self.button_pressed = None
         self.N_images_rewarded = 0
+        self.last_XY = (2, 3)
+        self.time_in_last_XY = 0
         self.locations = set()
 
     def update_env_vars(self):
@@ -48,17 +50,25 @@ class Rewards:
         return total_reward
 
     def update_for_movement(self, total_reward, default_reward):
+
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
+
+        if cur_xy == self.last_XY:
+            self.time_in_last_XY += 1
+            total_reward += -default_reward * 5 * self.time_in_last_XY
+        else:
+            self.time_in_last_XY = 0
         if cur_xy not in self.xy:
-            total_reward += default_reward * 10
+            total_reward += default_reward * 5
             self.xy.add(cur_xy)
+        self.last_XY = cur_xy
         return total_reward
 
     def update_for_image_reward(self, total_reward, default_reward):
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += default_reward * 100 * self.N_images_rewarded
+            total_reward += default_reward * 50 #* self.N_images_rewarded
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
