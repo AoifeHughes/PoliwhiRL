@@ -83,54 +83,27 @@ def compute_td_error_sequence(
     gamma,
     device,
 ):
-    # Ensure the sequence batch is on the correct device
-    state_sequence = state_sequence.to(device).unsqueeze(
-        1
-    )  # Add a batch dimension if needed
-    next_state_sequence = next_state_sequence.to(device).unsqueeze(
-        1
-    )  # Add a batch dimension if needed
 
-    # Adjust dimensions for action_sequence, reward_sequence, and done_sequence for compatibility
-    action_sequence = action_sequence.to(device).unsqueeze(
-        -1
-    )  # [batch_size, 1] for gather
-    reward_sequence = reward_sequence.to(device).unsqueeze(
-        -1
-    )  # [batch_size, 1] for broadcasting
-    done_sequence = done_sequence.to(device).unsqueeze(
-        -1
-    )  # [batch_size, 1] for broadcasting
+    state_sequence = state_sequence.to(device).unsqueeze(1)
+    next_state_sequence = next_state_sequence.to(device).unsqueeze(1)
+    action_sequence = action_sequence.to(device).unsqueeze(-1)
+    reward_sequence = reward_sequence.to(device).unsqueeze(-1)
+    done_sequence = done_sequence.to(device).unsqueeze(-1)
 
-    # Compute Q values for all states in the sequence using the policy network
     q_values = policy_net(state_sequence)
-    # Adjust the dimension of q_values if necessary, e.g., q_values = q_values.unsqueeze(-1)
 
-    # Select the Q values for the chosen actions. Adjust for the extra dimension added for batch processing
     state_action_values = q_values.gather(1, action_sequence)
 
-    # Compute V values for the next states using the target network
     with torch.no_grad():
-        # Get max Q value along the action dimension from the target network for each sequence
         next_state_values = target_net(next_state_sequence).max(1)[0].detach()
-        next_state_values = next_state_values.unsqueeze(
-            -1
-        )  # Align dimensions for broadcasting
+        next_state_values = next_state_values.unsqueeze(-1)
 
-    # Compute the expected Q values
     expected_state_action_values = reward_sequence + (
         gamma * next_state_values * (~done_sequence).float()
     )
 
-    # Compute TD error for each item in the sequence
-    td_errors = (expected_state_action_values - state_action_values).squeeze(
-        -1
-    )  # Remove the unnecessary dimension
-
-    # Return the mean absolute TD error over the sequence for prioritization
-    return (
-        td_errors.abs().mean().item()
-    )  # Returning as single scalar value for simplicity
+    td_errors = (expected_state_action_values - state_action_values).squeeze(-1)
+    return td_errors.abs().mean().item()
 
 
 def optimize_model_sequence(

@@ -19,7 +19,7 @@ class Attention(nn.Module):
         attention_scores = self.attention_layer(x)
         attention_weights = F.softmax(attention_scores, dim=1)
         weighted_features = x * attention_weights
-        return weighted_features.sum(1)
+        return weighted_features
 
 
 class RainbowDQN(nn.Module):
@@ -43,7 +43,7 @@ class RainbowDQN(nn.Module):
             nn.Flatten(),
         )
         self.fc_input_dim = self.feature_size(input_dim)
-        # self.attention = Attention(self.fc_input_dim, 256)
+        self.attention = Attention(self.fc_input_dim, 256)
         self.lstm = nn.LSTM(
             input_size=self.fc_input_dim, hidden_size=512, batch_first=True
         )
@@ -60,10 +60,10 @@ class RainbowDQN(nn.Module):
         batch_size, seq_len, channels, height, width = x.size()
         x = x.view(batch_size * seq_len, channels, height, width)
         x = self.feature_layer(x)
-        x = x.view(batch_size, seq_len, -1)
+        x = x.view(seq_len, batch_size, -1)
+        x = self.attention(x)
         lstm_out, _ = self.lstm(x)
-        x = lstm_out[:, -1, :]
-        dist = self.get_distribution(x)
+        dist = self.get_distribution(lstm_out)
         q_values = torch.sum(dist * self.support, dim=2)
         return q_values
 
