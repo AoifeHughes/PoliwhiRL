@@ -140,7 +140,9 @@ def optimize_model_sequence(
 
     _, best_actions = next_q_values.max(1, keepdim=True)
 
-    next_q_values_target = target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    next_q_values_target = (
+        target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    )
 
     expected_q_values = rewards + (gamma * next_q_values_target * (~dones)).float()
     loss = (current_q_values - expected_q_values).pow(2) * weights
@@ -275,7 +277,7 @@ def populate_replay_buffer(
     next_state_sequence = []
     done_sequence = []
     state = env.reset()
-    env.extend_timeout(1000)
+    env.extend_timeout(250)
     state = image_to_tensor(state, config["device"])
     sequence_length = config.get("sequence_length", 4)
     num_actions = len(env.action_space)

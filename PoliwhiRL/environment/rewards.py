@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from skimage.metrics import structural_similarity as ssim
+import cv2
 
 
 class Rewards:
@@ -20,6 +22,8 @@ class Rewards:
         self.button_pressed = None
         self.N_images_rewarded = 0
         self.locations = set()
+        self.last_screen = None
+        self.time_in_last_screen = 0
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -50,7 +54,7 @@ class Rewards:
     def update_for_movement(self, total_reward, default_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += default_reward * 10
+            total_reward += default_reward * 5
             self.xy.add(cur_xy)
         return total_reward
 
@@ -58,7 +62,7 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += default_reward * 100 * self.N_images_rewarded
+            total_reward += default_reward * 50  # * self.N_images_rewarded
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
@@ -87,6 +91,25 @@ class Rewards:
             total_reward += -default_reward * 5
         return total_reward
 
+    def update_for_same_screen(self, total_reward, default_reward):
+        if self.last_screen is None:
+            self.last_screen = self.controller.screen_image()
+            return total_reward
+
+        current_screen = self.controller.screen_image()
+        last_screen_gray = cv2.cvtColor(self.last_screen, cv2.COLOR_BGR2GRAY)
+        current_screen_gray = cv2.cvtColor(current_screen, cv2.COLOR_BGR2GRAY)
+        ssim_index = ssim(last_screen_gray, current_screen_gray)
+
+        if ssim_index >= 0.99:
+            self.time_in_last_screen += 1
+            total_reward += -default_reward * 5 * self.time_in_last_screen
+        else:
+            self.last_screen = current_screen
+            self.time_in_last_screen = 0
+
+        return total_reward
+
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
@@ -101,6 +124,7 @@ class Rewards:
             self.update_for_money,
             self.update_for_image_reward,
             self.update_for_menuing,
+            self.update_for_same_screen,
         ]:
             total_reward = func(total_reward, default_reward)
 
