@@ -36,7 +36,6 @@ def evaluate_model(config, env, policy_net):
             state = next_state
 
         total_rewards += episode_rewards
-        print(f"Episode {episode+1}: Reward = {episode_rewards}")
 
     avg_reward = total_rewards / num_episodes
     policy_net.train()  # Revert model back to training mode if further training is required.
