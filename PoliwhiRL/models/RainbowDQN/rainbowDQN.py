@@ -32,7 +32,6 @@ class RainbowDQN(nn.Module):
         self.support = (
             torch.linspace(Vmin, Vmax, atom_size).view(1, 1, atom_size).to(device)
         )
-
         # Define network layers
         self.feature_layer = nn.Sequential(
             nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4, padding=1),
@@ -43,21 +42,14 @@ class RainbowDQN(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
         )
-
         self.fc_input_dim = self.feature_size(input_dim)
-
-        # Define the attention layer
         self.attention = Attention(self.fc_input_dim, 256)
-
-        # Modify LSTM input size to match the flattened feature dimension
         self.lstm = nn.LSTM(
             input_size=self.fc_input_dim, hidden_size=512, batch_first=True
         )
-
         self.value_stream = nn.Sequential(
             nn.Linear(512, 512), nn.ReLU(), nn.Linear(512, atom_size)
         )
-
         self.advantage_stream = nn.Sequential(
             nn.Linear(512, 512),
             nn.ReLU(),
@@ -65,11 +57,16 @@ class RainbowDQN(nn.Module):
         )
 
     def forward(self, x):
-        batch_size = x.size(0)
+        batch_size, seq_len, channels, height, width = x.size()
+        # Reshape x to treat the sequence as a batch dimension
+        x = x.view(batch_size * seq_len, channels, height, width)
         x = self.feature_layer(x)
-        x = self.attention(x.view(batch_size, -1, self.fc_input_dim))
-        x = x.view(batch_size, 1, -1)
+        # Calculate feature dimension for reshaping
+        x = x.view(batch_size, seq_len, -1)  # Reshape to [batch_size, seq_len, features]
+        x = self.attention(x)
+        # No need to reshape to [batch_size, 1, -1], LSTM can handle [batch_size, seq_len, features]
         lstm_out, _ = self.lstm(x)
+        # Select the last output for each sequence
         x = lstm_out[:, -1, :]
         dist = self.get_distribution(x)
         q_values = torch.sum(dist * self.support, dim=2)
