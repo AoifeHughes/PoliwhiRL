@@ -8,7 +8,6 @@ from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
 from .utils import save_checkpoint, load_checkpoint
 from .singlerainbow import run as run_single
-from .doublerainbow import run as run_rainbow_parallel
 from PoliwhiRL.utils import plot_best_attempts
 from .evaluate import evaluate_model
 
@@ -51,17 +50,8 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
     """
     Runs the training loop, either in single or parallel mode based on configuration.
     """
-    if not config["run_parallel"]:
-        return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
-    else:
-        return run_rainbow_parallel(
-            config,
-            policy_net,
-            target_net,
-            optimizer,
-            replay_buffer,
-            len(env.action_space),
-        )
+    return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
+
 
 
 def finalize_training(

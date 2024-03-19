@@ -26,7 +26,7 @@ def evaluate_model(config, env, policy_net):
 
         while not done:
             with torch.no_grad():  # No need to track gradients
-                q_values = policy_net(state.unsqueeze(0).to(config["device"]))
+                q_values = policy_net(state.unsqueeze(0).unsqueeze(0).to(config["device"]))
                 action = torch.argmax(q_values, dim=1).item()  # Select the action with the highest Q-value
 
             next_state, reward, done = env.step(action)
@@ -39,7 +39,5 @@ def evaluate_model(config, env, policy_net):
         print(f"Episode {episode+1}: Reward = {episode_rewards}")
 
     avg_reward = total_rewards / num_episodes
-    print(f"Average Reward across {num_episodes} episodes: {avg_reward}")
-
     policy_net.train()  # Revert model back to training mode if further training is required.
     return avg_reward

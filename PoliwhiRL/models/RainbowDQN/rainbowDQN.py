@@ -43,7 +43,7 @@ class RainbowDQN(nn.Module):
             nn.Flatten(),
         )
         self.fc_input_dim = self.feature_size(input_dim)
-        self.attention = Attention(self.fc_input_dim, 256)
+        #self.attention = Attention(self.fc_input_dim, 256)
         self.lstm = nn.LSTM(
             input_size=self.fc_input_dim, hidden_size=512, batch_first=True
         )
@@ -63,7 +63,6 @@ class RainbowDQN(nn.Module):
         x = self.feature_layer(x)
         # Calculate feature dimension for reshaping
         x = x.view(batch_size, seq_len, -1)  # Reshape to [batch_size, seq_len, features]
-        x = self.attention(x)
         # No need to reshape to [batch_size, 1, -1], LSTM can handle [batch_size, seq_len, features]
         lstm_out, _ = self.lstm(x)
         # Select the last output for each sequence
