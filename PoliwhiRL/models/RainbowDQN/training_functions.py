@@ -128,7 +128,6 @@ def optimize_model_sequence(
         weights,
     ) = replay_buffer.sample(batch_size, beta)
 
-    # Directly convert tuples to tensors without np.array conversion
     states = torch.stack(states)
     actions = torch.stack(actions)
     rewards = torch.stack(rewards)
@@ -136,20 +135,14 @@ def optimize_model_sequence(
     dones = torch.stack(dones)
     weights = torch.FloatTensor(weights).unsqueeze(-1).to(device)
 
-    # Current Q values
     current_q_values = policy_net(states).gather(1, actions)
-
-    # Next Q values based on the action chosen by policy_net
     next_q_values = policy_net(next_states).detach()
+
     _, best_actions = next_q_values.max(1, keepdim=True)
 
-    # Next Q values from target_net for actions chosen by policy_net
-    next_q_values_target = target_net(next_states).detach().gather(1, best_actions)
+    next_q_values_target = target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
 
-    # Expected Q values
     expected_q_values = rewards + (gamma * next_q_values_target * (~dones)).float()
-
-    # Compute the loss
     loss = (current_q_values - expected_q_values).pow(2) * weights
     prios = loss + 1e-5  # Avoid zero priority
     loss = loss.mean()
