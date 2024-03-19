@@ -41,7 +41,7 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         )
         model_updates(episode, config, policy_net, target_net, replay_buffer, optimizer, beta_values, losses)
         post_run_jobs(episode, config, env, policy_net, target_net, replay_buffer, optimizer, eval_rewards, rewards, losses, frame_idx)
-        pbar.set_description(f"Episode {episode+1} | Last reward: {rewards[-1]:.2f} | Epsilon: {epsilon_values[-1]:.3f}")
+        pbar.set_description(f"Episode {episode+1} | Last reward: {rewards[-1]:.2f} | Avg reward: {np.mean(rewards[-100:]):.2f} | Best reward: {np.max(rewards):.2f}")
     return losses, beta_values, td_errors, rewards
 
 
