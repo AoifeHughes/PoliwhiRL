@@ -277,7 +277,7 @@ def populate_replay_buffer(
     next_state_sequence = []
     done_sequence = []
     state = env.reset()
-    env.extend_timeout(1000)
+    env.extend_timeout(250)
     state = image_to_tensor(state, config["device"])
     sequence_length = config.get("sequence_length", 4)
     num_actions = len(env.action_space)

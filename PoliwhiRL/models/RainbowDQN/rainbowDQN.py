@@ -36,10 +36,13 @@ class RainbowDQN(nn.Module):
         self.feature_layer = nn.Sequential(
             nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4, padding=1),
             nn.ReLU(),
+            nn.Dropout(p=0.2),  # Add dropout with a probability of 0.2
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
+            nn.Dropout(p=0.2),  # Add dropout with a probability of 0.2
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
+            nn.Dropout(p=0.2),  # Add dropout with a probability of 0.2
             nn.Flatten(),
         )
         self.fc_input_dim = self.feature_size(input_dim)
