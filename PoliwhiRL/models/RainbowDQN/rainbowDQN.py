@@ -2,7 +2,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .noisylinear import NoisyLinear
+
+
+class Attention(nn.Module):
+    def __init__(self, feature_dim, attention_dim):
+        super(Attention, self).__init__()
+        self.attention_layer = nn.Sequential(
+            nn.Linear(feature_dim, attention_dim),
+            nn.Tanh(),
+            nn.Linear(attention_dim, 1),
+        )
+
+    def forward(self, x):
+        attention_scores = self.attention_layer(x)
+        attention_weights = F.softmax(attention_scores, dim=1)
+        weighted_features = x * attention_weights
+        return weighted_features
 
 
 class RainbowDQN(nn.Module):
@@ -15,12 +32,9 @@ class RainbowDQN(nn.Module):
         self.support = (
             torch.linspace(Vmin, Vmax, atom_size).view(1, 1, atom_size).to(device)
         )
-
         # Define network layers
         self.feature_layer = nn.Sequential(
-            nn.Conv2d(
-                input_dim[0], 32, kernel_size=8, stride=4, padding=1
-            ),  # Adjusted for input dimensions
+            nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4, padding=1),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
@@ -28,26 +42,32 @@ class RainbowDQN(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
         )
-
         self.fc_input_dim = self.feature_size(input_dim)
-
-        self.value_stream = nn.Sequential(
-            nn.Linear(self.fc_input_dim, 512), nn.ReLU(), nn.Linear(512, atom_size)
+        self.attention = Attention(self.fc_input_dim, 256)
+        self.lstm = nn.LSTM(
+            input_size=self.fc_input_dim, hidden_size=512, batch_first=True
         )
-
+        self.value_stream = nn.Sequential(
+            nn.Linear(512, 512), nn.ReLU(), nn.Linear(512, atom_size)
+        )
         self.advantage_stream = nn.Sequential(
-            nn.Linear(self.fc_input_dim, 512),
+            nn.Linear(512, 512),
             nn.ReLU(),
             NoisyLinear(512, num_actions * atom_size),
         )
 
     def forward(self, x):
-        dist = self.get_distribution(x)
+        batch_size, seq_len, channels, height, width = x.size()
+        x = x.view(batch_size * seq_len, channels, height, width)
+        x = self.feature_layer(x)
+        x = x.view(seq_len, batch_size, -1)
+        x = self.attention(x)
+        lstm_out, _ = self.lstm(x)
+        dist = self.get_distribution(lstm_out)
         q_values = torch.sum(dist * self.support, dim=2)
         return q_values
 
     def get_distribution(self, x):
-        x = self.feature_layer(x)
         value = self.value_stream(x).view(-1, 1, self.atom_size)
         advantage = self.advantage_stream(x).view(-1, self.num_actions, self.atom_size)
         advantage_mean = advantage.mean(1, keepdim=True)
@@ -61,6 +81,6 @@ class RainbowDQN(nn.Module):
 
     def reset_noise(self):
         """Reset all noisy layers"""
-        for name, module in self.named_children():
+        for _, module in self.named_children():
             if isinstance(module, NoisyLinear):
                 module.reset_noise()

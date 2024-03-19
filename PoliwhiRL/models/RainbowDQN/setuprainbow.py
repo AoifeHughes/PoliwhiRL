@@ -6,10 +6,10 @@ import json
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
-from .utils import save_checkpoint, load_checkpoint
-from .singlerainbow import run as run_single
-from .doublerainbow import run as run_rainbow_parallel
+from .training_functions import save_checkpoint, load_checkpoint
+from .runbow import run as run_single
 from PoliwhiRL.utils import plot_best_attempts
+from .evaluate import evaluate_model
 
 
 def setup_environment(config):
@@ -50,17 +50,7 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
     """
     Runs the training loop, either in single or parallel mode based on configuration.
     """
-    if not config["run_parallel"]:
-        return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
-    else:
-        return run_rainbow_parallel(
-            config,
-            policy_net,
-            target_net,
-            optimizer,
-            replay_buffer,
-            len(env.action_space),
-        )
+    return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
 
 
 def finalize_training(
@@ -106,8 +96,8 @@ def finalize_training(
         optimizer,
         replay_buffer,
         rewards,
-        episodes= config.get("start_episode", 0) + len(rewards),
-        frames= config.get("frame_idx", 0),
+        episodes=config.get("start_episode", 0) + len(rewards),
+        frames=config.get("frame_idx", 0),
     )
 
 
@@ -117,7 +107,14 @@ def run(**config):
     """
     start_time = time.time()
     env = setup_environment(config)
+
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
+
+    if config["eval_mode"]:
+        print("Running in evaluation mode")
+        avg_reward = evaluate_model(config, env, policy_net)
+        return avg_reward
+
     # Start training
     (total_losses, total_beta_values, total_td_errors, rewards) = run_training(
         config, env, policy_net, target_net, optimizer, replay_buffer
