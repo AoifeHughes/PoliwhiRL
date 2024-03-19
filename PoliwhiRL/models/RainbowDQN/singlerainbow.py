@@ -10,11 +10,11 @@ from PoliwhiRL.models.RainbowDQN.utils import (
     beta_by_frame,
     select_action_hybrid,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses, weighted_random_indices
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
-    rewards, losses, epsilon_values, beta_values, td_errors, eval_rewards = [], [], [], [], [], []
+    rewards, losses, epsilon_values, beta_values, td_errors, eval_rewards, buttons = [], [], [], [], [], [], []
 
     num_actions = len(env.action_space)
     action_counts = np.zeros(num_actions)
@@ -35,6 +35,13 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
         state = image_to_tensor(state, config["device"])
         total_reward = 0
         done = False
+
+        if episode % config["replay_frequency"] == 0 and episode > 0:
+            steps_to_take = weighted_random_indices(rewards)[0]
+            env.extend_timeout(len(buttons[steps_to_take]))
+
+            for steps in buttons[steps_to_take]:
+                next_state, reward, done = env.step(steps)
 
         while not done:
             epsilon = epsilon_by_frame(
@@ -84,19 +91,24 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             total_reward += reward
             frame_idx += 1
 
-        # Optimize model after storing experience
-        loss = optimize_model(
-            beta,
-            policy_net,
-            target_net,
-            replay_buffer,
-            optimizer,
-            config["device"],
-            config["batch_size"],
-            config["gamma"],
-        )
-        if loss is not None:
-            losses.append(loss)
+        # record the episode's button presses
+        buttons.append(env.buttons)
+
+        for _ in range(config['opt_runs']):
+
+            # Optimize model after storing experience
+            loss = optimize_model(
+                beta,
+                policy_net,
+                target_net,
+                replay_buffer,
+                optimizer,
+                config["device"],
+                config["batch_size"],
+                config["gamma"],
+            )
+            if loss is not None:
+                losses.append(loss)
 
         if episode % config["target_update"] == 0:
             target_net.load_state_dict(policy_net.state_dict())

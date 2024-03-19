@@ -137,3 +137,14 @@ def chunked_iterable(iterable, size):
     it = iter(iterable)
     for _ in range(0, len(iterable), size):
         yield tuple(itertools.islice(it, size))
+
+def weighted_random_indices(rewards, size=1):
+    min_reward = min(rewards)
+    if min_reward < 0:
+        adjusted_rewards = [reward + abs(min_reward) for reward in rewards]
+    else:
+        adjusted_rewards = rewards
+    
+    # Calculate probabilities
+    probabilities = np.array(adjusted_rewards) / np.sum(adjusted_rewards)
+    return np.random.choice(len(rewards), size=size, p=probabilities).tolist()
