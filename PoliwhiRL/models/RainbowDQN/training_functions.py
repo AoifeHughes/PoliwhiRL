@@ -140,7 +140,9 @@ def optimize_model_sequence(
 
     _, best_actions = next_q_values.max(1, keepdim=True)
 
-    next_q_values_target = target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    next_q_values_target = (
+        target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    )
 
     expected_q_values = rewards + (gamma * next_q_values_target * (~dones)).float()
     loss = (current_q_values - expected_q_values).pow(2) * weights

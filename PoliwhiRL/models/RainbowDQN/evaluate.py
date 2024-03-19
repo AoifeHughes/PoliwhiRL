@@ -38,9 +38,7 @@ def evaluate_model(config, env, policy_net):
                 ).item()  # Select the action with the highest Q-value
 
             next_state, reward, done = env.step(action)
-            next_state = image_to_tensor(
-                next_state, config["device"]
-            ) 
+            next_state = image_to_tensor(next_state, config["device"])
 
             env.record((0, "rdqn_eval", False, 0))
             episode_rewards += reward
