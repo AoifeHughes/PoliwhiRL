@@ -106,6 +106,29 @@ def plot_best_attempts(results_path, episodes, phase, results):
     plt.close(fig)
 
 
+def plot_losses(results_path, episodes, losses):
+    # Ensure the results directory exists
+    if not os.path.isdir(results_path):
+        os.mkdir(results_path)
+    results_path = os.path.join(results_path, f"losses_{episodes}.png")
+
+    # Create plot
+    fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
+    ax.plot(losses, label="Loss", color="red", linewidth=2)
+
+    ax.set_title("Loss Over Episodes")
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Loss")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax.legend()
+
+    fig.tight_layout()
+
+    fig.savefig(results_path)
+    np.savetxt(results_path.replace(".png", ".csv"), losses, delimiter=",")
+
+    plt.close(fig)
+
 def log_rewards(batch_rewards):
     return f"Average reward for last batch: {np.mean(batch_rewards)} | Best reward: {np.max(batch_rewards)}"
 
