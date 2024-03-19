@@ -10,35 +10,48 @@ class PrioritizedReplayBuffer:
         self.pos = 0
         self.priorities = np.zeros((capacity,), dtype=np.float32)  # Store priorities
 
-    def add(self, state, action, reward, next_state, done, error):
+    def add(self, batch, error):
+        # Assume batch is a tuple of states, actions, rewards, next_states, dones
+        # and error is the maximum or average error of the batch
         max_prio = self.priorities.max() if self.buffer else 1.0
         if len(self.buffer) < self.capacity:
-            self.buffer.append((state, action, reward, next_state, done))
+            self.buffer.append(batch)
         else:
-            self.buffer[self.pos] = (state, action, reward, next_state, done)
+            self.buffer[self.pos] = batch
 
-        self.priorities[self.pos] = max_prio if error is None else error
+        self.priorities[self.pos] = max(max_prio, error)  # Assign batch priority
         self.pos = (self.pos + 1) % self.capacity
         return self.priorities[self.pos - 1]
+
 
     def sample(self, batch_size, beta=0.4):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[: self.pos]
+            prios = self.priorities[:self.pos]
 
-        probs = prios**self.alpha
+        probs = prios ** self.alpha
         probs /= probs.sum()
 
         indices = np.random.choice(len(self.buffer), batch_size, p=probs)
-        samples = [self.buffer[idx] for idx in indices]
+        sampled_batches = [self.buffer[idx] for idx in indices]
+
+        # Assuming each batch is structured as (states, actions, rewards, next_states, dones)
+        states, actions, rewards, next_states, dones = [], [], [], [], []
+        for batch in sampled_batches:
+            b_states, b_actions, b_rewards, b_next_states, b_dones = batch
+            states.extend(b_states)
+            actions.extend(b_actions)
+            rewards.extend(b_rewards)
+            next_states.extend(b_next_states)
+            dones.extend(b_dones)
 
         total = len(self.buffer)
         weights = (total * probs[indices]) ** (-beta)
-        weights /= weights.max()  # Normalize for stability
+        weights /= weights.max()
 
-        states, actions, rewards, next_states, dones = zip(*samples)
         return states, actions, rewards, next_states, dones, indices, weights
+
 
     def update_priorities(self, indices, errors):
         for idx, error in zip(indices, errors):

@@ -21,38 +21,25 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     action_rewards = np.zeros(num_actions)
     episodes = config.get("start_episode", 0)
     frame_idx = config.get("frame_idx", 0)
+    sequence_length = config.get("sequence_length", 4)  # Assuming a fixed sequence length
 
-    for episode in (
-        pbar := tqdm(
-            range(
-                episodes,
-                episodes + config["num_episodes"],
-            )
-        )
-    ):
+    for episode in tqdm(range(episodes, episodes + config["num_episodes"])):
         policy_net.reset_noise()
-        state = env.reset()
-        state = image_to_tensor(state, config["device"])
+        state_sequence = []
+        action_sequence = []
+        reward_sequence = []
+        next_state_sequence = []
+        done_sequence = []
         total_reward = 0
         done = False
+        state = env.reset()
+        state = image_to_tensor(state, config["device"])
 
-        if episode % config["replay_frequency"] == 0 and episode > 0:
-            steps_to_take = weighted_random_indices(rewards)[0]
-            env.extend_timeout(len(buttons[steps_to_take]))
-
-            for steps in buttons[steps_to_take]:
-                next_state, reward, done = env.step(steps)
-
-        while not done:
-            epsilon = epsilon_by_frame(
-                frame_idx,
-                config["epsilon_start"],
-                config["epsilon_final"],
-                config["epsilon_decay"],
-            )
+        while not done and len(state_sequence) < sequence_length:
+            epsilon = epsilon_by_frame(frame_idx, config["epsilon_start"], config["epsilon_final"], config["epsilon_decay"])
             epsilon_values.append(epsilon)
 
-            action, q_value = select_action_hybrid(
+            action, was_random = select_action_hybrid(
                     state,
                     policy_net,
                     config,
@@ -61,44 +48,44 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
                     num_actions,
                     epsilon,
                 )
-
-            if q_value is None:
-                was_random = True
-            else:
-                was_random = False
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
-            action_rewards[action] += reward
 
-            beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
-            beta_values.append(beta)
-            priority_val = store_experience(
-                state,
-                action,
-                reward,
-                next_state,
-                done,
-                policy_net,
-                target_net,
-                replay_buffer,
-                config,
-                td_errors,
-                beta,
-            )
-            if config["record"]:
-                env.record(epsilon, "rdqn", was_random, priority_val)
+            # Collect experiences until we have a complete sequence
+            state_sequence.append(state)
+            action_sequence.append(action)
+            reward_sequence.append(reward)
+            next_state_sequence.append(next_state)
+            done_sequence.append(done)
+
             state = next_state
             total_reward += reward
             frame_idx += 1
 
-        # record the episode's button presses
-        buttons.append(env.buttons)
+            # When a sequence is complete, store it and reset sequences
+            if len(state_sequence) == sequence_length:
+                store_experience_sequence(
+                    state_sequence,
+                    action_sequence,
+                    reward_sequence,
+                    next_state_sequence,
+                    done_sequence,
+                    policy_net,
+                    target_net,
+                    replay_buffer,
+                    config,
+                    td_errors
+                )
+                state_sequence.pop(0)
+                action_sequence.pop(0)
+                reward_sequence.pop(0)
+                next_state_sequence.pop(0)
+                done_sequence.pop(0)
 
+        # Optimize model after each episode or more frequently based on your configuration
         for _ in range(config['opt_runs']):
-
-            # Optimize model after storing experience
-            loss = optimize_model(
-                beta,
+            loss = optimize_model_sequence(
+                beta_values[-1],  # Latest beta value
                 policy_net,
                 target_net,
                 replay_buffer,
@@ -110,41 +97,10 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
             if loss is not None:
                 losses.append(loss)
 
+        # Update target network
         if episode % config["target_update"] == 0:
             target_net.load_state_dict(policy_net.state_dict())
 
         rewards.append(total_reward)
-        pbar.set_description(
-            f"Episode: {episode}, Frame: {frame_idx}, Reward: {total_reward:.2f}, Epsilon: {epsilon:.2f}, Best reward: {max(rewards):.2f}, Avg reward: {sum(rewards) / len(rewards):.2f}, Frame_idx: {frame_idx}"
-        )
-        if episode % config["checkpoint_interval"] == 0 and episode > 0:
-            save_checkpoint(
-                config,
-                policy_net,
-                target_net,
-                optimizer,
-                replay_buffer,
-                rewards,
-                episodes=episode,
-                frames=frame_idx,
-            )
 
-        if episode % config["plot_interval"] == 0 and episode > 0:
-            print("Plotting best attempts...")
-            plot_best_attempts("./results/", 0, "RainbowDQN_latest_single", rewards)
-
-            plot_losses("./results/", 0, losses)
-
-        if episode % config['eval_interval'] == 0 and episode > 0:
-            print("Evaluating model...")
-            avg_eval = evaluate_model(config, env, policy_net)
-            eval_rewards.append(avg_eval)
-            plot_best_attempts("./results/", 0, "RainbowDQN_latest_single_eval", eval_rewards)
-
-    config.update(
-        {
-            "start_episode": episodes,
-            "frame_idx": frame_idx,
-        }
-    )
-    return losses, beta_values, td_errors, rewards
+    return losses, epsilon_values, beta_values, td_errors, rewards
