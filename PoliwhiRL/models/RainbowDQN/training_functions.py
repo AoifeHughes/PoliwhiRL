@@ -5,6 +5,8 @@ import torch
 import os
 import numpy as np
 
+from PoliwhiRL.utils.utils import image_to_tensor
+
 
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
@@ -258,3 +260,44 @@ def select_action_eval(state, policy_net, config):
     action = np.argmax(q_values)
 
     return action, q_values[action]
+
+def populate_replay_buffer(config, env, replay_buffer, policy_net, target_net, td_errors):
+    policy_net.reset_noise()
+    state_sequence = []
+    action_sequence = []
+    reward_sequence = []
+    next_state_sequence = []
+    done_sequence = []
+    state = env.reset()
+    env.extend_timeout(1000)
+    state = image_to_tensor(state, config["device"])
+    sequence_length = config.get("sequence_length", 4)
+    num_actions = len(env.action_space)
+    done = False
+    while not done:
+        action = np.random.choice(num_actions)
+        next_state, reward, done = env.step(action)
+        next_state = image_to_tensor(next_state, config["device"])
+        state_sequence.append(state)
+        action_sequence.append(action)
+        reward_sequence.append(reward)
+        next_state_sequence.append(next_state)
+        done_sequence.append(done)
+        if len(state_sequence) == sequence_length:
+            store_experience_sequence(
+                state_sequence,
+                action_sequence,
+                reward_sequence,
+                next_state_sequence,
+                done_sequence,
+                policy_net,
+                target_net,
+                replay_buffer,
+                config,
+                td_errors
+            )
+            state_sequence = []
+            action_sequence = []
+            reward_sequence = []    
+            next_state_sequence = []
+            done_sequence = []

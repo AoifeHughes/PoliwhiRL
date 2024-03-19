@@ -21,14 +21,13 @@ class PrioritizedReplayBuffer:
         self.pos = (self.pos + 1) % self.capacity
         return self.priorities[self.pos - 1]
 
-
     def sample(self, batch_size, beta=0.4):
         if len(self.buffer) == self.capacity:
             prios = self.priorities
         else:
-            prios = self.priorities[:self.pos]  # Only consider non-zero priorities
+            prios = self.priorities[: self.pos]  # Only consider non-zero priorities
 
-        probs = prios ** self.alpha
+        probs = prios**self.alpha
         probs /= probs.sum()
 
         indices = np.random.choice(len(self.buffer), batch_size, p=probs)
@@ -39,9 +38,22 @@ class PrioritizedReplayBuffer:
         weights /= weights.max()  # Normalize for stability
 
         # Unpack sequences
-        state_sequences, action_sequences, reward_sequences, next_state_sequences, done_sequences = zip(*samples)
-        return state_sequences, action_sequences, reward_sequences, next_state_sequences, done_sequences, indices, weights
-
+        (
+            state_sequences,
+            action_sequences,
+            reward_sequences,
+            next_state_sequences,
+            done_sequences,
+        ) = zip(*samples)
+        return (
+            state_sequences,
+            action_sequences,
+            reward_sequences,
+            next_state_sequences,
+            done_sequences,
+            indices,
+            weights,
+        )
 
     def update_priorities(self, indices, errors):
         for idx, error in zip(indices, errors):
