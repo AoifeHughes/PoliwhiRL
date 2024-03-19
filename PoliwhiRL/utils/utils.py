@@ -9,7 +9,7 @@ import itertools
 
 
 def image_to_tensor(image, device):
-    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).to(torch.uint8) / 255.0
+    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).float() / 255.0
     image = image.to(device)
 
     return image
