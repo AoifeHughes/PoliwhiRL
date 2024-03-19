@@ -3,6 +3,7 @@ import numpy as np
 from skimage.metrics import structural_similarity as ssim
 import cv2
 
+
 class Rewards:
     def __init__(self, controller):
         self.controller = controller
@@ -89,13 +90,12 @@ class Rewards:
         if self.button_pressed == "start" or self.button_pressed == "select":
             total_reward += -default_reward * 5
         return total_reward
-    
 
     def update_for_same_screen(self, total_reward, default_reward):
         if self.last_screen is None:
             self.last_screen = self.controller.screen_image()
             return total_reward
-        
+
         current_screen = self.controller.screen_image()
         last_screen_gray = cv2.cvtColor(self.last_screen, cv2.COLOR_BGR2GRAY)
         current_screen_gray = cv2.cvtColor(current_screen, cv2.COLOR_BGR2GRAY)
@@ -107,9 +107,8 @@ class Rewards:
         else:
             self.last_screen = current_screen
             self.time_in_last_screen = 0
-        
-        return total_reward
 
+        return total_reward
 
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
@@ -125,7 +124,7 @@ class Rewards:
             self.update_for_money,
             self.update_for_image_reward,
             self.update_for_menuing,
-            self.update_for_same_screen
+            self.update_for_same_screen,
         ]:
             total_reward = func(total_reward, default_reward)
 
