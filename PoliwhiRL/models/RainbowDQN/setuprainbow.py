@@ -6,8 +6,8 @@ import json
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
-from .utils import save_checkpoint, load_checkpoint
-from .singlerainbow import run as run_single
+from .training_functions import save_checkpoint, load_checkpoint
+from .runbow import run as run_single
 from PoliwhiRL.utils import plot_best_attempts
 from .evaluate import evaluate_model
 
