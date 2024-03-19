@@ -2,13 +2,7 @@
 from multiprocessing import Pool
 import numpy as np
 from tqdm import tqdm
-from .utils import (
-    optimize_model,
-    beta_by_frame,
-    epsilon_by_frame,
-    store_experience,
-    select_action_hybrid,
-)
+
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 from PoliwhiRL.environment import Controller
 

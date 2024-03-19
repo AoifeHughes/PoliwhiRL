@@ -41,9 +41,11 @@
   "capacity": 100000,
   "plot_interval": 10,
   "hybrid_start": 10,
-  "eval_interval": 10,
+  "eval_frequency": 10,
   "eval_episodes": 5,
   "eval_mode": false, 
   "replay_frequency": 5,
-  "opt_runs": 10
+  "opt_runs": 1,
+  "sequence_length": 4
+
 }
