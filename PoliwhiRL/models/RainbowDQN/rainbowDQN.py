@@ -64,16 +64,44 @@ class RainbowDQN(nn.Module):
             NoisyLinear(512, num_actions * atom_size),
         )
 
+
     def forward(self, x):
-        batch_size = x.size(0)
+        # Determine the shape and adjust dimensions accordingly
+        original_shape = x.size()
+        unbatched = False
+        if len(original_shape) == 3:  # Unbatched single image [C, H, W]
+            x = x.unsqueeze(0).unsqueeze(0)  # Reshape to [1, 1, C, H, W]
+            unbatched = True
+        elif len(original_shape) == 4:  # Unbatched sequence [S, C, H, W]
+            x = x.unsqueeze(0)  # Reshape to [1, S, C, H, W]
+            unbatched = True
+
+        batch_size, sequence_length, _, _, _ = x.size()
+
+        # Flatten the sequence to [B*S, C, H, W] for CNN processing
+        x = x.view(batch_size * sequence_length, original_shape[-3], original_shape[-2], original_shape[-1])
+
+        # Process through convolutional and attention layers
         x = self.feature_layer(x)
-        x = self.attention(x.view(batch_size, -1, self.fc_input_dim))
-        x = x.view(batch_size, 1, -1)
+
+        # After CNN, reshape back to [B, S, -1] for attention and LSTM
+        x = x.view(batch_size, sequence_length, -1)
+        x = self.attention(x)
+
+        # Correctly processing through LSTM
         lstm_out, _ = self.lstm(x)
-        x = lstm_out[:, -1, :]
+        # Select the last output for further processing, ensuring it's properly handled for unbatched inputs
+        if unbatched:
+            x = lstm_out.squeeze(0)  # For unbatched inputs, remove the batch dimension
+        else:
+            x = lstm_out[:, -1, :]
+        
+        # Continue with distribution and Q value calculations
         dist = self.get_distribution(x)
         q_values = torch.sum(dist * self.support, dim=2)
         return q_values
+
+
 
     def get_distribution(self, x):
         value = self.value_stream(x).view(-1, 1, self.atom_size)
