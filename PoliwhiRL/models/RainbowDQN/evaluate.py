@@ -42,7 +42,7 @@ def evaluate_model(config, env, policy_net):
                 next_state, config["device"]
             ) 
 
-            env.record((0, "rdqn_eval", False, 0))
+            env.record(0, "rdqn_eval", False, 0)
             episode_rewards += reward
             state = next_state
 
