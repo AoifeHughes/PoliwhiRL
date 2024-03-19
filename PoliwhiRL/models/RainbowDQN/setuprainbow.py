@@ -53,7 +53,6 @@ def run_training(config, env, policy_net, target_net, optimizer, replay_buffer):
     return run_single(config, env, policy_net, target_net, optimizer, replay_buffer)
 
 
-
 def finalize_training(
     config,
     start_time,
@@ -108,7 +107,6 @@ def run(**config):
     """
     start_time = time.time()
     env = setup_environment(config)
-
 
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
 

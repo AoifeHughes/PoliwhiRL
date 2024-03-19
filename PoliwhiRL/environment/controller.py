@@ -129,7 +129,6 @@ class Controller:
     def get_buttons(self):
         return self.buttons
 
-
     def screen_image(self, no_resize=False):
         original_image = np.array(self.pyboy.screen.image)[
             :, :, :3
