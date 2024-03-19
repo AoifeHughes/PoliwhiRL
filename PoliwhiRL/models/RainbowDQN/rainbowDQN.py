@@ -60,9 +60,7 @@ class RainbowDQN(nn.Module):
         batch_size, seq_len, channels, height, width = x.size()
         x = x.view(batch_size * seq_len, channels, height, width)
         x = self.feature_layer(x)
-        x = x.view(
-            batch_size, seq_len, -1
-        )  
+        x = x.view(batch_size, seq_len, -1)
         lstm_out, _ = self.lstm(x)
         x = lstm_out[:, -1, :]
         dist = self.get_distribution(x)

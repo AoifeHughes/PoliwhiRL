@@ -17,6 +17,7 @@ def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
         -1.0 * frame_idx / epsilon_decay
     )
 
+
 def store_experience_sequence(
     state_sequence,
     action_sequence,
@@ -32,11 +33,17 @@ def store_experience_sequence(
 ):
     # Convert sequences to tensors with the appropriate device and dtype
     state_sequence_tensor = torch.stack(state_sequence).to(config["device"])
-    action_sequence_tensor = torch.tensor(action_sequence, device=config["device"], dtype=torch.long)
-    reward_sequence_tensor = torch.tensor(reward_sequence, device=config["device"], dtype=torch.float)
+    action_sequence_tensor = torch.tensor(
+        action_sequence, device=config["device"], dtype=torch.long
+    )
+    reward_sequence_tensor = torch.tensor(
+        reward_sequence, device=config["device"], dtype=torch.float
+    )
     next_state_sequence_tensor = torch.stack(next_state_sequence).to(config["device"])
-    done_sequence_tensor = torch.tensor(done_sequence, device=config["device"], dtype=torch.bool)
-    
+    done_sequence_tensor = torch.tensor(
+        done_sequence, device=config["device"], dtype=torch.bool
+    )
+
     # Compute TD error for the entire sequence
     td_error = compute_td_error_sequence(
         state_sequence_tensor,
@@ -53,9 +60,17 @@ def store_experience_sequence(
 
     # Add the entire sequence to the replay buffer
     # The sequences are now tensors, ready for efficient storage and retrieval
-    return replay_buffer.add((state_sequence_tensor,action_sequence_tensor, reward_sequence_tensor,next_state_sequence_tensor,done_sequence_tensor),
-        td_error
+    return replay_buffer.add(
+        (
+            state_sequence_tensor,
+            action_sequence_tensor,
+            reward_sequence_tensor,
+            next_state_sequence_tensor,
+            done_sequence_tensor,
+        ),
+        td_error,
     )
+
 
 def compute_td_error_sequence(
     state_sequence,
@@ -69,18 +84,28 @@ def compute_td_error_sequence(
     device,
 ):
     # Ensure the sequence batch is on the correct device
-    state_sequence = state_sequence.to(device).unsqueeze(1)  # Add a batch dimension if needed
-    next_state_sequence = next_state_sequence.to(device).unsqueeze(1)  # Add a batch dimension if needed
+    state_sequence = state_sequence.to(device).unsqueeze(
+        1
+    )  # Add a batch dimension if needed
+    next_state_sequence = next_state_sequence.to(device).unsqueeze(
+        1
+    )  # Add a batch dimension if needed
 
     # Adjust dimensions for action_sequence, reward_sequence, and done_sequence for compatibility
-    action_sequence = action_sequence.to(device).unsqueeze(-1)  # [batch_size, 1] for gather
-    reward_sequence = reward_sequence.to(device).unsqueeze(-1)  # [batch_size, 1] for broadcasting
-    done_sequence = done_sequence.to(device).unsqueeze(-1)  # [batch_size, 1] for broadcasting
+    action_sequence = action_sequence.to(device).unsqueeze(
+        -1
+    )  # [batch_size, 1] for gather
+    reward_sequence = reward_sequence.to(device).unsqueeze(
+        -1
+    )  # [batch_size, 1] for broadcasting
+    done_sequence = done_sequence.to(device).unsqueeze(
+        -1
+    )  # [batch_size, 1] for broadcasting
 
     # Compute Q values for all states in the sequence using the policy network
     q_values = policy_net(state_sequence)
     # Adjust the dimension of q_values if necessary, e.g., q_values = q_values.unsqueeze(-1)
-    
+
     # Select the Q values for the chosen actions. Adjust for the extra dimension added for batch processing
     state_action_values = q_values.gather(1, action_sequence)
 
@@ -88,16 +113,24 @@ def compute_td_error_sequence(
     with torch.no_grad():
         # Get max Q value along the action dimension from the target network for each sequence
         next_state_values = target_net(next_state_sequence).max(1)[0].detach()
-        next_state_values = next_state_values.unsqueeze(-1)  # Align dimensions for broadcasting
+        next_state_values = next_state_values.unsqueeze(
+            -1
+        )  # Align dimensions for broadcasting
 
     # Compute the expected Q values
-    expected_state_action_values = reward_sequence + (gamma * next_state_values * (~done_sequence).float())
+    expected_state_action_values = reward_sequence + (
+        gamma * next_state_values * (~done_sequence).float()
+    )
 
     # Compute TD error for each item in the sequence
-    td_errors = (expected_state_action_values - state_action_values).squeeze(-1)  # Remove the unnecessary dimension
+    td_errors = (expected_state_action_values - state_action_values).squeeze(
+        -1
+    )  # Remove the unnecessary dimension
 
     # Return the mean absolute TD error over the sequence for prioritization
-    return td_errors.abs().mean().item()  # Returning as single scalar value for simplicity
+    return (
+        td_errors.abs().mean().item()
+    )  # Returning as single scalar value for simplicity
 
 
 def optimize_model_sequence(
@@ -230,7 +263,11 @@ def select_action_hybrid(
 
     with torch.no_grad():
         # Obtain Q-values from the policy network for the current state
-        q_values = policy_net(state.unsqueeze(0).unsqueeze(0).to(config["device"])).cpu().numpy()[0]
+        q_values = (
+            policy_net(state.unsqueeze(0).unsqueeze(0).to(config["device"]))
+            .cpu()
+            .numpy()[0]
+        )
 
     exploration_rate = np.sqrt(
         2 * math.log(frame_idx + 1) / (action_counts + 1)
@@ -261,7 +298,10 @@ def select_action_eval(state, policy_net, config):
 
     return action, q_values[action]
 
-def populate_replay_buffer(config, env, replay_buffer, policy_net, target_net, td_errors):
+
+def populate_replay_buffer(
+    config, env, replay_buffer, policy_net, target_net, td_errors
+):
     policy_net.reset_noise()
     state_sequence = []
     action_sequence = []
@@ -294,10 +334,10 @@ def populate_replay_buffer(config, env, replay_buffer, policy_net, target_net, t
                 target_net,
                 replay_buffer,
                 config,
-                td_errors
+                td_errors,
             )
             state_sequence = []
             action_sequence = []
-            reward_sequence = []    
+            reward_sequence = []
             next_state_sequence = []
             done_sequence = []

@@ -14,7 +14,6 @@ from PoliwhiRL.models.RainbowDQN.training_functions import (
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 
 
-
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     rewards, losses, epsilon_values, beta_values, td_errors, eval_rewards, buttons = (
         [],
