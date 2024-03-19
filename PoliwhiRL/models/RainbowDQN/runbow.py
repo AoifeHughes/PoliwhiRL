@@ -31,17 +31,17 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     episodes = config.get("start_episode", 0)
     frame_idx = config.get("frame_idx", 0)
 
-    # print("\nPopulating replay buffer...\n")
-    # for _ in tqdm(range(10)):
-    #     populate_replay_buffer(
-    #         config, env, replay_buffer, policy_net, target_net, td_errors
-    #     )
-    #     if len(replay_buffer) >= config["capacity"]:
-    #         break
+    print("\nPopulating replay buffer...\n")
+    for _ in tqdm(range(10)):
+        populate_replay_buffer(
+            config, env, replay_buffer, policy_net, target_net, td_errors
+        )
+        if len(replay_buffer) >= config["capacity"]:
+            break
 
-    # print(
-    #     f"\n Number of memories stored: {len(replay_buffer)} / {config['capacity']}\n"
-    # )
+    print(
+        f"\n Number of memories stored: {len(replay_buffer)} / {config['capacity']}\n"
+    )
 
     print("\nTraining...\n")
     for episode in (pbar := tqdm(range(episodes, episodes + config["num_episodes"]))):
