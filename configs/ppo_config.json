@@ -13,6 +13,6 @@
     "sequence_length": 10,
     "eval_episodes": 1,
     "checkpoint": "./configs/checkpoints/",
-    "update_timestep": 100
+    "update_timestep": 200
   }
   
