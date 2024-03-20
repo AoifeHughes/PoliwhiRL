@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import math
 import random
 import torch
 import os
@@ -86,11 +85,17 @@ def compute_td_error_sequence(
     # Assuming the sequences are of shape [seq_len, channels, height, width] for states
     # and [seq_len, 1] for actions, rewards, and dones
     # These sequences need to be correctly batched before being passed to the network
-    state_sequence = state_sequence.to(device).unsqueeze(0)  # Now [1, seq_len, channels, height, width]
+    state_sequence = state_sequence.to(device).unsqueeze(
+        0
+    )  # Now [1, seq_len, channels, height, width]
     next_state_sequence = next_state_sequence.to(device).unsqueeze(0)  # Same as above
     action_sequence = action_sequence.to(device)  # [seq_len, 1], no need for unsqueeze
-    reward_sequence = reward_sequence.to(device)  # [seq_len], assuming it matches action_sequence shape
-    done_sequence = done_sequence.to(device)  # [seq_len], assuming it matches action_sequence shape
+    reward_sequence = reward_sequence.to(
+        device
+    )  # [seq_len], assuming it matches action_sequence shape
+    done_sequence = done_sequence.to(
+        device
+    )  # [seq_len], assuming it matches action_sequence shape
 
     # Get Q-values from the policy network for the entire state sequence
     q_values = policy_net(state_sequence)  # Expected output shape: [1, num_actions]
@@ -103,7 +108,9 @@ def compute_td_error_sequence(
 
     with torch.no_grad():
         # Get the next state values from the target network, for the next state sequence
-        next_state_values = target_net(next_state_sequence).max(1)[0].detach()  # Shape: [1]
+        next_state_values = (
+            target_net(next_state_sequence).max(1)[0].detach()
+        )  # Shape: [1]
         next_state_values = next_state_values.unsqueeze(-1)  # Shape: [1, 1]
 
     # Compute the expected state action values
@@ -114,7 +121,6 @@ def compute_td_error_sequence(
     # Compute TD error for the last action in the sequence
     td_errors = (expected_state_action_values - state_action_values).squeeze(-1)
     return td_errors.abs().mean().item()
-
 
 
 def optimize_model_sequence(
@@ -233,6 +239,7 @@ def load_checkpoint(config):
         print(f"Checkpoint file not found: {filename}")
         return None
 
+
 # TODO Update this function to use the new environment interface
 def select_action_hybrid(
     states, policy_net, config, frame_idx, action_counts, num_actions, epsilon
@@ -243,10 +250,8 @@ def select_action_hybrid(
 
     with torch.no_grad():
         # Obtain Q-values from the policy network for the current state
-        q_values = (
-            policy_net( torch.stack(states).unsqueeze(0).to(config["device"]) )
-        )
-        action = torch.argmax(q_values[-1]).item() 
+        q_values = policy_net(torch.stack(states).unsqueeze(0).to(config["device"]))
+        action = torch.argmax(q_values[-1]).item()
     return action, q_values[action]
 
 

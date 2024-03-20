@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import torch
 import torch.optim as optim
 from torch.distributions import Categorical
@@ -7,9 +8,7 @@ from PoliwhiRL.environment.controller import Controller
 from PoliwhiRL.models.PPO.training_functions import compute_returns
 from .PPO import PPOModel
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
-import os 
-
-
+import os
 
 
 def train_ppo(model, env, config):
@@ -44,16 +43,57 @@ def train_ppo(model, env, config):
 
         while not done:
             timestep += 1
-            state, episode_reward = run_episode_step(model, env, state, states_buffer, sequence_length, device, num_actions, log_probs, values, rewards, masks, episode_reward)
-            update_model(model, optimizer, log_probs, values, rewards, masks, states_buffer, sequence_length, timestep, update_timestep, done, gamma, clip_param)
+            state, episode_reward = run_episode_step(
+                model,
+                env,
+                state,
+                states_buffer,
+                sequence_length,
+                device,
+                num_actions,
+                log_probs,
+                values,
+                rewards,
+                masks,
+                episode_reward,
+            )
+            update_model(
+                model,
+                optimizer,
+                log_probs,
+                values,
+                rewards,
+                masks,
+                states_buffer,
+                sequence_length,
+                timestep,
+                update_timestep,
+                done,
+                gamma,
+                clip_param,
+            )
         episode_rewards.append(episode_reward)
         post_episode(episode_rewards, episode, save_freq, model, save_dir)
 
     return episode_rewards
 
-def run_episode_step(model, env, state, states_buffer, sequence_length, device, num_actions, log_probs, values, rewards, masks, episode_reward):
+
+def run_episode_step(
+    model,
+    env,
+    state,
+    states_buffer,
+    sequence_length,
+    device,
+    num_actions,
+    log_probs,
+    values,
+    rewards,
+    masks,
+    episode_reward,
+):
     states_buffer.append(state)
-    
+
     if len(states_buffer) == sequence_length:
         states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
         action_probs, value = model(states_sequence)
@@ -76,10 +116,27 @@ def run_episode_step(model, env, state, states_buffer, sequence_length, device, 
         next_state = image_to_tensor(next_state, device)
     return next_state, episode_reward
 
-def update_model(model, optimizer, log_probs, values, rewards, masks, states_buffer, sequence_length, timestep, update_timestep, done, gamma, clip_param):
+
+def update_model(
+    model,
+    optimizer,
+    log_probs,
+    values,
+    rewards,
+    masks,
+    states_buffer,
+    sequence_length,
+    timestep,
+    update_timestep,
+    done,
+    gamma,
+    clip_param,
+):
     if timestep % update_timestep == 0 or done:
         if len(states_buffer) > 0:
-            padded_sequence = states_buffer + [states_buffer[-1]] * (sequence_length - len(states_buffer))
+            padded_sequence = states_buffer + [states_buffer[-1]] * (
+                sequence_length - len(states_buffer)
+            )
             states_sequence = torch.stack(padded_sequence, dim=0).unsqueeze(0)
             _, next_value = model(states_sequence)
         else:
@@ -95,7 +152,9 @@ def update_model(model, optimizer, log_probs, values, rewards, masks, states_buf
 
         ratio = torch.exp(log_probs - log_probs.detach())
         surr1 = ratio * advantage.detach()
-        surr2 = torch.clamp(ratio, 1.0 - clip_param, 1.0 + clip_param) * advantage.detach()
+        surr2 = (
+            torch.clamp(ratio, 1.0 - clip_param, 1.0 + clip_param) * advantage.detach()
+        )
         policy_loss = -torch.min(surr1, surr2).mean()
         value_loss = 0.5 * (returns - values).pow(2).mean()
         loss = policy_loss + value_loss
@@ -110,10 +169,13 @@ def update_model(model, optimizer, log_probs, values, rewards, masks, states_buf
         masks = []
         states_buffer = []
 
+
 def post_episode(episode_rewards, episode, save_freq, model, save_dir):
     plot_best_attempts("./results/", 0, "PPO", episode_rewards)
     if (episode + 1) % save_freq == 0:
-        torch.save(model.state_dict(), os.path.join(save_dir, f"ppo_model_ep{episode+1}.pth"))
+        torch.save(
+            model.state_dict(), os.path.join(save_dir, f"ppo_model_ep{episode+1}.pth")
+        )
 
 
 def setup_and_train_ppo(config):
@@ -121,4 +183,4 @@ def setup_and_train_ppo(config):
     input_dim = (1 if config["use_grayscale"] else 3, *env.screen_size())
     output_dim = len(env.action_space)
     model = PPOModel(input_dim, output_dim).to(config["device"])
-    train_ppo(model,env, config)
+    train_ppo(model, env, config)

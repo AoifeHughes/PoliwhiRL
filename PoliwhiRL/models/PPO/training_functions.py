@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 def compute_returns(next_value, rewards, masks, gamma=0.99):
     R = next_value
     returns = []

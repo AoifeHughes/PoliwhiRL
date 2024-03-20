@@ -13,9 +13,6 @@ from PoliwhiRL.utils import plot_best_attempts
 from .evaluate import evaluate_model
 
 
-
-
-
 def initialize_training(config, env):
     """
     Initializes training components such as the policy and target networks, optimizer, and replay buffer.
