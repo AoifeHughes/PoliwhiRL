@@ -59,25 +59,42 @@ class RainbowDQN(nn.Module):
             NoisyLinear(512, num_actions * atom_size),
         )
 
+    # def forward(self, x):
+    #     batch_size, seq_len, channels, height, width = x.size()
+    #     x = x.view(batch_size * seq_len, channels, height, width)
+    #     x = self.feature_layer(x)
+    #     x = x.view(seq_len, batch_size, -1)
+    #     lstm_out, _ = self.lstm(x)
+    #     dist = self.get_distribution(lstm_out)
+    #     q_values = torch.sum(dist * self.support, dim=2)
+    #     return q_values
+    
     def forward(self, x):
         batch_size, seq_len, channels, height, width = x.size()
         x = x.view(batch_size * seq_len, channels, height, width)
         x = self.feature_layer(x)
-        x = x.view(seq_len, batch_size, -1)
-        x = self.attention(x)
+        num_features = x.size(1)  # Assuming x is [batch_size*seq_len, num_features]
+        x = x.view(batch_size, seq_len, num_features)
+        
+        # lstm_out will have the shape [batch_size, seq_len, lstm_hidden_size]
         lstm_out, _ = self.lstm(x)
         dist = self.get_distribution(lstm_out)
-        q_values = torch.sum(dist * self.support, dim=2)
+        q_values = torch.sum(dist * self.support, dim=2)  # This results in [batch_size, num_actions]
+        
         return q_values
 
+
+
     def get_distribution(self, x):
-        value = self.value_stream(x).view(-1, 1, self.atom_size)
-        advantage = self.advantage_stream(x).view(-1, self.num_actions, self.atom_size)
+        x_aggregated = x[:, -1, :]  # Shape: [batch_size, lstm_hidden_size]
+        value = self.value_stream(x_aggregated).view(-1, 1, self.atom_size)
+        advantage = self.advantage_stream(x_aggregated).view(-1, self.num_actions, self.atom_size)
         advantage_mean = advantage.mean(1, keepdim=True)
         dist = value + advantage - advantage_mean
         dist = F.softmax(dist, dim=-1)
         dist = dist.clamp(min=1e-3)  # Avoid zeros
         return dist
+
 
     def feature_size(self, input_dim):
         return self.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1)

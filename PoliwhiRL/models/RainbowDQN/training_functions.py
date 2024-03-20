@@ -84,8 +84,8 @@ def compute_td_error_sequence(
     device,
 ):
 
-    state_sequence = state_sequence.to(device).unsqueeze(1)
-    next_state_sequence = next_state_sequence.to(device).unsqueeze(1)
+    state_sequence = state_sequence.to(device).unsqueeze(0)
+    next_state_sequence = next_state_sequence.to(device).unsqueeze(0)
     action_sequence = action_sequence.to(device).unsqueeze(-1)
     reward_sequence = reward_sequence.to(device).unsqueeze(-1)
     done_sequence = done_sequence.to(device).unsqueeze(-1)
@@ -221,9 +221,9 @@ def load_checkpoint(config):
         print(f"Checkpoint file not found: {filename}")
         return None
 
-
+# TODO Update this function to use the new environment interface
 def select_action_hybrid(
-    state, policy_net, config, frame_idx, action_counts, num_actions, epsilon
+    states, policy_net, config, frame_idx, action_counts, num_actions, epsilon
 ):
     # Decide to take a random action with probability epsilon
     if random.random() < epsilon:
@@ -232,10 +232,9 @@ def select_action_hybrid(
     with torch.no_grad():
         # Obtain Q-values from the policy network for the current state
         q_values = (
-            policy_net(state.unsqueeze(0).unsqueeze(0).to(config["device"]))
-            .cpu()
-            .numpy()[0]
+            policy_net( torch.stack(states).unsqueeze(0).to(config["device"]) )
         )
+        action = torch.argmax(q_values[-1]).item() 
 
     exploration_rate = np.sqrt(
         2 * math.log(frame_idx + 1) / (action_counts + 1)
