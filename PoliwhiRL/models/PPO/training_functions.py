@@ -266,7 +266,7 @@ def run_eval(model, eval_env, config):
                 else:
                     next_state, reward, done = eval_env.step(
                         np.random.choice(len(eval_env.action_space))
-                    )  
+                    )
                     next_state = image_to_tensor(next_state, device)
                 eval_env.record(0, "ppo_eval", 0, 0)
                 state = next_state
