@@ -118,10 +118,10 @@ class Rewards:
         #     total_reward = self.update_for_vision(total_reward, default_reward)
 
         for func in [
-            # self.update_for_party_pokemon,
+            self.update_for_party_pokemon,
             self.update_for_movement,
-            # self.update_for_pokedex,
-            # self.update_for_money,
+            self.update_for_pokedex,
+            self.update_for_money,
             self.update_for_image_reward,
             # self.update_for_menuing,
             # self.update_for_same_screen

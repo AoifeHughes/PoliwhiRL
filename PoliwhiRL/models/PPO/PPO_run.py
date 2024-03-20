@@ -7,7 +7,7 @@ from tqdm import tqdm
 from PoliwhiRL.environment.controller import Controller
 from PoliwhiRL.models.PPO.training_functions import compute_returns
 from .PPO import PPOModel
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 import os
 
 
@@ -17,15 +17,11 @@ def train_ppo(model, env, config, start_episode=0):
     gamma = config.get("gamma", 0.99)
     clip_param = config.get("clip_param", 0.2)
     update_timestep = config.get("update_timestep", 2000)
-    save_dir = config.get("checkpoint", "./ppo_models")
-    save_freq = config.get("checkpoint_interval", 100)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     device = config.get("device", torch.device("cpu"))
     sequence_length = config.get("sequence_length", 4)
     num_actions = len(env.action_space)
-
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    losses = []
 
     timestep = 0
     episode_rewards = []
@@ -57,7 +53,7 @@ def train_ppo(model, env, config, start_episode=0):
                 masks,
                 episode_reward,
             )
-            update_model(
+            loss = update_model(
                 model,
                 optimizer,
                 log_probs,
@@ -72,8 +68,10 @@ def train_ppo(model, env, config, start_episode=0):
                 gamma,
                 clip_param,
             )
+            if loss is not None:
+                losses.append(loss)
         episode_rewards.append(episode_reward)
-        post_episode(episode_rewards, episode, save_freq, model, save_dir)
+        post_episode(episode_rewards, losses, episode, model, config, env)
 
     return episode_rewards
 
@@ -169,18 +167,27 @@ def update_model(
         rewards = []
         masks = []
         states_buffer = []
+        return loss.item()
+    return None
 
 
-def post_episode(episode_rewards, episode, save_freq, model, save_dir):
+def post_episode(episode_rewards, losses, episode, model, config, env):
     plot_best_attempts("./results/", 0, "PPO", episode_rewards)
-    if (episode + 1) % save_freq == 0:
+    plot_losses("./results/", 0, losses)
+
+    if (episode + 1) % config.get("checkpoint_interval", 100) == 0:
+        if not os.path.exists(config.get("checkpoint", "./ppo_models")):
+            os.makedirs(config.get("checkpoint", "./ppo_models"))
         torch.save(
-            model.state_dict(), os.path.join(save_dir, f"ppo_model_ep{episode+1}.pth")
+            model.state_dict(),
+            os.path.join(
+                config.get("checkpoint", "./ppo_models"), f"ppo_model_ep{episode+1}.pth"
+            ),
         )
 
-
-import os
-import torch
+    if episode % config.get("eval_frequency", 10) == 0:
+        eval_reward = run_eval(model, env, config)
+        print(f"Episode {episode}: Eval reward: {eval_reward}")
 
 
 def load_latest_checkpoint(model, checkpoint_dir):
@@ -211,6 +218,49 @@ def load_latest_checkpoint(model, checkpoint_dir):
     print(f"Loaded checkpoint from episode {latest_episode}")
 
     return latest_episode
+
+
+def run_eval(model, eval_env, config):
+    device = config.get("device", torch.device("cpu"))
+    sequence_length = config.get("sequence_length", 4)
+    num_eval_episodes = config.get("eval_episodes", 10)
+    eval_rewards = []
+    model.eval()  # Set the model to evaluation mode
+    with torch.no_grad():  # Disable gradient computation
+        for episode in range(num_eval_episodes):
+            state = eval_env.reset()
+            state = image_to_tensor(state, device)
+            states_buffer = []
+            episode_reward = 0
+            done = False
+
+            while not done:
+                states_buffer.append(state)
+                if len(states_buffer) == sequence_length:
+                    states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+                    action_probs, _ = model(states_sequence)
+                    action = (
+                        action_probs.argmax(dim=-1).cpu().numpy()[0]
+                    )  # Use the action with the highest probability
+                    (
+                        next_state,
+                        reward,
+                        done,
+                    ) = eval_env.step(action)
+                    episode_reward += reward
+                    next_state = image_to_tensor(next_state, device)
+                    states_buffer.pop(0)
+                else:
+                    next_state, reward, done = eval_env.step(
+                        eval_env.action_space.sample()
+                    )  # Random action
+                    next_state = image_to_tensor(next_state, device)
+                state = next_state
+
+            eval_rewards.append(episode_reward)
+
+    average_reward = sum(eval_rewards) / len(eval_rewards)
+    return average_reward
 
 
 def setup_and_train_ppo(config):
