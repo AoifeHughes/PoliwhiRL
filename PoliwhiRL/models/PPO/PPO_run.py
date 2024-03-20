@@ -11,13 +11,13 @@ from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
 import os
 
 
-def train_ppo(model, env, config):
+def train_ppo(model, env, config, start_episode=0):
     num_episodes = config.get("num_episodes", 1000)
-    lr = config.get("lr", 1e-3)
+    lr = config.get("learning_rate", 1e-3)
     gamma = config.get("gamma", 0.99)
     clip_param = config.get("clip_param", 0.2)
     update_timestep = config.get("update_timestep", 2000)
-    save_dir = config.get("save_dir", "./ppo_models")
+    save_dir = config.get("checkpoint", "./ppo_models")
     save_freq = config.get("checkpoint_interval", 100)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     device = config.get("device", torch.device("cpu"))
@@ -29,7 +29,7 @@ def train_ppo(model, env, config):
 
     timestep = 0
     episode_rewards = []
-    for episode in tqdm(range(num_episodes)):
+    for episode in tqdm(range(start_episode + 1, start_episode + num_episodes)):
         episode_reward = 0
         log_probs = []
         values = []
@@ -43,7 +43,7 @@ def train_ppo(model, env, config):
 
         while not done:
             timestep += 1
-            state, episode_reward = run_episode_step(
+            state, episode_reward, done = run_episode_step(
                 model,
                 env,
                 state,
@@ -103,18 +103,19 @@ def run_episode_step(
         next_state, reward, done = env.step(action_val)
         episode_reward += reward
         next_state = image_to_tensor(next_state, device)
-        env.record(0, "ppo", 0, 0)
+        env.record(0, "ppo", False, 0)
         log_prob = dist.log_prob(action).unsqueeze(0)
         log_probs.append(log_prob)
         values.append(value)
         rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
         masks.append(torch.tensor([1 - done], dtype=torch.float, device=device))
-
         states_buffer.pop(0)
     else:
         next_state, reward, done = env.step(np.random.choice(num_actions))
         next_state = image_to_tensor(next_state, device)
-    return next_state, episode_reward
+        env.record(0, "ppo", True, 0)
+
+    return next_state, episode_reward, done
 
 
 def update_model(
@@ -178,9 +179,44 @@ def post_episode(episode_rewards, episode, save_freq, model, save_dir):
         )
 
 
+import os
+import torch
+
+
+def load_latest_checkpoint(model, checkpoint_dir):
+
+    if not os.path.isdir(checkpoint_dir):
+        print(
+            f"No checkpoint directory found at '{checkpoint_dir}'. Starting from scratch."
+        )
+        return 0
+    checkpoints = [
+        f
+        for f in os.listdir(checkpoint_dir)
+        if f.startswith("ppo_model_ep") and f.endswith(".pth")
+    ]
+    if not checkpoints:
+        print("No checkpoints found. Starting from scratch.")
+        return 0
+
+    episodes = [int(f.split("ep")[1].split(".")[0]) for f in checkpoints]
+    latest_episode = max(episodes)
+    latest_checkpoint = os.path.join(
+        checkpoint_dir, f"ppo_model_ep{latest_episode}.pth"
+    )
+
+    model.load_state_dict(
+        torch.load(latest_checkpoint, map_location=lambda storage, loc: storage)
+    )
+    print(f"Loaded checkpoint from episode {latest_episode}")
+
+    return latest_episode
+
+
 def setup_and_train_ppo(config):
     env = Controller(config)
     input_dim = (1 if config["use_grayscale"] else 3, *env.screen_size())
     output_dim = len(env.action_space)
     model = PPOModel(input_dim, output_dim).to(config["device"])
-    train_ppo(model, env, config)
+    start_episode = load_latest_checkpoint(model, config["checkpoint"])
+    train_ppo(model, env, config, start_episode)
