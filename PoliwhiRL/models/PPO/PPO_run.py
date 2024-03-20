@@ -71,6 +71,12 @@ def train_ppo(model, env, config, start_episode=0):
             )
             if loss is not None:
                 losses.append(loss)
+                # reset lists
+                log_probs = []
+                values = []
+                rewards = []
+                masks = []
+                states_buffer = []
         episode_rewards.append(episode_reward)
         post_episode(episode_rewards, losses, episode, model, config, env, eval_vals)
 
@@ -163,11 +169,6 @@ def update_model(
         loss.backward()
         optimizer.step()
 
-        log_probs = []
-        values = []
-        rewards = []
-        masks = []
-        states_buffer = []
         return loss.item()
     return None
 
@@ -186,9 +187,10 @@ def post_episode(episode_rewards, losses, episode, model, config, env, eval_vals
             ),
         )
 
-    if episode % config.get("eval_frequency", 10) == 0:
-        eval_reward = run_eval(model, env, config)
-        eval_vals.append(eval_reward)
+    # if episode % config.get("eval_frequency", 10) == 0:
+    #     eval_reward = run_eval(model, env, config)
+    #     eval_vals.append(eval_reward)
+    #     print(f"Episode {episode}: Eval reward: {eval_reward}")
     if len(eval_vals) > 0:
         plot_best_attempts("./results/", 0, "PPO_eval", eval_vals)
 

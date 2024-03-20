@@ -50,8 +50,8 @@ class Controller:
                 "right",
                 "a",
                 "b",
-                # "start",
-                # "select",
+                "start",
+                "select",
                 "pass",
             ]
         )
