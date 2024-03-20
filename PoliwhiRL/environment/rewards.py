@@ -53,7 +53,7 @@ class Rewards:
     def update_for_movement(self, total_reward, default_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += default_reward * 3
+            total_reward += default_reward * 5
             self.xy.add(cur_xy)
         return total_reward
 
@@ -61,7 +61,7 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += default_reward * 5  # * self.N_images_rewarded
+            total_reward += default_reward * 5 * self.N_images_rewarded
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
@@ -114,18 +114,18 @@ class Rewards:
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = 0 #-default_reward  # Penalty for doing nothing
-        if use_sight:
-            total_reward = self.update_for_vision(total_reward, default_reward)
+        total_reward = -default_reward  # Penalty for doing nothing
+        # if use_sight:
+        #     total_reward = self.update_for_vision(total_reward, default_reward)
 
         for func in [
-            self.update_for_party_pokemon,
+            #self.update_for_party_pokemon,
             self.update_for_movement,
-            self.update_for_pokedex,
-            self.update_for_money,
+            # self.update_for_pokedex,
+            # self.update_for_money,
             self.update_for_image_reward,
-            self.update_for_menuing,
-            self.update_for_same_screen
+            # self.update_for_menuing,
+            # self.update_for_same_screen
         ]:
             total_reward = func(total_reward, default_reward)
 

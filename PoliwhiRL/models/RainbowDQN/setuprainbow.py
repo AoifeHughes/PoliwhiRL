@@ -30,7 +30,7 @@ def initialize_training(config, env):
     target_net = RainbowDQN(input_shape, len(env.action_space), config["device"]).to(
         config["device"]
     )
-    optimizer = optim.Adam(policy_net.parameters(), lr=config["learning_rate"])
+    optimizer = optim.RMSprop(policy_net.parameters(), lr=config["learning_rate"])
     replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
 
     # Load checkpoint if available and update training components accordingly
