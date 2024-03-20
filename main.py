@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
+from PoliwhiRL.models.PPO import setup_and_train_ppo
 from torch import device
 import os
 import shutil
 import argparse
 import json
 import pprint
+
 
 
 class StoreBooleanAction(argparse.Action):
@@ -87,7 +89,11 @@ def main():
         # if config["run_parallel"]:
         #     raise NotImplementedError("Parallel RainbowDQN is not implemented yet with the new action selection")
         rainbow(**config)
-    elif config["model"] in ["DQN", "PPO"]:
+    elif config["model"] == "PPO":
+        if config["run_parallel"]:
+            raise NotImplementedError("Parallel PPO is not implemented yet.")
+        setup_and_train_ppo(config)
+    elif config["model"] in ["DQN"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
     else:
         raise ValueError(f"Model {config['model']} not recognized")
