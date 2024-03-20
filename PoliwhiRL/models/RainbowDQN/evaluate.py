@@ -11,13 +11,12 @@ def evaluate_model(config, env, policy_net):
     for episode in range(num_episodes):
         state = env.reset()
         state = image_to_tensor(state, config["device"])  # Convert state to tensor
-        state_sequence = [torch.zeros_like(state) for _ in range(sequence_length)] 
+        state_sequence = [] 
         episode_rewards = 0
         done = False
 
         while not done:
             state_sequence.append(state)  # Add the latest state to the sequence
-            state_sequence.pop(0)  # Remove the oldest state
 
             if len(state_sequence) < sequence_length:
                 # If the buffer hasn't reached the full length, select a random action
@@ -28,7 +27,7 @@ def evaluate_model(config, env, policy_net):
                 with torch.no_grad():  # No need to track gradients during evaluation
                     q_values = policy_net(sequence_tensor)
                     action = torch.argmax(q_values[-1]).item()  # Select the action with the highest Q-value
-
+                state_sequence.pop(0)
             next_state, reward, done = env.step(action)
             next_state = image_to_tensor(next_state, config["device"])
 
