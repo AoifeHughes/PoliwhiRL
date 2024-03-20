@@ -15,4 +15,3 @@
     "checkpoint": "./configs/checkpoints/",
     "update_timestep": 200
   }
-  

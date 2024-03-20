@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 from PoliwhiRL.environment.controller import Controller
-from PoliwhiRL.models.PPO.training_functions import train_ppo, load_latest_checkpoint 
+from PoliwhiRL.models.PPO.training_functions import train_ppo, load_latest_checkpoint
 from .PPO import PPOModel
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 
 
 def setup_and_train_ppo(config):
