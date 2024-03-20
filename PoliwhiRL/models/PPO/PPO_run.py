@@ -22,10 +22,11 @@ def train_ppo(model, env, config, start_episode=0):
     sequence_length = config.get("sequence_length", 4)
     num_actions = len(env.action_space)
     losses = []
+    eval_vals = []
 
     timestep = 0
     episode_rewards = []
-    for episode in tqdm(range(start_episode + 1, start_episode + num_episodes)):
+    for episode in tqdm(range(start_episode, start_episode + num_episodes)):
         episode_reward = 0
         log_probs = []
         values = []
@@ -71,7 +72,7 @@ def train_ppo(model, env, config, start_episode=0):
             if loss is not None:
                 losses.append(loss)
         episode_rewards.append(episode_reward)
-        post_episode(episode_rewards, losses, episode, model, config, env)
+        post_episode(episode_rewards, losses, episode, model, config, env, eval_vals)
 
     return episode_rewards
 
@@ -171,7 +172,7 @@ def update_model(
     return None
 
 
-def post_episode(episode_rewards, losses, episode, model, config, env):
+def post_episode(episode_rewards, losses, episode, model, config, env, eval_vals):
     plot_best_attempts("./results/", 0, "PPO", episode_rewards)
     plot_losses("./results/", 0, losses)
 
@@ -187,7 +188,9 @@ def post_episode(episode_rewards, losses, episode, model, config, env):
 
     if episode % config.get("eval_frequency", 10) == 0:
         eval_reward = run_eval(model, env, config)
-        print(f"Episode {episode}: Eval reward: {eval_reward}")
+        eval_vals.append(eval_reward)
+    if len(eval_vals) > 0:
+        plot_best_attempts("./results/", 0, "PPO_eval", eval_vals)
 
 
 def load_latest_checkpoint(model, checkpoint_dir):
@@ -252,9 +255,10 @@ def run_eval(model, eval_env, config):
                     states_buffer.pop(0)
                 else:
                     next_state, reward, done = eval_env.step(
-                        eval_env.action_space.sample()
-                    )  # Random action
+                        np.random.choice(len(eval_env.action_space))
+                    )  
                     next_state = image_to_tensor(next_state, device)
+                eval_env.record(0, "ppo_eval", 0, 0)
                 state = next_state
 
             eval_rewards.append(episode_reward)
@@ -270,3 +274,4 @@ def setup_and_train_ppo(config):
     model = PPOModel(input_dim, output_dim).to(config["device"])
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
     train_ppo(model, env, config, start_episode)
+    env.close()
