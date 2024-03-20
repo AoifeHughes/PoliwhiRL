@@ -1,269 +1,124 @@
-# -*- coding: utf-8 -*-
 import torch
-from itertools import count
-from torch.distributions import Categorical
-from PoliwhiRL.environment.controls import (
-    Controller,
-)  # Ensure this is your actual controller
-from PoliwhiRL.utils.utils import image_to_tensor
-import multiprocessing
-from functools import partial
-from PPO import PPOBuffer, ppo_update, PolicyNetwork, ValueNetwork
-from PoliwhiRL.environment.rewards import calc_rewards
 import torch.optim as optim
+from torch.distributions import Categorical
+import numpy as np
 from tqdm import tqdm
+from PoliwhiRL.environment.controller import Controller
+from PoliwhiRL.models.PPO.training_functions import compute_returns
+from .PPO import PPOModel
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts
+import os 
 
 
-def run_episode_ppo(
-    episode_num,
-    rom_path,
-    state_path,
-    policy_net,
-    value_net,
-    device,
-    ppo_buffer,
-    SCALE_FACTOR,
-    USE_GRAYSCALE,
-    timeout,
-    gamma=0.99,
-    tau=0.95,
-    document_mode=False,
-):
-    controller = Controller(rom_path, state_path)
-    controller.handleMovement("A")  # Start the game
-    state = image_to_tensor(controller.screen_image(), device)
-    locs = set()
-    xy = set()
-    imgs = []
-    max_total_level = [0]
-    max_total_exp = [0]
-
-    for t in count():
-        # Select action based on the current policy
-        action_probs = policy_net(state)
-        value = value_net(state)
-        m = Categorical(action_probs)
-        action = m.sample()
-
-        # Perform action in env
-        controller.handleMovement(controller.movements[action.item()])
-        img = controller.screen_image()
-        reward = calc_rewards(
-            controller,
-            max_total_level,
-            img,
-            imgs,
-            xy,
-            locs,
-            max_total_exp,
-            default_reward=0.01,
-        )
-        next_state = image_to_tensor(img, device)
-        is_terminal = float(t + 1 == timeout)
-
-        # Store experiences in PPOBuffer
-        ppo_buffer.add(state, action, m.log_prob(action), reward, value, is_terminal)
-
-        state = next_state
-        if is_terminal:
-            break
-
-    controller.stop(save=False)
 
 
-def collect_experiences(
-    rom_path,
-    state_path,
-    policy_net,
-    value_net,
-    device,
-    SCALE_FACTOR,
-    USE_GRAYSCALE,
-    timeout,
-    num_episodes,
-    cpus,
-):
-    ppo_buffer = PPOBuffer()
+def train_ppo(model, env, config):
+    num_episodes = config.get("num_episodes", 1000)
+    lr = config.get("lr", 1e-3)
+    gamma = config.get("gamma", 0.99)
+    clip_param = config.get("clip_param", 0.2)
+    update_timestep = config.get("update_timestep", 2000)
+    save_dir = config.get("save_dir", "./ppo_models")
+    save_freq = config.get("checkpoint_interval", 100)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    device = config.get("device", torch.device("cpu"))
+    sequence_length = config.get("sequence_length", 4)
+    num_actions = len(env.action_space)
 
-    # Define a partial function for ease of multiprocessing
-    run_episode_partial = partial(
-        run_episode_ppo,
-        rom_path=rom_path,
-        state_path=state_path,
-        policy_net=policy_net,
-        value_net=value_net,
-        device=device,
-        ppo_buffer=ppo_buffer,
-        SCALE_FACTOR=SCALE_FACTOR,
-        USE_GRAYSCALE=USE_GRAYSCALE,
-        timeout=timeout,
-    )
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
-    with multiprocessing.Pool(processes=cpus) as pool:
-        list(
-            tqdm(
-                pool.imap(run_episode_partial, range(num_episodes)), total=num_episodes
-            )
-        )
+    timestep = 0
+    episode_rewards = []
+    for episode in tqdm(range(num_episodes)):
+        episode_reward = 0
+        log_probs = []
+        values = []
+        rewards = []
+        masks = []
+        states_buffer = []
 
-    # Now ppo_buffer contains experiences from all episodes
-    return ppo_buffer
+        state = env.reset()
+        state = image_to_tensor(state, device)
+        done = False
 
+        while not done:
+            timestep += 1
+            state, episode_reward = run_episode_step(model, env, state, states_buffer, sequence_length, device, num_actions, log_probs, values, rewards, masks, episode_reward)
+            update_model(model, optimizer, log_probs, values, rewards, masks, states_buffer, sequence_length, timestep, update_timestep, done, gamma, clip_param)
+        episode_rewards.append(episode_reward)
+        post_episode(episode_rewards, episode, save_freq, model, save_dir)
 
-def ppo_train(
-    rom_path,
-    state_paths,
-    policy_net,
-    value_net,
-    optimizer_policy,
-    optimizer_value,
-    device,
-    SCALE_FACTOR,
-    USE_GRAYSCALE,
-    num_episodes,
-    timeout,
-    batch_size,
-    cpus,
-    gamma=0.99,
-    tau=0.95,
-):
-    for state_path in state_paths:
-        # Collect experiences
-        ppo_buffer = PPOBuffer()
+    return episode_rewards
 
-        # Define a partial function for multiprocessing
-        run_episode_partial = partial(
-            run_episode_ppo,
-            rom_path=rom_path,
-            state_path=state_path,
-            policy_net=policy_net,
-            value_net=value_net,
-            device=device,
-            ppo_buffer=ppo_buffer,
-            SCALE_FACTOR=SCALE_FACTOR,
-            USE_GRAYSCALE=USE_GRAYSCALE,
-            timeout=timeout,
-            gamma=gamma,  # Note: These are not used inside run_episode_ppo directly but could be if adjusting the function
-            tau=tau,
-        )
+def run_episode_step(model, env, state, states_buffer, sequence_length, device, num_actions, log_probs, values, rewards, masks, episode_reward):
+    states_buffer.append(state)
+    
+    if len(states_buffer) == sequence_length:
+        states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+        action_probs, value = model(states_sequence)
+        dist = Categorical(action_probs)
+        action = dist.sample()
+        action_val = action.cpu().numpy()[0]
+        next_state, reward, done = env.step(action_val)
+        episode_reward += reward
+        next_state = image_to_tensor(next_state, device)
+        env.record(0, "ppo", 0, 0)
+        log_prob = dist.log_prob(action).unsqueeze(0)
+        log_probs.append(log_prob)
+        values.append(value)
+        rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
+        masks.append(torch.tensor([1 - done], dtype=torch.float, device=device))
 
-        with multiprocessing.Pool(processes=cpus) as pool:
-            pool.map(run_episode_partial, range(num_episodes))
+        states_buffer.pop(0)
+    else:
+        next_state, reward, done = env.step(np.random.choice(num_actions))
+        next_state = image_to_tensor(next_state, device)
+    return next_state, episode_reward
 
-        # After collecting experiences, compute GAE and returns before updating
-        # Assuming there's a method to get the last state's value or setting it to 0 if terminal
-        # This part might need adjustment based on how you handle episode ends and next state value
-        last_value = (
-            0  # This should be replaced with an actual value computation if necessary
-        )
+def update_model(model, optimizer, log_probs, values, rewards, masks, states_buffer, sequence_length, timestep, update_timestep, done, gamma, clip_param):
+    if timestep % update_timestep == 0 or done:
+        if len(states_buffer) > 0:
+            padded_sequence = states_buffer + [states_buffer[-1]] * (sequence_length - len(states_buffer))
+            states_sequence = torch.stack(padded_sequence, dim=0).unsqueeze(0)
+            _, next_value = model(states_sequence)
+        else:
+            _, next_value = model(states_sequence)
 
-        ppo_buffer.compute_gae_and_returns(last_value, gamma=gamma, tau=tau)
+        returns = compute_returns(next_value, rewards, masks, gamma)
 
-        # Get batches for training
-        data_loader = torch.utils.data.DataLoader(
-            ppo_buffer.get_batch(),
-            batch_size=batch_size,
-            shuffle=True,
-        )
+        log_probs = torch.cat(log_probs)
+        returns = torch.cat(returns).detach()
+        values = torch.cat(values)
 
-        for states, actions, log_probs_old, returns, advantages in data_loader:
-            # Normalize advantages
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        advantage = returns - values
 
-            ppo_update(
-                policy_net,
-                value_net,
-                optimizer_policy,
-                optimizer_value,
-                states,
-                actions,
-                log_probs_old,
-                returns,
-                advantages,
-                device=device,
-            )
+        ratio = torch.exp(log_probs - log_probs.detach())
+        surr1 = ratio * advantage.detach()
+        surr2 = torch.clamp(ratio, 1.0 - clip_param, 1.0 + clip_param) * advantage.detach()
+        policy_loss = -torch.min(surr1, surr2).mean()
+        value_loss = 0.5 * (returns - values).pow(2).mean()
+        loss = policy_loss + value_loss
 
-        # Optional: Log training progress, save models, etc.
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        log_probs = []
+        values = []
+        rewards = []
+        masks = []
+        states_buffer = []
+
+def post_episode(episode_rewards, episode, save_freq, model, save_dir):
+    plot_best_attempts("./results/", 0, "PPO", episode_rewards)
+    if (episode + 1) % save_freq == 0:
+        torch.save(model.state_dict(), os.path.join(save_dir, f"ppo_model_ep{episode+1}.pth"))
 
 
-def run_training(
-    rom_path,
-    state_paths,  # This should be a list
-    action_size,
-    SCALE_FACTOR,
-    USE_GRAYSCALE,
-    num_episodes,
-    episodes_per_batch,
-    timeout,
-    cpus,
-    device,
-    gamma=0.99,
-    tau=0.95,
-):
-    controller = Controller(rom_path)
-    screen_height, screen_width = controller.screen_size()
-    screen_height, screen_width = int(screen_height * SCALE_FACTOR), int(
-        screen_width * SCALE_FACTOR
-    )
-
-    policy_net = PolicyNetwork(
-        screen_height, screen_width, action_size, USE_GRAYSCALE
-    ).to(device)
-    value_net = ValueNetwork(screen_height, screen_width, USE_GRAYSCALE).to(device)
-
-    optimizer_policy = optim.Adam(policy_net.parameters(), lr=1e-3)
-    optimizer_value = optim.Adam(value_net.parameters(), lr=1e-3)
-
-    # Proceed with the training
-    ppo_train(
-        rom_path=rom_path,
-        state_paths=state_paths,
-        policy_net=policy_net,
-        value_net=value_net,
-        optimizer_policy=optimizer_policy,
-        optimizer_value=optimizer_value,
-        device=device,
-        SCALE_FACTOR=SCALE_FACTOR,
-        USE_GRAYSCALE=USE_GRAYSCALE,
-        num_episodes=num_episodes,
-        timeout=timeout,
-        batch_size=episodes_per_batch,  # Adjust based on your setup
-        cpus=cpus,
-        gamma=gamma,
-        tau=tau,
-    )
-
-    torch.save(policy_net.state_dict(), "policy_net.pth")
-    torch.save(value_net.state_dict(), "value_net.pth")
-
-
-def run(
-    rom_path="Pokemon - Crystal Version.gbc",
-    device="cpu",
-    SCALE_FACTOR=1,
-    USE_GRAYSCALE=False,
-    state_paths=[
-        "./states/start.state"
-    ],  # This should be a list to accommodate multiple paths
-    num_episodes=100,
-    episodes_per_batch=20,
-    timeout=1000,
-    cpus=4,
-):
-    # Run training with adjusted parameters
-    run_training(
-        rom_path=rom_path,
-        state_paths=state_paths,  # Ensure this is passed as a list
-        action_size=4,  # Adjust based on the game's action space
-        SCALE_FACTOR=SCALE_FACTOR,
-        USE_GRAYSCALE=USE_GRAYSCALE,
-        num_episodes=num_episodes,
-        episodes_per_batch=episodes_per_batch,
-        timeout=timeout,
-        cpus=cpus,
-        device=device,
-    )
-
-
-if __name__ == "__main__":
-    run()
+def setup_and_train_ppo(config):
+    env = Controller(config)
+    input_dim = (1 if config["use_grayscale"] else 3, *env.screen_size())
+    output_dim = len(env.action_space)
+    model = PPOModel(input_dim, output_dim).to(config["device"])
+    train_ppo(model,env, config)

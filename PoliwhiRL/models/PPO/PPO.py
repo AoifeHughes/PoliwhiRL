@@ -1,3 +1,34 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class FeatureCNN(nn.Module):
+    def __init__(self, input_dim):
+        super(FeatureCNN, self).__init__()
+
+        self.feature_layer = nn.Sequential(
+            nn.Conv2d(input_dim[0], 32, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Flatten(),
+        )
+    def forward(self, x):
+        return self.feature_layer(x)
+
+
 class Actor(nn.Module):
     def __init__(self, feature_dim, num_actions):
         super(Actor, self).__init__()
@@ -22,14 +53,14 @@ class Critic(nn.Module):
 class PPOModel(nn.Module):
     def __init__(self, input_dim, num_actions):
         super(PPOModel, self).__init__()
-        self.shared_cnn = SharedCNN(input_dim)
-        self.actor = Actor(self.shared_cnn.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1), num_actions)
-        self.critic = Critic(self.shared_cnn.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1))
+        self.FeatureCNN = FeatureCNN(input_dim)
+        self.actor = Actor(self.FeatureCNN.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1), num_actions)
+        self.critic = Critic(self.FeatureCNN.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1))
         
     def forward(self, x):
         batch_size, seq_len, channels, height, width = x.size()
         x = x.view(batch_size * seq_len, channels, height, width)
-        shared_features = self.shared_cnn(x)
+        shared_features = self.FeatureCNN(x)
         shared_features = shared_features.view(batch_size, seq_len, -1)
         action_probs = self.actor(shared_features)
         value_estimates = self.critic(shared_features)

@@ -3,6 +3,7 @@ import os
 import torch.optim as optim
 import time
 import json
+
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
@@ -12,11 +13,7 @@ from PoliwhiRL.utils import plot_best_attempts
 from .evaluate import evaluate_model
 
 
-def setup_environment(config):
-    """
-    Sets up the environment based on the provided configuration.
-    """
-    return Controller(config)
+
 
 
 def initialize_training(config, env):
@@ -106,7 +103,7 @@ def run(**config):
     Main function to run the training process.
     """
     start_time = time.time()
-    env = setup_environment(config)
+    env = Controller(config)
 
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
 
