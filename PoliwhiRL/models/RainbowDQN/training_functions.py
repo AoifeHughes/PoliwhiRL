@@ -11,10 +11,6 @@ def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
 
 
-def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
-    return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
-        -1.0 * frame_idx / epsilon_decay
-    )
 
 
 def store_experience_sequence(

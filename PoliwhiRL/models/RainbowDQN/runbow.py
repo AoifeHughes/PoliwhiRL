@@ -6,13 +6,13 @@ from PoliwhiRL.models.RainbowDQN.evaluate import evaluate_model
 from PoliwhiRL.models.RainbowDQN.training_functions import (
     optimize_model_sequence,
     save_checkpoint,
-    epsilon_by_frame,
     store_experience_sequence,
     beta_by_frame,
     select_action_hybrid,
     populate_replay_buffer,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
+
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses, epsilon_by_frame
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):

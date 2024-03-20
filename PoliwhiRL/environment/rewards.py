@@ -123,7 +123,7 @@ class Rewards:
             self.update_for_pokedex,
             self.update_for_money,
             self.update_for_image_reward,
-            # self.update_for_menuing,
+            self.update_for_menuing,
             # self.update_for_same_screen
         ]:
             total_reward = func(total_reward, default_reward)
