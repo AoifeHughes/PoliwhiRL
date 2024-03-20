@@ -163,6 +163,7 @@ def optimize_model_sequence(
     # Perform optimization
     optimizer.zero_grad()
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
     optimizer.step()
 
     # Update priorities in the buffer
@@ -237,7 +238,7 @@ def select_action_hybrid(
     states, policy_net, config, frame_idx, action_counts, num_actions, epsilon
 ):
     # Decide to take a random action with probability epsilon
-    if random.random() < epsilon:
+    if random.random() < epsilon or len(states) < config.get("sequence_length", 4):
         return random.randrange(num_actions), None  # Return a random action
 
     with torch.no_grad():
@@ -246,22 +247,6 @@ def select_action_hybrid(
             policy_net( torch.stack(states).unsqueeze(0).to(config["device"]) )
         )
         action = torch.argmax(q_values[-1]).item() 
-
-    exploration_rate = np.sqrt(
-        2 * math.log(frame_idx + 1) / (action_counts + 1)
-    )  # Avoid division by zero
-    hybrid_values = (
-        q_values + exploration_rate
-    )  # Combine Q-values with exploration bonus
-
-    for action in range(num_actions):
-        if action_counts[action] == 0:
-            # Ensure untried actions are considered
-            hybrid_values[action] += np.inf
-
-    action = np.argmax(hybrid_values)
-    action_counts[action] += 1  # Update the counts for the selected action
-
     return action, q_values[action]
 
 

@@ -148,7 +148,7 @@ def run_episode(
         next_state, reward, done = env.step(action)
         next_state = image_to_tensor(next_state, config["device"])
         action_rewards[action] += reward
-        env.record(epsilon, "rdqn", was_random, 0)
+        #env.record(epsilon, "rdqn", was_random, 0)
 
         # Append to sequences; oldest entries are automatically removed when maxlen is exceeded
         state_sequence.append(state)
