@@ -1,5 +1,5 @@
 {
-  "episode_length": 16,
+  "episode_length": 500,
   "num_episodes": 5000,
   "device": "mps",
   "n_steps": 1,
@@ -7,7 +7,7 @@
   "scaling_factor": 0.5,
   "use_grayscale": false,
   "extend_on_reward": false,
-  "batch_size":64,
+  "batch_size":16,
   "erase": false,
   "reward_image_folder": "./configs/reward_images",
   "capacity": 10000,
