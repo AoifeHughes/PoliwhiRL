@@ -54,7 +54,7 @@ class Rewards:
     def update_for_movement(self, total_reward, default_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += default_reward * 5
+            total_reward += default_reward * 10
             self.xy.add(cur_xy)
         return total_reward
 
@@ -118,12 +118,12 @@ class Rewards:
         #     total_reward = self.update_for_vision(total_reward, default_reward)
 
         for func in [
-            self.update_for_party_pokemon,
+            #self.update_for_party_pokemon,
             self.update_for_movement,
-            self.update_for_pokedex,
-            self.update_for_money,
-            self.update_for_image_reward,
-            self.update_for_menuing,
+            # self.update_for_pokedex,
+            # self.update_for_money,
+            # self.update_for_image_reward,
+            # self.update_for_menuing,
             # self.update_for_same_screen
         ]:
             total_reward = func(total_reward, default_reward)

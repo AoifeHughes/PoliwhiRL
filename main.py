@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
-from PoliwhiRL.models.PPO import setup_and_train_ppo
+from PoliwhiRL.models.PPO import setup_and_train_ppo, run
 from torch import device
 import os
 import shutil
@@ -91,7 +91,8 @@ def main():
     elif config["model"] == "PPO":
         if config["run_parallel"]:
             raise NotImplementedError("Parallel PPO is not implemented yet.")
-        setup_and_train_ppo(config)
+        #setup_and_train_ppo(config)
+        run(config)
     elif config["model"] in ["DQN"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
     else:
