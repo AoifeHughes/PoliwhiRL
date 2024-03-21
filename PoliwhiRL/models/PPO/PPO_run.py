@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
-from PoliwhiRL.environment.controller import Controller
-from PoliwhiRL.models.PPO.training_functions import train_ppo, load_latest_checkpoint
-from .PPO import PPOModel
-
+from .training_functions import setup_environment_and_model, train, run_eval, save_checkpoint
 
 def setup_and_train_ppo(config):
-    env = Controller(config)
-    input_dim = (1 if config["use_grayscale"] else 3, *env.screen_size())
-    output_dim = len(env.action_space)
-    model = PPOModel(input_dim, output_dim).to(config["device"])
-    start_episode = load_latest_checkpoint(model, config["checkpoint"])
-    train_ppo(model, env, config, start_episode)
-    env.close()
+    env, model, optimizer, start_episode = setup_environment_and_model(config)
+    train(model, env, optimizer, config, start_episode)  # Train the model
+    run_eval(model, env, config)  # Evaluate after training
+    save_checkpoint(model, config["checkpoint"], start_episode + config['num_episodes'])
+
+
