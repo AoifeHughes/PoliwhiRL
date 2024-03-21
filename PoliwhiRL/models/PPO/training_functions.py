@@ -7,7 +7,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses, epsilon_by_frame
+from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 
 
 def compute_returns(next_value, rewards, masks, gamma=0.99):
@@ -18,7 +18,6 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
-test_moves = [3,3,3,3,1,1]
 
 def train_ppo(model, env, config, start_episode=0):
     num_episodes = config.get("num_episodes", 1000)
@@ -32,7 +31,7 @@ def train_ppo(model, env, config, start_episode=0):
     num_actions = len(env.action_space)
     losses = []
     eval_vals = []
-    
+
     timestep = 0
     episode_rewards = []
     for episode in tqdm(range(start_episode, start_episode + num_episodes)):
@@ -71,6 +70,7 @@ def train_ppo(model, env, config, start_episode=0):
                 rewards,
                 masks,
                 states_buffer,
+                sequence_length,
                 timestep,
                 update_timestep,
                 done,
@@ -106,28 +106,30 @@ def run_episode_step(
     episode_reward,
 ):
     states_buffer.append(state)
-    states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
-    action_probs, value = model(states_sequence)
-    dist = Categorical(action_probs)
 
-    action = torch.tensor(np.random.choice(num_actions), dtype=torch.long, device=device)
-    action_val = action.item()
-
-    next_state, reward, done = env.step(action_val)
-    episode_reward += reward
-    next_state = image_to_tensor(next_state, device)
-    env.record(0, "ppo", False, 0)
-    log_prob = dist.log_prob(action).unsqueeze(0)
-    
-    log_probs.append(log_prob)
-    values.append(value)
-    rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
-    masks.append(torch.tensor([1 - done], dtype=torch.float, device=device))
     if len(states_buffer) == sequence_length:
+        states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+        action_probs, value = model(states_sequence)
+        dist = Categorical(action_probs)
+        action = dist.sample()
+        action_val = action.cpu().numpy()[0]
+        next_state, reward, done = env.step(action_val)
+        episode_reward += reward
+        next_state = image_to_tensor(next_state, device)
+        env.record(0, "ppo", False, 0)
+        log_prob = dist.log_prob(action).unsqueeze(0)
+        log_probs.append(log_prob)
+        values.append(value)
+        rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
+        masks.append(torch.tensor([1 - done], dtype=torch.float, device=device))
         states_buffer.pop(0)
-
+    else:
+        next_state, reward, done = env.step(np.random.choice(num_actions))
+        next_state = image_to_tensor(next_state, device)
+        env.record(0, "ppo", True, 0)
 
     return next_state, episode_reward, done
+
 
 def update_model(
     model,
@@ -137,6 +139,7 @@ def update_model(
     rewards,
     masks,
     states_buffer,
+    sequence_length,
     timestep,
     update_timestep,
     done,
@@ -145,10 +148,14 @@ def update_model(
 ):
     if timestep % update_timestep == 0 or done:
         if len(states_buffer) > 0:
-            states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+            padded_sequence = states_buffer + [states_buffer[-1]] * (
+                sequence_length - len(states_buffer)
+            )
+            states_sequence = torch.stack(padded_sequence, dim=0).unsqueeze(0)
             _, next_value = model(states_sequence)
         else:
-            return None 
+            _, next_value = model(states_sequence)
+
         returns = compute_returns(next_value, rewards, masks, gamma)
 
         log_probs = torch.cat(log_probs)
@@ -191,6 +198,7 @@ def post_episode(episode_rewards, losses, episode, model, config, env, eval_vals
     if episode % config.get("eval_frequency", 10) == 0:
         eval_reward = run_eval(model, env, config)
         eval_vals.append(eval_reward)
+        print(f"Episode {episode}: Eval reward: {eval_reward}")
     if len(eval_vals) > 0:
         plot_best_attempts("./results/", 0, "PPO_eval", eval_vals)
 
@@ -232,7 +240,7 @@ def run_eval(model, eval_env, config):
     eval_rewards = []
     model.eval()  # Set the model to evaluation mode
     with torch.no_grad():  # Disable gradient computation
-        for _ in range(num_eval_episodes):
+        for episode in range(num_eval_episodes):
             state = eval_env.reset()
             state = image_to_tensor(state, device)
             states_buffer = []
@@ -241,21 +249,25 @@ def run_eval(model, eval_env, config):
 
             while not done:
                 states_buffer.append(state)
-                states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
-                action_probs, _ = model(states_sequence)
-                action = (
-                    action_probs.argmax(dim=-1).cpu().numpy()[0]
-                )  
-                (
-                    next_state,
-                    reward,
-                    done,
-                ) = eval_env.step(action)
-                episode_reward += reward
-                next_state = image_to_tensor(next_state, device)
                 if len(states_buffer) == sequence_length:
+                    states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+                    action_probs, _ = model(states_sequence)
+                    action = (
+                        action_probs.argmax(dim=-1).cpu().numpy()[0]
+                    )  # Use the action with the highest probability
+                    (
+                        next_state,
+                        reward,
+                        done,
+                    ) = eval_env.step(action)
+                    episode_reward += reward
+                    next_state = image_to_tensor(next_state, device)
                     states_buffer.pop(0)
-
+                else:
+                    next_state, reward, done = eval_env.step(
+                        np.random.choice(len(eval_env.action_space))
+                    )
+                    next_state = image_to_tensor(next_state, device)
                 eval_env.record(0, "ppo_eval", 0, 0)
                 state = next_state
 
