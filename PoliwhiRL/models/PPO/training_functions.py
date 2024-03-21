@@ -30,28 +30,53 @@ def setup_environment_and_model(config):
 def train(model, env, optimizer, config, start_episode):
     eval_rewards = []
     losses = []
-    for episode in tqdm(range(start_episode, start_episode+config['num_episodes']), desc="Training"):
+    for episode in tqdm(
+        range(start_episode, start_episode + config["num_episodes"]), desc="Training"
+    ):
         state = env.reset()
-        episode_rewards, saved_log_probs, saved_values, rewards, masks = 0, [], [], [], []
+        episode_rewards, saved_log_probs, saved_values, rewards, masks = (
+            0,
+            [],
+            [],
+            [],
+            [],
+        )
         states_seq, done = [], False
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
             states_seq.append(state_tensor)
-            if len(states_seq) < config['sequence_length']:
+            if len(states_seq) < config["sequence_length"]:
                 continue
 
-            state_sequence_tensor = torch.stack(states_seq[-config['sequence_length']:]).unsqueeze(0)
+            state_sequence_tensor = torch.stack(
+                states_seq[-config["sequence_length"] :]
+            ).unsqueeze(0)
             action_probs, value_estimates = model(state_sequence_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
 
             next_state, reward, done = env.step(action.item())
-            process_step(reward, dist, action, value_estimates, next_state, episode_rewards, saved_log_probs, saved_values, rewards, masks, state)
+            process_step(
+                reward,
+                dist,
+                action,
+                value_estimates,
+                next_state,
+                episode_rewards,
+                saved_log_probs,
+                saved_values,
+                rewards,
+                masks,
+                state,
+            )
 
-        loss = update_model(optimizer, saved_log_probs, saved_values, rewards, masks, config['gamma'])
+        loss = update_model(
+            optimizer, saved_log_probs, saved_values, rewards, masks, config["gamma"]
+        )
         losses.append(loss)
 
         post_episode_jobs(model, config, episode, env, eval_rewards, losses)
+
 
 def post_episode_jobs(model, config, episode, env, eval_rewards, losses):
     plot_losses("./results/", 0, losses)
@@ -61,7 +86,20 @@ def post_episode_jobs(model, config, episode, env, eval_rewards, losses):
         if len(eval_rewards) > 1:
             plot_best_attempts("./results/", 0, "PPO_eval", eval_rewards)
 
-def process_step(reward, dist, action, value_estimates, next_state, episode_rewards, saved_log_probs, saved_values, rewards, masks, state):
+
+def process_step(
+    reward,
+    dist,
+    action,
+    value_estimates,
+    next_state,
+    episode_rewards,
+    saved_log_probs,
+    saved_values,
+    rewards,
+    masks,
+    state,
+):
     episode_rewards += reward
     saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
     saved_values.append(value_estimates)
@@ -69,31 +107,33 @@ def process_step(reward, dist, action, value_estimates, next_state, episode_rewa
     masks.append(1.0)
     state = next_state
 
+
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
     next_value = saved_values[-1].detach()
     returns = compute_returns(next_value, rewards, masks, gamma)
-    
+
     log_probs = torch.cat(saved_log_probs)
     returns = torch.cat(returns)
     values = torch.cat(saved_values)
-    
+
     advantages = returns - values
     action_loss = -(log_probs * advantages.detach()).mean()
     value_loss = advantages.pow(2).mean()
-    
+
     loss = action_loss + value_loss
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
     return loss.item()
 
+
 def run_eval(model, env, config):
-    num_eval_episodes = config.get('num_eval_episodes', 10)
-    sequence_length = config['sequence_length']
-    device = config['device']
+    num_eval_episodes = config.get("num_eval_episodes", 10)
+    sequence_length = config["sequence_length"]
+    device = config["device"]
 
     model.eval()  # Set the model to evaluation mode
-    
+
     total_rewards = []
     for episode in range(num_eval_episodes):
         state = env.reset()
@@ -108,10 +148,14 @@ def run_eval(model, env, config):
                 if len(states_seq) < sequence_length:
                     continue  # Wait until we have enough states for a full sequence
 
-                state_sequence_tensor = torch.stack(states_seq[-sequence_length:]).unsqueeze(0)
+                state_sequence_tensor = torch.stack(
+                    states_seq[-sequence_length:]
+                ).unsqueeze(0)
 
                 action_probs, _ = model(state_sequence_tensor)
-                action = torch.distributions.Categorical(action_probs[0]).sample().item()
+                action = (
+                    torch.distributions.Categorical(action_probs[0]).sample().item()
+                )
 
                 next_state, reward, done = env.step(action)
                 env.record(0, "ppo_eval", False, 0)
@@ -121,10 +165,11 @@ def run_eval(model, env, config):
                 if len(states_seq) == sequence_length:
                     states_seq.pop(0)  # Keep the sequence buffer at fixed size
 
-        total_rewards.append(episode_rewards)    
+        total_rewards.append(episode_rewards)
     avg_reward = sum(total_rewards) / num_eval_episodes
     model.train()  # Set the model back to training mode
     return avg_reward
+
 
 def load_latest_checkpoint(model, checkpoint_dir):
 
@@ -154,6 +199,7 @@ def load_latest_checkpoint(model, checkpoint_dir):
     print(f"Loaded checkpoint from episode {latest_episode}")
 
     return latest_episode
+
 
 def save_checkpoint(model, checkpoint_dir, episode):
     if not os.path.isdir(checkpoint_dir):

@@ -11,8 +11,6 @@ def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
 
 
-
-
 def store_experience_sequence(
     state_sequence,
     action_sequence,

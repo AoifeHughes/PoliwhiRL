@@ -7,6 +7,7 @@ import os
 import matplotlib.pyplot as plt
 import itertools
 
+
 def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
     return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
         -1.0 * frame_idx / epsilon_decay
