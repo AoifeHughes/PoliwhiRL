@@ -12,7 +12,12 @@ from PoliwhiRL.models.RainbowDQN.training_functions import (
     populate_replay_buffer,
 )
 
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses, epsilon_by_frame
+from PoliwhiRL.utils.utils import (
+    image_to_tensor,
+    plot_best_attempts,
+    plot_losses,
+    epsilon_by_frame,
+)
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
