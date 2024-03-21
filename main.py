@@ -82,15 +82,8 @@ def main():
     pprint.pprint(config)
 
     if config["model"] == "RainbowDQN":
-        if config["run_parallel"] and config["device"] != device("cpu"):
-            print("Parallel RainbowDQN only supports CPU devices. Switching to CPU.")
-            config["device"] = device("cpu")
-        # if config["run_parallel"]:
-        #     raise NotImplementedError("Parallel RainbowDQN is not implemented yet with the new action selection")
         rainbow(**config)
     elif config["model"] == "PPO":
-        if config["run_parallel"]:
-            raise NotImplementedError("Parallel PPO is not implemented yet.")
         setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")

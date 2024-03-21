@@ -47,28 +47,19 @@ def train(model, env, optimizer, config, start_episode):
             states_seq.append(state_tensor)
             if len(states_seq) < config["sequence_length"]:
                 continue
-
             state_sequence_tensor = torch.stack(
                 states_seq[-config["sequence_length"] :]
             ).unsqueeze(0)
             action_probs, value_estimates = model(state_sequence_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
-
             next_state, reward, done = env.step(action.item())
-            process_step(
-                reward,
-                dist,
-                action,
-                value_estimates,
-                next_state,
-                episode_rewards,
-                saved_log_probs,
-                saved_values,
-                rewards,
-                masks,
-                state,
-            )
+            episode_rewards += reward
+            state = next_state
+            saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
+            saved_values.append(value_estimates)
+            rewards.append(reward)
+            masks.append(1.0)
 
         loss = update_model(
             optimizer, saved_log_probs, saved_values, rewards, masks, config["gamma"]
@@ -85,27 +76,6 @@ def post_episode_jobs(model, config, episode, env, eval_rewards, losses):
         eval_rewards.append(avg_reward)
         if len(eval_rewards) > 1:
             plot_best_attempts("./results/", 0, "PPO_eval", eval_rewards)
-
-
-def process_step(
-    reward,
-    dist,
-    action,
-    value_estimates,
-    next_state,
-    episode_rewards,
-    saved_log_probs,
-    saved_values,
-    rewards,
-    masks,
-    state,
-):
-    episode_rewards += reward
-    saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
-    saved_values.append(value_estimates)
-    rewards.append(reward)
-    masks.append(1.0)
-    state = next_state
 
 
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
