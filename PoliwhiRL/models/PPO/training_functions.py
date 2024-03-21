@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import collections
 import torch.optim as optim
 import torch
 import os
@@ -41,15 +42,14 @@ def train(model, env, optimizer, config, start_episode):
             [],
             [],
         )
-        states_seq, done = [], False
+        done = False
+        states_seq = collections.deque(maxlen=config["sequence_length"])
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
             states_seq.append(state_tensor)
             if len(states_seq) < config["sequence_length"]:
-                continue
-            state_sequence_tensor = torch.stack(
-                states_seq[-config["sequence_length"] :]
-            ).unsqueeze(0)
+                continue  
+            state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
             action_probs, value_estimates = model(state_sequence_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
@@ -59,7 +59,8 @@ def train(model, env, optimizer, config, start_episode):
             saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
             saved_values.append(value_estimates)
             rewards.append(reward)
-            masks.append(1.0)
+            masks.append(1.0 - done)
+
 
         loss = update_model(
             optimizer, saved_log_probs, saved_values, rewards, masks, config["gamma"]
