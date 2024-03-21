@@ -21,10 +21,6 @@ class FeatureCNN(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Dropout(p=0.2),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
             nn.Flatten(),
         )
 

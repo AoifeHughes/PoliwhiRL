@@ -18,6 +18,7 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
+test_moves = [3,3,3,3,1,1]
 
 def train_ppo(model, env, config, start_episode=0):
     num_episodes = config.get("num_episodes", 1000)
@@ -48,12 +49,6 @@ def train_ppo(model, env, config, start_episode=0):
 
         while not done:
             timestep += 1
-            epsilon = epsilon_by_frame(
-                timestep,
-                config["epsilon_start"],
-                config["epsilon_final"],
-                config["epsilon_decay"],
-            )
             state, episode_reward, done = run_episode_step(
                 model,
                 env,
@@ -67,7 +62,6 @@ def train_ppo(model, env, config, start_episode=0):
                 rewards,
                 masks,
                 episode_reward,
-                epsilon,
             )
             loss = update_model(
                 model,
@@ -77,7 +71,6 @@ def train_ppo(model, env, config, start_episode=0):
                 rewards,
                 masks,
                 states_buffer,
-                sequence_length,
                 timestep,
                 update_timestep,
                 done,
@@ -111,50 +104,31 @@ def run_episode_step(
     rewards,
     masks,
     episode_reward,
-    epsilon=0.1  # Epsilon value for ε-greedy exploration
 ):
     states_buffer.append(state)
-    was_random = False
-    if len(states_buffer) == sequence_length:
-        states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
-        action_probs, value_estimate = model(states_sequence.to(device))
-        dist = Categorical(action_probs)
+    states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+    action_probs, value = model(states_sequence)
+    dist = Categorical(action_probs)
 
-        if np.random.random() < epsilon:
-            # Exploration: select a random action
-            action_val = np.random.choice(num_actions)
-            action = torch.tensor([action_val], device=device)
-            # Compute log probability for the randomly chosen action
-            log_prob = dist.log_prob(action).unsqueeze(0)
-            was_random = True
-        else:
-            # Exploitation: select the best action according to the policy
-            action = dist.sample()
-            action_val = action.cpu().numpy()[0]
-            log_prob = dist.log_prob(action).unsqueeze(0)
-
-    else:
-        # If the buffer is not full, select a random action
-        action_val = np.random.choice(num_actions)
-        # No model predictions here; append zeros as placeholders or handle appropriately
-        log_prob = torch.tensor([0], dtype=torch.float, device=device)  # Placeholder value
-        value_estimate = torch.tensor([0], dtype=torch.float, device=device)  # Placeholder value
+    action = torch.tensor(np.random.choice(num_actions), dtype=torch.long, device=device)
+    action_val = action.item()
 
     next_state, reward, done = env.step(action_val)
     episode_reward += reward
-    next_state = image_to_tensor(next_state, device)  # Ensure this is a function that correctly preprocesses the image
-    env.record(0, "ppo", was_random, 0)  # Adjust based on your env's interface
-
-    # Append log probability and value estimate
+    next_state = image_to_tensor(next_state, device)
+    env.record(0, "ppo", False, 0)
+    log_prob = dist.log_prob(action).unsqueeze(0)
+    
     log_probs.append(log_prob)
-    values.append(value_estimate)
+    values.append(value)
     rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
     masks.append(torch.tensor([1 - done], dtype=torch.float, device=device))
-
     if len(states_buffer) == sequence_length:
         states_buffer.pop(0)
 
+
     return next_state, episode_reward, done
+
 def update_model(
     model,
     optimizer,
@@ -163,7 +137,6 @@ def update_model(
     rewards,
     masks,
     states_buffer,
-    sequence_length,
     timestep,
     update_timestep,
     done,
@@ -172,14 +145,10 @@ def update_model(
 ):
     if timestep % update_timestep == 0 or done:
         if len(states_buffer) > 0:
-            padded_sequence = states_buffer + [states_buffer[-1]] * (
-                sequence_length - len(states_buffer)
-            )
-            states_sequence = torch.stack(padded_sequence, dim=0).unsqueeze(0)
+            states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
             _, next_value = model(states_sequence)
         else:
-            _, next_value = model(states_sequence)
-
+            return None 
         returns = compute_returns(next_value, rewards, masks, gamma)
 
         log_probs = torch.cat(log_probs)
@@ -272,29 +241,26 @@ def run_eval(model, eval_env, config):
 
             while not done:
                 states_buffer.append(state)
+                states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
+                action_probs, _ = model(states_sequence)
+                action = (
+                    action_probs.argmax(dim=-1).cpu().numpy()[0]
+                )  
+                (
+                    next_state,
+                    reward,
+                    done,
+                ) = eval_env.step(action)
+                episode_reward += reward
+                next_state = image_to_tensor(next_state, device)
                 if len(states_buffer) == sequence_length:
-                    states_sequence = torch.stack(states_buffer, dim=0).unsqueeze(0)
-                    action_probs, _ = model(states_sequence)
-                    action = (
-                        action_probs.argmax(dim=-1).cpu().numpy()[0]
-                    )  # Use the action with the highest probability
-                    (
-                        next_state,
-                        reward,
-                        done,
-                    ) = eval_env.step(action)
-                    episode_reward += reward
-                    next_state = image_to_tensor(next_state, device)
                     states_buffer.pop(0)
-                else:
-                    next_state, reward, done = eval_env.step(
-                        np.random.choice(len(eval_env.action_space))
-                    )
-                    next_state = image_to_tensor(next_state, device)
+
                 eval_env.record(0, "ppo_eval", 0, 0)
                 state = next_state
 
             eval_rewards.append(episode_reward)
 
     average_reward = sum(eval_rewards) / len(eval_rewards)
+    model.train()  # Set the model back to training mode
     return average_reward
