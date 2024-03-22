@@ -31,6 +31,7 @@ def setup_environment_and_model(config):
 def train(model, env, optimizer, config, start_episode):
     eval_rewards = []
     losses = []
+    train_rewards = []
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
     ):
@@ -44,11 +45,12 @@ def train(model, env, optimizer, config, start_episode):
         )
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
+        steps_since_update = 0
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
             states_seq.append(state_tensor)
             if len(states_seq) < config["sequence_length"]:
-                continue  
+                continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
             action_probs, value_estimates = model(state_sequence_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
@@ -60,23 +62,56 @@ def train(model, env, optimizer, config, start_episode):
             saved_values.append(value_estimates)
             rewards.append(reward)
             masks.append(1.0 - done)
+            steps_since_update += 1
 
+            # Perform update and reset lists if steps_since_update reaches update_timestep
+            if steps_since_update == config["update_timestep"]:
+                loss = update_model(
+                    optimizer,
+                    saved_log_probs,
+                    saved_values,
+                    rewards,
+                    masks,
+                    config["gamma"],
+                )
+                losses.append(loss)
+                # Reset the lists
+                saved_log_probs, saved_values, rewards, masks = (
+                    [],
+                    [],
+                    [],
+                    [],
+                )
+                steps_since_update = 0
 
-        loss = update_model(
-            optimizer, saved_log_probs, saved_values, rewards, masks, config["gamma"]
+        # Handle any remaining data if steps_since_update didn't reach update_timestep at the end of the episode
+        if steps_since_update > 0:
+            loss = update_model(
+                optimizer,
+                saved_log_probs,
+                saved_values,
+                rewards,
+                masks,
+                config["gamma"],
+            )
+            losses.append(loss)
+
+        train_rewards.append(episode_rewards)
+        post_episode_jobs(
+            model, config, episode, env, eval_rewards, train_rewards, losses
         )
-        losses.append(loss)
-
-        post_episode_jobs(model, config, episode, env, eval_rewards, losses)
 
 
-def post_episode_jobs(model, config, episode, env, eval_rewards, losses):
+def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, losses):
     plot_losses("./results/", 0, losses)
+    plot_best_attempts("./results/", 0, "PPO_training", train_rewards)
     if episode % config.get("eval_frequency", 10) == 0:
         avg_reward = run_eval(model, env, config)
         eval_rewards.append(avg_reward)
         if len(eval_rewards) > 1:
             plot_best_attempts("./results/", 0, "PPO_eval", eval_rewards)
+    if episode % config.get("checkpoint_interval", 100) == 0:
+        save_checkpoint(model, config["checkpoint"], episode)
 
 
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
