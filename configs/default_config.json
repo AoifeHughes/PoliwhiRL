@@ -32,7 +32,7 @@
     "2": [4, 13, 6]
   },
   "use_grayscale": true,
-  "learning_rate": 0.001,
+  "learning_rate": 1e-4,
   "capacity": 100000,
   "plot_interval": 10,
   "hybrid_start": 10,
