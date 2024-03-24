@@ -7,6 +7,7 @@ import cv2
 class Rewards:
     def __init__(self, controller):
         self.controller = controller
+        self.reward_image_multipliers = controller.reward_image_multipliers
         self.rewards = []
         self.screen = None
         self.img_memory = controller.imgs
@@ -62,7 +63,7 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += default_reward * 20  # * self.N_images_rewarded
+            total_reward += default_reward * self.reward_image_multipliers[img_hash]
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
