@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import math
 import random
 import torch
 import os
@@ -10,12 +9,6 @@ from PoliwhiRL.utils.utils import image_to_tensor
 
 def beta_by_frame(frame_idx, beta_start, beta_frames):
     return min(1.0, beta_start + frame_idx * (1.0 - beta_start) / beta_frames)
-
-
-def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
-    return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
-        -1.0 * frame_idx / epsilon_decay
-    )
 
 
 def store_experience_sequence(
@@ -83,25 +76,43 @@ def compute_td_error_sequence(
     gamma,
     device,
 ):
+    # Assuming the sequences are of shape [seq_len, channels, height, width] for states
+    # and [seq_len, 1] for actions, rewards, and dones
+    # These sequences need to be correctly batched before being passed to the network
+    state_sequence = state_sequence.to(device).unsqueeze(
+        0
+    )  # Now [1, seq_len, channels, height, width]
+    next_state_sequence = next_state_sequence.to(device).unsqueeze(0)  # Same as above
+    action_sequence = action_sequence.to(device)  # [seq_len, 1], no need for unsqueeze
+    reward_sequence = reward_sequence.to(
+        device
+    )  # [seq_len], assuming it matches action_sequence shape
+    done_sequence = done_sequence.to(
+        device
+    )  # [seq_len], assuming it matches action_sequence shape
 
-    state_sequence = state_sequence.to(device).unsqueeze(1)
-    next_state_sequence = next_state_sequence.to(device).unsqueeze(1)
-    action_sequence = action_sequence.to(device).unsqueeze(-1)
-    reward_sequence = reward_sequence.to(device).unsqueeze(-1)
-    done_sequence = done_sequence.to(device).unsqueeze(-1)
+    # Get Q-values from the policy network for the entire state sequence
+    q_values = policy_net(state_sequence)  # Expected output shape: [1, num_actions]
 
-    q_values = policy_net(state_sequence)
-
-    state_action_values = q_values.gather(1, action_sequence)
+    # Since actions are taken at each timestep in the sequence, select the corresponding
+    # Q-value for the action taken at the last timestep.
+    # Assuming the last action in the sequence is the one we're evaluating:
+    last_action = action_sequence[-1].unsqueeze(0).unsqueeze(-1)  # Shape: [1, 1]
+    state_action_values = q_values.gather(1, last_action)  # Shape: [1, 1]
 
     with torch.no_grad():
-        next_state_values = target_net(next_state_sequence).max(1)[0].detach()
-        next_state_values = next_state_values.unsqueeze(-1)
+        # Get the next state values from the target network, for the next state sequence
+        next_state_values = (
+            target_net(next_state_sequence).max(1)[0].detach()
+        )  # Shape: [1]
+        next_state_values = next_state_values.unsqueeze(-1)  # Shape: [1, 1]
 
-    expected_state_action_values = reward_sequence + (
-        gamma * next_state_values * (~done_sequence).float()
-    )
+    # Compute the expected state action values
+    expected_state_action_values = reward_sequence[-1] + (
+        gamma * next_state_values * (~done_sequence[-1]).float()
+    )  # Use the last reward and done signal
 
+    # Compute TD error for the last action in the sequence
     td_errors = (expected_state_action_values - state_action_values).squeeze(-1)
     return td_errors.abs().mean().item()
 
@@ -140,7 +151,9 @@ def optimize_model_sequence(
 
     _, best_actions = next_q_values.max(1, keepdim=True)
 
-    next_q_values_target = target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    next_q_values_target = (
+        target_net(next_states).detach().gather(1, best_actions).view(batch_size, -1)
+    )
 
     expected_q_values = rewards + (gamma * next_q_values_target * (~dones)).float()
     loss = (current_q_values - expected_q_values).pow(2) * weights
@@ -150,6 +163,7 @@ def optimize_model_sequence(
     # Perform optimization
     optimizer.zero_grad()
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
     optimizer.step()
 
     # Update priorities in the buffer
@@ -220,36 +234,18 @@ def load_checkpoint(config):
         return None
 
 
+# TODO Update this function to use the new environment interface
 def select_action_hybrid(
-    state, policy_net, config, frame_idx, action_counts, num_actions, epsilon
+    states, policy_net, config, frame_idx, action_counts, num_actions, epsilon
 ):
     # Decide to take a random action with probability epsilon
-    if random.random() < epsilon:
+    if random.random() < epsilon or len(states) < config.get("sequence_length", 4):
         return random.randrange(num_actions), None  # Return a random action
 
     with torch.no_grad():
         # Obtain Q-values from the policy network for the current state
-        q_values = (
-            policy_net(state.unsqueeze(0).unsqueeze(0).to(config["device"]))
-            .cpu()
-            .numpy()[0]
-        )
-
-    exploration_rate = np.sqrt(
-        2 * math.log(frame_idx + 1) / (action_counts + 1)
-    )  # Avoid division by zero
-    hybrid_values = (
-        q_values + exploration_rate
-    )  # Combine Q-values with exploration bonus
-
-    for action in range(num_actions):
-        if action_counts[action] == 0:
-            # Ensure untried actions are considered
-            hybrid_values[action] += np.inf
-
-    action = np.argmax(hybrid_values)
-    action_counts[action] += 1  # Update the counts for the selected action
-
+        q_values = policy_net(torch.stack(states).unsqueeze(0).to(config["device"]))
+        action = torch.argmax(q_values[-1]).item()
     return action, q_values[action]
 
 
@@ -275,7 +271,7 @@ def populate_replay_buffer(
     next_state_sequence = []
     done_sequence = []
     state = env.reset()
-    env.extend_timeout(1000)
+    env.extend_timeout(250)
     state = image_to_tensor(state, config["device"])
     sequence_length = config.get("sequence_length", 4)
     num_actions = len(env.action_space)

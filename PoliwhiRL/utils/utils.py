@@ -8,10 +8,15 @@ import matplotlib.pyplot as plt
 import itertools
 
 
-def image_to_tensor(image, device):
-    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).to(torch.uint8) / 255.0
-    image = image.to(device)
+def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
+    return epsilon_final + (epsilon_start - epsilon_final) * np.exp(
+        -1.0 * frame_idx / epsilon_decay
+    )
 
+
+def image_to_tensor(image, device):
+    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).float() / 255.0
+    image = image.to(device)
     return image
 
 

@@ -50,8 +50,8 @@ class Controller:
                 "right",
                 "a",
                 "b",
-                "start",
-                "select",
+                # "start",
+                # "select",
                 "pass",
             ]
         )
@@ -78,13 +78,19 @@ class Controller:
         return self.ram.get_variables()
 
     def reset_reward_images(self):
+        self.reward_image_multipliers = {}
         self.reward_image_memory = ImageMemory()
         if (
             "reward_image_folder" in self.config
             and self.config["reward_image_folder"] != ""
         ):
             for img_loc in self.reward_images:
-                self.reward_image_memory.check_and_store_image(img_loc)
+                isAdded, targetHash = self.reward_image_memory.check_and_store_image(
+                    img_loc
+                )
+                if isAdded:
+                    image_multiplier = int(img_loc.split("_")[-1][:-4])
+                    self.reward_image_multipliers[targetHash] = image_multiplier
 
     def reset(self, init=False):
 

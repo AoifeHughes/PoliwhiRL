@@ -3,6 +3,7 @@ import os
 import torch.optim as optim
 import time
 import json
+
 from PoliwhiRL.environment.controller import Controller
 from .rainbowDQN import RainbowDQN
 from .replaybuffer import PrioritizedReplayBuffer
@@ -10,13 +11,6 @@ from .training_functions import save_checkpoint, load_checkpoint
 from .runbow import run as run_single
 from PoliwhiRL.utils import plot_best_attempts
 from .evaluate import evaluate_model
-
-
-def setup_environment(config):
-    """
-    Sets up the environment based on the provided configuration.
-    """
-    return Controller(config)
 
 
 def initialize_training(config, env):
@@ -30,7 +24,7 @@ def initialize_training(config, env):
     target_net = RainbowDQN(input_shape, len(env.action_space), config["device"]).to(
         config["device"]
     )
-    optimizer = optim.Adam(policy_net.parameters(), lr=config["learning_rate"])
+    optimizer = optim.RMSprop(policy_net.parameters(), lr=config["learning_rate"])
     replay_buffer = PrioritizedReplayBuffer(config["capacity"], config["alpha"])
 
     # Load checkpoint if available and update training components accordingly
@@ -106,7 +100,7 @@ def run(**config):
     Main function to run the training process.
     """
     start_time = time.time()
-    env = setup_environment(config)
+    env = Controller(config)
 
     policy_net, target_net, optimizer, replay_buffer = initialize_training(config, env)
 
