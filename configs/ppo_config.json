@@ -1,9 +1,9 @@
 {
     "model": "PPO",
-    "episode_length": 1000,
-    "num_episodes": 1001,
+    "episode_length": 250,
+    "num_episodes": 5001,
     "device": "mps",
-    "checkpoint_interval": 100,
+    "checkpoint_interval": 500,
     "scaling_factor": 1,
     "use_grayscale": false,
     "extend_on_reward": false,
@@ -12,5 +12,6 @@
     "sequence_length": 25,
     "num_eval_episodes": 1,
     "checkpoint": "./checkpoints/",
-    "update_timestep": 100
+    "update_timestep": 50,
+    "plot_every": 100
   }
