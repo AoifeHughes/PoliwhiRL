@@ -34,14 +34,29 @@ class RainbowDQN(nn.Module):
         )
         # Define network layers
         self.feature_layer = nn.Sequential(
-            nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4, padding=1),
+            nn.Conv2d(input_dim[0], 32, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
             nn.Flatten(),
         )
+
         self.fc_input_dim = self.feature_size(input_dim)
         self.attention = Attention(self.fc_input_dim, 256)
         self.lstm = nn.LSTM(
@@ -60,16 +75,23 @@ class RainbowDQN(nn.Module):
         batch_size, seq_len, channels, height, width = x.size()
         x = x.view(batch_size * seq_len, channels, height, width)
         x = self.feature_layer(x)
-        x = x.view(seq_len, batch_size, -1)
+        num_features = x.size(1)  # Assuming x is [batch_size*seq_len, num_features]
+        x = x.view(batch_size, seq_len, num_features)
         x = self.attention(x)
+        # lstm_out will have the shape [batch_size, seq_len, lstm_hidden_size]
         lstm_out, _ = self.lstm(x)
         dist = self.get_distribution(lstm_out)
-        q_values = torch.sum(dist * self.support, dim=2)
+        q_values = torch.sum(
+            dist * self.support, dim=2
+        )  # This results in [batch_size, num_actions]
         return q_values
 
     def get_distribution(self, x):
-        value = self.value_stream(x).view(-1, 1, self.atom_size)
-        advantage = self.advantage_stream(x).view(-1, self.num_actions, self.atom_size)
+        x_aggregated = x[:, -1, :]  # Shape: [batch_size, lstm_hidden_size]
+        value = self.value_stream(x_aggregated).view(-1, 1, self.atom_size)
+        advantage = self.advantage_stream(x_aggregated).view(
+            -1, self.num_actions, self.atom_size
+        )
         advantage_mean = advantage.mean(1, keepdim=True)
         dist = value + advantage - advantage_mean
         dist = F.softmax(dist, dim=-1)

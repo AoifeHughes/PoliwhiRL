@@ -1,17 +1,23 @@
 # -*- coding: utf-8 -*-
+from collections import deque
 from tqdm import tqdm
 import numpy as np
 from PoliwhiRL.models.RainbowDQN.evaluate import evaluate_model
 from PoliwhiRL.models.RainbowDQN.training_functions import (
     optimize_model_sequence,
     save_checkpoint,
-    epsilon_by_frame,
     store_experience_sequence,
     beta_by_frame,
     select_action_hybrid,
     populate_replay_buffer,
 )
-from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
+
+from PoliwhiRL.utils.utils import (
+    image_to_tensor,
+    plot_best_attempts,
+    plot_losses,
+    epsilon_by_frame,
+)
 
 
 def run(config, env, policy_net, target_net, optimizer, replay_buffer):
@@ -31,17 +37,18 @@ def run(config, env, policy_net, target_net, optimizer, replay_buffer):
     episodes = config.get("start_episode", 0)
     frame_idx = config.get("frame_idx", 0)
 
-    # print("\nPopulating replay buffer...\n")
-    # for _ in tqdm(range(10)):
-    #     populate_replay_buffer(
-    #         config, env, replay_buffer, policy_net, target_net, td_errors
-    #     )
-    #     if len(replay_buffer) >= config["capacity"]:
-    #         break
-
-    # print(
-    #     f"\n Number of memories stored: {len(replay_buffer)} / {config['capacity']}\n"
-    # )
+    if config.get("warm_start", False):
+        print("\nPopulating replay buffer...\n")
+        for _ in range(10):
+            populate_replay_buffer(
+                config, env, replay_buffer, policy_net, target_net, td_errors
+            )
+            if len(replay_buffer) >= config["capacity"]:
+                break
+        print(
+            f"\n Number of memories stored: {len(replay_buffer)} / {config['capacity']}\n"
+        )
+    env.run = 1
 
     print("\nTraining...\n")
     for episode in (pbar := tqdm(range(episodes, episodes + config["num_episodes"]))):
@@ -104,19 +111,21 @@ def run_episode(
     action_rewards,
     td_errors,
 ):
-
     policy_net.reset_noise()
-    state_sequence = []
-    action_sequence = []
-    reward_sequence = []
-    next_state_sequence = []
-    done_sequence = []
+    sequence_length = config.get("sequence_length", 4)
+    num_actions = len(env.action_space)
+
+    # Initialize rolling buffers as deques with a maximum length
+    state_sequence = deque(maxlen=sequence_length)
+    action_sequence = deque(maxlen=sequence_length)
+    reward_sequence = deque(maxlen=sequence_length)
+    next_state_sequence = deque(maxlen=sequence_length)
+    done_sequence = deque(maxlen=sequence_length)
+
     total_reward = 0
     done = False
     state = env.reset()
     state = image_to_tensor(state, config["device"])
-    sequence_length = config.get("sequence_length", 4)
-    num_actions = len(env.action_space)
 
     while not done:
         epsilon = epsilon_by_frame(
@@ -129,50 +138,53 @@ def run_episode(
         beta = beta_by_frame(frame_idx, config["beta_start"], config["beta_frames"])
         beta_values.append(beta)
 
-        action, was_random = select_action_hybrid(
-            state,
-            policy_net,
-            config,
-            frame_idx,
-            action_counts,
-            num_actions,
-            epsilon,
-        )
+        if len(state_sequence) < sequence_length:
+            action, was_random = np.random.choice(num_actions), True
+        else:
+            action, was_random = select_action_hybrid(
+                state_sequence,
+                policy_net,
+                config,
+                frame_idx,
+                action_counts,
+                num_actions,
+                epsilon,
+            )
         next_state, reward, done = env.step(action)
         next_state = image_to_tensor(next_state, config["device"])
         action_rewards[action] += reward
-        env.record(epsilon, "rdqn", was_random, 0)
+        # env.record(epsilon, "rdqn", was_random, 0)
 
-        # Collect experiences until we have a complete sequence
+        # Append to sequences; oldest entries are automatically removed when maxlen is exceeded
         state_sequence.append(state)
         action_sequence.append(action)
         reward_sequence.append(reward)
         next_state_sequence.append(next_state)
         done_sequence.append(done)
 
+        # Move to the next state and increment counters
         state = next_state
         total_reward += reward
         frame_idx += 1
 
-        # When a sequence is complete, store it and reset sequences
         if len(state_sequence) == sequence_length:
             store_experience_sequence(
-                state_sequence,
-                action_sequence,
-                reward_sequence,
-                next_state_sequence,
-                done_sequence,
+                list(state_sequence),
+                list(action_sequence),
+                list(reward_sequence),
+                list(next_state_sequence),
+                list(done_sequence),
                 policy_net,
                 target_net,
                 replay_buffer,
                 config,
                 td_errors,
             )
-            state_sequence = []
-            action_sequence = []
-            reward_sequence = []
-            next_state_sequence = []
-            done_sequence = []
+            state_sequence.popleft()
+            action_sequence.popleft()
+            reward_sequence.popleft()
+            next_state_sequence.popleft()
+            done_sequence.popleft()
     rewards.append(total_reward)
     buttons.append(env.buttons)
     return frame_idx
