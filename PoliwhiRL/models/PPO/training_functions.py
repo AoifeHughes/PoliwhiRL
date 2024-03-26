@@ -24,7 +24,7 @@ def setup_environment_and_model(config):
     output_dim = len(env.action_space)
     model = PPOModel(input_dim, output_dim).to(config["device"])
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     return env, model, optimizer, start_episode
 
 
@@ -84,7 +84,6 @@ def train(model, env, optimizer, config, start_episode):
                 )
                 steps_since_update = 0
 
-        # Handle any remaining data if steps_since_update didn't reach update_timestep at the end of the episode
         if steps_since_update > 0:
             loss = update_model(
                 optimizer,
@@ -103,8 +102,9 @@ def train(model, env, optimizer, config, start_episode):
 
 
 def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, losses):
-    plot_losses("./results/", 0, losses)
-    plot_best_attempts("./results/", 0, "PPO_training", train_rewards)
+    if episode % config.get("plot_every", 10) == 0:
+        plot_losses("./results/", 0, losses)
+        plot_best_attempts("./results/", 0, "PPO_training", train_rewards)
     if episode % config.get("eval_frequency", 10) == 0:
         avg_reward = run_eval(model, env, config)
         eval_rewards.append(avg_reward)
@@ -141,7 +141,7 @@ def run_eval(model, env, config):
     model.eval()  # Set the model to evaluation mode
 
     total_rewards = []
-    for episode in range(num_eval_episodes):
+    for _ in range(num_eval_episodes):
         state = env.reset()
         episode_rewards = 0
         done = False
@@ -203,7 +203,6 @@ def load_latest_checkpoint(model, checkpoint_dir):
         torch.load(latest_checkpoint, map_location=lambda storage, loc: storage)
     )
     print(f"Loaded checkpoint from episode {latest_episode}")
-
     return latest_episode
 
 
