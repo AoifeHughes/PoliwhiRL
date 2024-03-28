@@ -110,7 +110,7 @@ class Controller:
         self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
-    
+
     def play_button_sequence(self, button_sequence):
         self.ogTimeout = self.timeout + len(button_sequence)
         self.timeout = self.ogTimeout

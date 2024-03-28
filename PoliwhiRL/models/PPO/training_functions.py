@@ -33,7 +33,7 @@ def train(model, env, optimizer, config, start_episode):
     eval_rewards = []
     losses = []
     train_rewards = []
-    replay_chance = config.get("replay_chance", 0.75)
+    replay_chance = config.get("replay_chance", 0.5)
     prev_input_sequences = []
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
@@ -49,14 +49,16 @@ def train(model, env, optimizer, config, start_episode):
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
-
         replay = np.random.rand() < replay_chance
         if replay and len(prev_input_sequences) > 0:
             min_reward = np.min(train_rewards)
             tmp_total_rewards = np.array(train_rewards)
             if min_reward < 0:
                 tmp_total_rewards -= min_reward
-            chosen_index = np.random.choice(len(prev_input_sequences), p=tmp_total_rewards/tmp_total_rewards.sum())
+            tmp_total_rewards += 1e-5
+            chosen_index = np.random.choice(
+                len(prev_input_sequences), p=tmp_total_rewards / tmp_total_rewards.sum()
+            )
             replay_seq = prev_input_sequences[chosen_index]
             continue_from_point(env, replay_seq)
 
@@ -116,6 +118,7 @@ def train(model, env, optimizer, config, start_episode):
             model, config, episode, env, eval_rewards, train_rewards, losses
         )
 
+
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
     next_value = saved_values[-1].detach()
     returns = compute_returns(next_value, rewards, masks, gamma)
@@ -137,14 +140,25 @@ def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma
 def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, losses):
     if episode % config.get("plot_every", 10) == 0:
         plot_losses("./results/", episode, losses)
-        plot_best_attempts("./results/", episode, f"PPO_training_{config['episode_length']}", train_rewards)
+        plot_best_attempts(
+            "./results/",
+            episode,
+            f"PPO_training_{config['episode_length']}",
+            train_rewards,
+        )
     if episode % config.get("eval_frequency", 10) == 0:
         avg_reward = run_eval(model, env, config)
         eval_rewards.append(avg_reward)
         if len(eval_rewards) > 1:
-            plot_best_attempts("./results/", episode, f"PPO_eval_{config['episode_length']}", eval_rewards)
+            plot_best_attempts(
+                "./results/",
+                episode,
+                f"PPO_eval_{config['episode_length']}",
+                eval_rewards,
+            )
     if episode % config.get("checkpoint_interval", 100) == 0:
         save_checkpoint(model, config["checkpoint"], episode)
+
 
 def continue_from_point(env, buttons):
     env.reset()
@@ -163,7 +177,7 @@ def run_eval(model, env, config):
         episode_rewards = 0
         done = False
         states_seq = []
-        
+
         with torch.no_grad():  # No need to track gradients during evaluation
             while not done:
                 state_tensor = image_to_tensor(state, device)
