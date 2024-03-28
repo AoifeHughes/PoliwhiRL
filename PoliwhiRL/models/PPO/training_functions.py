@@ -33,6 +33,8 @@ def train(model, env, optimizer, config, start_episode):
     eval_rewards = []
     losses = []
     train_rewards = []
+    replay_chance = config.get("replay_chance", 0.75)
+    prev_input_sequences = []
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
     ):
@@ -47,6 +49,17 @@ def train(model, env, optimizer, config, start_episode):
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
+
+        replay = np.random.rand() < replay_chance
+        if replay and len(prev_input_sequences) > 0:
+            min_reward = np.min(train_rewards)
+            tmp_total_rewards = np.array(train_rewards)
+            if min_reward < 0:
+                tmp_total_rewards -= min_reward
+            chosen_index = np.random.choice(len(prev_input_sequences), p=tmp_total_rewards/tmp_total_rewards.sum())
+            replay_seq = prev_input_sequences[chosen_index]
+            continue_from_point(env, replay_seq)
+
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
             states_seq.append(state_tensor)
@@ -97,6 +110,8 @@ def train(model, env, optimizer, config, start_episode):
             losses.append(loss)
 
         train_rewards.append(episode_rewards)
+        prev_input_sequences.append(env.get_buttons())
+
         post_episode_jobs(
             model, config, episode, env, eval_rewards, train_rewards, losses
         )
@@ -141,23 +156,14 @@ def run_eval(model, env, config):
     sequence_length = config["sequence_length"]
     device = config["device"]
     model.eval()  # Set the model to evaluation mode
-    replay_chance = config.get("replay_chance", 0.3)
-    prev_input_sequences = []
+
     total_rewards = []
     for _ in range(num_eval_episodes):
         state = env.reset()
         episode_rewards = 0
         done = False
         states_seq = []
-        replay = np.random.rand() < replay_chance
-        if replay:
-            min_reward = np.min(total_rewards)
-            tmp_total_rewards = np.array(total_rewards)
-            if min_reward < 0:
-                tmp_total_rewards -= min_reward
-            chosen_index = np.random.choice(len(prev_input_sequences), p=tmp_total_rewards/tmp_total_rewards.sum())
-            replay_seq = prev_input_sequences[chosen_index]
-            continue_from_point(env, replay_seq)
+        
         with torch.no_grad():  # No need to track gradients during evaluation
             while not done:
                 state_tensor = image_to_tensor(state, device)
@@ -178,7 +184,6 @@ def run_eval(model, env, config):
                 if len(states_seq) == sequence_length:
                     states_seq.pop(0)  # Keep the sequence buffer at fixed size
 
-        prev_input_sequences.append(env.get_buttons())
         total_rewards.append(episode_rewards)
     avg_reward = sum(total_rewards) / num_eval_episodes
     model.train()  # Set the model back to training mode
