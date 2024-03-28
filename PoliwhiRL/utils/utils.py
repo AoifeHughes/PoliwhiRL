@@ -15,10 +15,17 @@ def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
 
 
 def image_to_tensor(image, device):
-    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).float() / 255.0
+    image = torch.from_numpy(np.transpose(image, (2, 0, 1))) / 255.0
     image = image.to(device)
     return image
 
+def images_to_tensors(images, device):
+    tensors = []
+    for image in images:
+        tensor = torch.from_numpy(np.transpose(image, (2, 0, 1))) / 255.0
+        tensor = tensor.to(device)
+        tensors.append(tensor)
+    return tensors
 
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:

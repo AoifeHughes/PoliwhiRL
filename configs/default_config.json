@@ -36,7 +36,7 @@
   "capacity": 100000,
   "plot_interval": 10,
   "hybrid_start": 10,
-  "eval_frequency": 50,
+  "record_frequency": 10,
   "eval_episodes": 5,
   "eval_mode": false,
   "replay_frequency": 5,
