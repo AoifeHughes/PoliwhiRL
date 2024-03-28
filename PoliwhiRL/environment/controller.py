@@ -50,8 +50,8 @@ class Controller:
                 "right",
                 "a",
                 "b",
-                # "start",
-                # "select",
+                "start",
+                "select",
                 "pass",
             ]
         )
@@ -110,6 +110,14 @@ class Controller:
         self.step(len(self.action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
+    
+    def play_button_sequence(self, button_sequence):
+        self.ogTimeout = self.timeout + len(button_sequence)
+        self.timeout = self.ogTimeout
+        for button in button_sequence:
+            res = self.step(button)
+
+        return res
 
     def step(self, movement, ticks_per_input=10, wait=75, init=False):
         movement_int = movement

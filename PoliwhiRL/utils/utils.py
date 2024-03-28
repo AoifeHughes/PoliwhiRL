@@ -119,7 +119,7 @@ def plot_losses(results_path, episodes, losses):
 
     # Create plot
     fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
-    ax.plot(losses, label="Loss", color="red", linewidth=2)
+    ax.plot(np.abs(losses), label="Loss", color="red", linewidth=2)
 
     ax.set_title("Loss Over Episodes")
     ax.set_xlabel("Episode #")
