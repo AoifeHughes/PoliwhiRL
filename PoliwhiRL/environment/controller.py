@@ -112,10 +112,9 @@ class Controller:
         return self.screen_image()
 
     def play_button_sequence(self, button_sequence):
-        self.ogTimeout = self.timeout + len(button_sequence)
-        self.timeout = self.ogTimeout
         for button in button_sequence:
             res = self.step(button)
+            self.steps = 0
 
         return res
 
@@ -147,7 +146,7 @@ class Controller:
         original_image = np.array(self.pyboy.screen.image)[
             :, :, :3
         ]  # Remove alpha channel
-        if self.use_grayscale:
+        if self.use_grayscale and not no_resize:
             grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
             grayscale_image = np.expand_dims(grayscale_image, axis=-1)
             original_image = grayscale_image

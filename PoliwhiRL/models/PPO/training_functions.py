@@ -28,9 +28,8 @@ def setup_environment_and_model(config):
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     return env, model, optimizer, start_episode
 
-
+@profile
 def train(model, env, optimizer, config, start_episode):
-    eval_rewards = []
     losses = []
     train_rewards = []
     replay_chance = config.get("replay_chance", 0.5)
@@ -50,6 +49,7 @@ def train(model, env, optimizer, config, start_episode):
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
         replay = np.random.rand() < replay_chance
+
         if replay and len(prev_input_sequences) > 0:
             min_reward = np.min(train_rewards)
             tmp_total_rewards = np.array(train_rewards)
@@ -72,6 +72,8 @@ def train(model, env, optimizer, config, start_episode):
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
             next_state, reward, done = env.step(action.item())
+            if episode % config.get("record_frequency", 10) == 0:
+                env.record(0, f"episode_{episode}")
             episode_rewards += reward
             state = next_state
             saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
@@ -115,7 +117,7 @@ def train(model, env, optimizer, config, start_episode):
         prev_input_sequences.append(env.get_buttons())
 
         post_episode_jobs(
-            model, config, episode, env, eval_rewards, train_rewards, losses
+            model, config, episode, train_rewards, losses
         )
 
 
@@ -137,7 +139,7 @@ def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma
     return (action_loss + value_loss).item()
 
 
-def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, losses):
+def post_episode_jobs(model, config, episode, train_rewards, losses):
     if episode % config.get("plot_every", 10) == 0:
         plot_losses("./results/", episode, losses)
         plot_best_attempts(
@@ -146,62 +148,13 @@ def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, 
             f"PPO_training_{config['episode_length']}",
             train_rewards,
         )
-    if episode % config.get("eval_frequency", 10) == 0:
-        avg_reward = run_eval(model, env, config)
-        eval_rewards.append(avg_reward)
-        if len(eval_rewards) > 1:
-            plot_best_attempts(
-                "./results/",
-                episode,
-                f"PPO_eval_{config['episode_length']}",
-                eval_rewards,
-            )
     if episode % config.get("checkpoint_interval", 100) == 0:
         save_checkpoint(model, config["checkpoint"], episode)
 
 
 def continue_from_point(env, buttons):
-    env.reset()
     env.play_button_sequence(buttons)
 
-
-def run_eval(model, env, config):
-    num_eval_episodes = config.get("num_eval_episodes", 10)
-    sequence_length = config["sequence_length"]
-    device = config["device"]
-    model.eval()  # Set the model to evaluation mode
-
-    total_rewards = []
-    for _ in range(num_eval_episodes):
-        state = env.reset()
-        episode_rewards = 0
-        done = False
-        states_seq = []
-
-        with torch.no_grad():  # No need to track gradients during evaluation
-            while not done:
-                state_tensor = image_to_tensor(state, device)
-                states_seq.append(state_tensor)
-                if len(states_seq) < sequence_length:
-                    continue  # Wait until we have enough states for a full sequence
-                state_sequence_tensor = torch.stack(
-                    states_seq[-sequence_length:]
-                ).unsqueeze(0)
-                action_probs, _ = model(state_sequence_tensor)
-                action = (
-                    torch.distributions.Categorical(action_probs[0]).sample().item()
-                )
-                next_state, reward, done = env.step(action)
-                env.record(0, f"ppo_eval_{config['episode_length']}", False, 0)
-                episode_rewards += reward
-                state = next_state
-                if len(states_seq) == sequence_length:
-                    states_seq.pop(0)  # Keep the sequence buffer at fixed size
-
-        total_rewards.append(episode_rewards)
-    avg_reward = sum(total_rewards) / num_eval_episodes
-    model.train()  # Set the model back to training mode
-    return avg_reward
 
 
 def load_latest_checkpoint(model, checkpoint_dir):
