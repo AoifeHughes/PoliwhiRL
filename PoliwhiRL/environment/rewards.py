@@ -114,7 +114,7 @@ class Rewards:
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = -default_reward  # Penalty for doing nothing
+        total_reward = 0
         # if use_sight:
         #     total_reward = self.update_for_vision(total_reward, default_reward)
 
