@@ -28,7 +28,6 @@ def setup_environment_and_model(config):
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     return env, model, optimizer, start_episode
 
-@profile
 def train(model, env, optimizer, config, start_episode):
     losses = []
     train_rewards = []
@@ -48,7 +47,7 @@ def train(model, env, optimizer, config, start_episode):
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
-        replay = np.random.rand() < replay_chance
+        replay = False #np.random.rand() < replay_chance
 
         if replay and len(prev_input_sequences) > 0:
             min_reward = np.min(train_rewards)
@@ -73,7 +72,7 @@ def train(model, env, optimizer, config, start_episode):
             action = dist.sample()
             next_state, reward, done = env.step(action.item())
             if episode % config.get("record_frequency", 10) == 0:
-                env.record(0, f"episode_{episode}")
+                env.record(0, f"PPO_training_{config['episode_length']}")
             episode_rewards += reward
             state = next_state
             saved_log_probs.append(dist.log_prob(action).unsqueeze(0))

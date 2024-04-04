@@ -1,7 +1,7 @@
 {
     "model": "PPO",
-    "episode_length": "25,50,100,1000",
-    "num_episodes": "500,250,200,10",
+    "episode_length": "10,50,100,1000",
+    "num_episodes": "25000,5000,5000,1000",
     "device": "mps",
     "checkpoint_interval": 500,
     "scaling_factor": 1,
@@ -9,7 +9,7 @@
     "extend_on_reward": false,
     "erase": false,
     "reward_image_folder": "./configs/reward_images",
-    "sequence_length": "10,20,30,50",
+    "sequence_length": "3,50,50,50",
     "num_eval_episodes": 1,
     "checkpoint": "./checkpoints/",
     "update_timestep": 50,
