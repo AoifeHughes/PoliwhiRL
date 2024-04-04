@@ -9,7 +9,7 @@ class FeatureCNN(nn.Module):
         super(FeatureCNN, self).__init__()
 
         self.feature_layer = nn.Sequential(
-            nn.Conv2d(input_dim[0], 32, kernel_size=5, stride=2, padding=2),
+            nn.Conv2d(input_dim[0], 32, kernel_size=3, stride=1, padding=2),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Dropout(p=0.2),
