@@ -1,7 +1,7 @@
 {
     "model": "PPO",
     "episode_length": "10,50,100,1000",
-    "num_episodes": "25000,5000,5000,1000",
+    "num_episodes": "10000,5000,5000,1000",
     "device": "mps",
     "checkpoint_interval": 500,
     "scaling_factor": 1,

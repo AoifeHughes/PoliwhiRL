@@ -18,6 +18,8 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
+def make_new_env(config):
+    return Env(config)
 
 def setup_environment_and_model(config):
     env = Env(config)
@@ -31,7 +33,6 @@ def setup_environment_and_model(config):
 def train(model, env, optimizer, config, start_episode):
     losses = []
     train_rewards = []
-    replay_chance = config.get("replay_chance", 0.5)
     prev_input_sequences = []
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
@@ -47,19 +48,6 @@ def train(model, env, optimizer, config, start_episode):
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
-        replay = False #np.random.rand() < replay_chance
-
-        if replay and len(prev_input_sequences) > 0:
-            min_reward = np.min(train_rewards)
-            tmp_total_rewards = np.array(train_rewards)
-            if min_reward < 0:
-                tmp_total_rewards -= min_reward
-            tmp_total_rewards += 1e-5
-            chosen_index = np.random.choice(
-                len(prev_input_sequences), p=tmp_total_rewards / tmp_total_rewards.sum()
-            )
-            replay_seq = prev_input_sequences[chosen_index]
-            continue_from_point(env, replay_seq)
 
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
@@ -81,7 +69,6 @@ def train(model, env, optimizer, config, start_episode):
             masks.append(1.0 - done)
             steps_since_update += 1
 
-            # Perform update and reset lists if steps_since_update reaches update_timestep
             if steps_since_update == config["update_timestep"]:
                 loss = update_model(
                     optimizer,
@@ -92,7 +79,6 @@ def train(model, env, optimizer, config, start_episode):
                     config["gamma"],
                 )
                 losses.append(loss)
-                # Reset the lists
                 saved_log_probs, saved_values, rewards, masks = (
                     [],
                     [],
