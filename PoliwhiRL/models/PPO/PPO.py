@@ -2,14 +2,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from PoliwhiRL.models.RainbowDQN.rainbowDQN import Attention
 
 class FeatureCNN(nn.Module):
     def __init__(self, input_dim):
         super(FeatureCNN, self).__init__()
 
         self.feature_layer = nn.Sequential(
-            nn.Conv2d(input_dim[0], 32, kernel_size=5, stride=2, padding=2),
+            nn.Conv2d(input_dim[0], 32, kernel_size=3, stride=1, padding=2),
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Dropout(p=0.2),
@@ -23,16 +23,19 @@ class FeatureCNN(nn.Module):
             nn.Dropout(p=0.2),
             nn.Flatten(),
         )
+        self.attention = Attention(self.feature_size(input_dim), 256)
+
+    def feature_size(self, input_dim):
+        return self.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1)
 
     def forward(self, x):
-        return self.feature_layer(x)
-
+        return self.attention(self.feature_layer(x))
 
 class Actor(nn.Module):
     def __init__(self, feature_dim, num_actions):
         super(Actor, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=512, batch_first=True)
-        self.policy_head = nn.Linear(512, num_actions)
+        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=64, batch_first=True)
+        self.policy_head = nn.Linear(64, num_actions)
 
     def forward(self, features):
         lstm_out, _ = self.lstm(features)
@@ -42,8 +45,8 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, feature_dim):
         super(Critic, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=512, batch_first=True)
-        self.value_head = nn.Linear(512, 1)
+        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=64, batch_first=True)
+        self.value_head = nn.Linear(64, 1)
 
     def forward(self, features):
         lstm_out, _ = self.lstm(features)

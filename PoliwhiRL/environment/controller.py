@@ -50,8 +50,8 @@ class Controller:
                 "right",
                 "a",
                 "b",
-                # "start",
-                # "select",
+                "start",
+                "select",
                 "pass",
             ]
         )
@@ -111,6 +111,13 @@ class Controller:
         self.timeout = self.ogTimeout
         return self.screen_image()
 
+    def play_button_sequence(self, button_sequence):
+        for button in button_sequence:
+            res = self.step(button)
+            self.steps = 0
+
+        return res
+
     def step(self, movement, ticks_per_input=10, wait=75, init=False):
         movement_int = movement
         movement = self.action_space_buttons[movement]
@@ -139,7 +146,7 @@ class Controller:
         original_image = np.array(self.pyboy.screen.image)[
             :, :, :3
         ]  # Remove alpha channel
-        if self.use_grayscale:
+        if self.use_grayscale and not no_resize:
             grayscale_image = np.dot(original_image[..., :3], [0.2989, 0.5870, 0.1140])
             grayscale_image = np.expand_dims(grayscale_image, axis=-1)
             original_image = grayscale_image
