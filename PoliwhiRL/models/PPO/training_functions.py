@@ -54,7 +54,7 @@ def train(model, env, optimizer, config, start_episode):
                 continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
 
-            if np.random.rand() > epsilon_current:
+            if True: #np.random.rand() > epsilon_current: # disabling for now
                 action_probs, value_estimates = model(state_sequence_tensor)
                 dist = torch.distributions.Categorical(action_probs[0])
                 action = dist.sample()
@@ -62,7 +62,7 @@ def train(model, env, optimizer, config, start_episode):
                 was_random.append(False)
             else:
                 action = torch.tensor(np.random.choice(env.action_space), dtype=torch.long).to(config["device"])
-                saved_log_probs.append(torch.tensor(0.0).to(config["device"]))  # Placeholder for random actions
+                saved_log_probs.append(torch.tensor(0.0).to(config["device"]))  
                 was_random.append(True)
 
             next_state, reward, done = env.step(action.item())
