@@ -34,8 +34,6 @@ def train(model, env, optimizer, config, start_episode):
     losses = []
     train_rewards = []
     prev_input_sequences = []
-    epsilon = config["epsilon_start"]
-    epsilon_decay = config["epsilon_decay"]
 
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
@@ -58,7 +56,7 @@ def train(model, env, optimizer, config, start_episode):
             if len(states_seq) < config["sequence_length"]:
                 continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
-            action_probs, value_estimates = model(state_sequence_tensor)
+            action_probs, value_estimates = model(state_sequence_tensor) 
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
             next_state, reward, done = env.step(action.item())
@@ -104,6 +102,7 @@ def train(model, env, optimizer, config, start_episode):
         train_rewards.append(episode_rewards)
         prev_input_sequences.append(env.get_buttons())
 
+        print("Post episode jobs for episode", episode)
         post_episode_jobs(
             model, config, episode, train_rewards, losses
         )

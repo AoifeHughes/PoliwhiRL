@@ -34,8 +34,8 @@ class FeatureCNN(nn.Module):
 class Actor(nn.Module):
     def __init__(self, feature_dim, num_actions):
         super(Actor, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=512, batch_first=True)
-        self.policy_head = nn.Linear(512, num_actions)
+        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=64, batch_first=True)
+        self.policy_head = nn.Linear(64, num_actions)
 
     def forward(self, features):
         lstm_out, _ = self.lstm(features)
@@ -45,8 +45,8 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, feature_dim):
         super(Critic, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=512, batch_first=True)
-        self.value_head = nn.Linear(512, 1)
+        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=64, batch_first=True)
+        self.value_head = nn.Linear(64, 1)
 
     def forward(self, features):
         lstm_out, _ = self.lstm(features)
