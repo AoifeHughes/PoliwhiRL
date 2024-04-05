@@ -37,15 +37,20 @@ def train(model, env, optimizer, config, start_episode):
     epsilon = config["epsilon_start"]
     epsilon_decay = config["epsilon_decay"]
 
-    for episode in tqdm(range(start_episode, start_episode + config["num_episodes"]), desc="Training"):
+    for episode in tqdm(
+        range(start_episode, start_episode + config["num_episodes"]), desc="Training"
+    ):
         state = env.reset()
-        episode_rewards, saved_log_probs, saved_values, rewards, masks, was_random = (
-            0, [], [], [], [], []
+        episode_rewards, saved_log_probs, saved_values, rewards, masks = (
+            0,
+            [],
+            [],
+            [],
+            [],
         )
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
-        epsilon_current = min(epsilon * (epsilon_decay ** episode), config["epsilon_final"])
 
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
@@ -53,69 +58,73 @@ def train(model, env, optimizer, config, start_episode):
             if len(states_seq) < config["sequence_length"]:
                 continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
-
-            if True: #np.random.rand() > epsilon_current: # disabling for now
-                action_probs, value_estimates = model(state_sequence_tensor)
-                dist = torch.distributions.Categorical(action_probs[0])
-                action = dist.sample()
-                saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
-                was_random.append(False)
-            else:
-                action = torch.tensor(np.random.choice(env.action_space), dtype=torch.long).to(config["device"])
-                saved_log_probs.append(torch.tensor(0.0).to(config["device"]))  
-                was_random.append(True)
-
+            action_probs, value_estimates = model(state_sequence_tensor)
+            dist = torch.distributions.Categorical(action_probs[0])
+            action = dist.sample()
             next_state, reward, done = env.step(action.item())
             if episode % config.get("record_frequency", 10) == 0:
                 env.record(0, f"PPO_training_{config['episode_length']}")
             episode_rewards += reward
             state = next_state
-            saved_values.append(value_estimates if not was_random[-1] else torch.tensor([[0.0]]).to(config["device"]))
+            saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
+            saved_values.append(value_estimates)
             rewards.append(reward)
             masks.append(1.0 - done)
             steps_since_update += 1
 
             if steps_since_update == config["update_timestep"]:
                 loss = update_model(
-                    optimizer, saved_log_probs, saved_values, rewards, masks, was_random, config["gamma"]
+                    optimizer,
+                    saved_log_probs,
+                    saved_values,
+                    rewards,
+                    masks,
+                    config["gamma"],
                 )
                 losses.append(loss)
-                saved_log_probs, saved_values, rewards, masks, was_random = (
-                    [], [], [], [], []
+                saved_log_probs, saved_values, rewards, masks = (
+                    [],
+                    [],
+                    [],
+                    [],
                 )
                 steps_since_update = 0
 
         if steps_since_update > 0:
             loss = update_model(
-                optimizer, saved_log_probs, saved_values, rewards, masks, was_random, config["gamma"]
+                optimizer,
+                saved_log_probs,
+                saved_values,
+                rewards,
+                masks,
+                config["gamma"],
             )
             losses.append(loss)
 
         train_rewards.append(episode_rewards)
         prev_input_sequences.append(env.get_buttons())
 
-        post_episode_jobs(model, config, episode, train_rewards, losses)
+        post_episode_jobs(
+            model, config, episode, train_rewards, losses
+        )
 
-def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, was_random, gamma):
+
+def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
     next_value = saved_values[-1].detach()
     returns = compute_returns(next_value, rewards, masks, gamma)
 
-    returns = torch.cat([ret for ret, rand in zip(returns, was_random) if not rand]).detach()
-    values = torch.cat([val for val, rand in zip(saved_values, was_random) if not rand])
-
-    # Filter out actions that were random
-    log_probs = torch.cat([log_prob for log_prob, rand in zip(saved_log_probs, was_random) if not rand])
+    log_probs = torch.cat(saved_log_probs)
+    returns = torch.cat(returns).detach()
+    values = torch.cat(saved_values)
 
     advantages = returns - values.squeeze(-1)
-    action_loss = -(log_probs * advantages).mean() if not log_probs.nelement() == 0 else 0
-    value_loss = (returns - values.squeeze(-1)).pow(2).mean() if not values.nelement() == 0 else 0
+    action_loss = -(log_probs * advantages).mean()
+    value_loss = (returns - values.squeeze(-1)).pow(2).mean()
 
     optimizer.zero_grad()
-    total_loss = action_loss + value_loss
-    if total_loss != 0:
-        total_loss.backward()
-        optimizer.step()
-    return total_loss.item()
+    (action_loss + value_loss).backward()
+    optimizer.step()
+    return (action_loss + value_loss).item()
 
 
 def post_episode_jobs(model, config, episode, train_rewards, losses):
