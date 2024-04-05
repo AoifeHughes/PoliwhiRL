@@ -9,9 +9,9 @@
     "extend_on_reward": false,
     "erase": false,
     "reward_image_folder": "./configs/reward_images",
-    "sequence_length": "3,50,50,50",
+    "sequence_length": "10,10,10",
     "num_eval_episodes": 1,
     "checkpoint": "./checkpoints/",
-    "update_timestep": 50,
+    "update_timestep": 20,
     "plot_every": 50
   }
