@@ -15,10 +15,17 @@ def epsilon_by_frame(frame_idx, epsilon_start, epsilon_final, epsilon_decay):
 
 
 def image_to_tensor(image, device):
-    image = torch.from_numpy(np.transpose(image, (2, 0, 1))).float() / 255.0
+    image = torch.from_numpy(np.transpose(image, (2, 0, 1))) / 255.0
     image = image.to(device)
     return image
 
+def images_to_tensors(images, device):
+    tensors = []
+    for image in images:
+        tensor = torch.from_numpy(np.transpose(image, (2, 0, 1))) / 255.0
+        tensor = tensor.to(device)
+        tensors.append(tensor)
+    return tensors
 
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:
@@ -117,20 +124,23 @@ def plot_losses(results_path, episodes, losses):
         os.mkdir(results_path)
     results_path = os.path.join(results_path, f"losses_{episodes}.png")
 
+    # Calculate cumulative mean
+    cum_mean = np.cumsum(np.abs(losses)) / np.arange(1, len(losses) + 1)
+
     # Create plot
     fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
-    ax.plot(losses, label="Loss", color="red", linewidth=2)
+    ax.plot(cum_mean, label="Cumulative Mean", color="blue", linewidth=2)
 
     ax.set_title("Loss Over Episodes")
     ax.set_xlabel("Episode #")
-    ax.set_ylabel("Loss")
+    ax.set_ylabel("Cumulative Mean Loss")
     ax.grid(True, which="both", linestyle="--", linewidth=0.5)
     ax.legend()
 
     fig.tight_layout()
 
     fig.savefig(results_path)
-    np.savetxt(results_path.replace(".png", ".csv"), losses, delimiter=",")
+    np.savetxt(results_path.replace(".png", ".csv"), cum_mean, delimiter=",")
 
     plt.close(fig)
 

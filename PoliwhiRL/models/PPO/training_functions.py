@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
+import numpy as np
 import torch.optim as optim
 import torch
 import os
@@ -17,6 +18,8 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
+def make_new_env(config):
+    return Env(config)
 
 def setup_environment_and_model(config):
     env = Env(config)
@@ -27,11 +30,11 @@ def setup_environment_and_model(config):
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     return env, model, optimizer, start_episode
 
-
 def train(model, env, optimizer, config, start_episode):
-    eval_rewards = []
     losses = []
     train_rewards = []
+    prev_input_sequences = []
+
     for episode in tqdm(
         range(start_episode, start_episode + config["num_episodes"]), desc="Training"
     ):
@@ -46,16 +49,19 @@ def train(model, env, optimizer, config, start_episode):
         done = False
         states_seq = collections.deque(maxlen=config["sequence_length"])
         steps_since_update = 0
+
         while not done:
             state_tensor = image_to_tensor(state, config["device"])
             states_seq.append(state_tensor)
             if len(states_seq) < config["sequence_length"]:
                 continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
-            action_probs, value_estimates = model(state_sequence_tensor)
+            action_probs, value_estimates = model(state_sequence_tensor) 
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
             next_state, reward, done = env.step(action.item())
+            if episode % config.get("record_frequency", 10) == 0:
+                env.record(0, f"PPO_training_{config['episode_length']}")
             episode_rewards += reward
             state = next_state
             saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
@@ -64,7 +70,6 @@ def train(model, env, optimizer, config, start_episode):
             masks.append(1.0 - done)
             steps_since_update += 1
 
-            # Perform update and reset lists if steps_since_update reaches update_timestep
             if steps_since_update == config["update_timestep"]:
                 loss = update_model(
                     optimizer,
@@ -75,7 +80,6 @@ def train(model, env, optimizer, config, start_episode):
                     config["gamma"],
                 )
                 losses.append(loss)
-                # Reset the lists
                 saved_log_probs, saved_values, rewards, masks = (
                     [],
                     [],
@@ -96,22 +100,12 @@ def train(model, env, optimizer, config, start_episode):
             losses.append(loss)
 
         train_rewards.append(episode_rewards)
+        prev_input_sequences.append(env.get_buttons())
+
+        print("Post episode jobs for episode", episode)
         post_episode_jobs(
-            model, config, episode, env, eval_rewards, train_rewards, losses
+            model, config, episode, train_rewards, losses
         )
-
-
-def post_episode_jobs(model, config, episode, env, eval_rewards, train_rewards, losses):
-    if episode % config.get("plot_every", 10) == 0:
-        plot_losses("./results/", 0, losses)
-        plot_best_attempts("./results/", 0, "PPO_training", train_rewards)
-    if episode % config.get("eval_frequency", 10) == 0:
-        avg_reward = run_eval(model, env, config)
-        eval_rewards.append(avg_reward)
-        if len(eval_rewards) > 1:
-            plot_best_attempts("./results/", 0, "PPO_eval", eval_rewards)
-    if episode % config.get("checkpoint_interval", 100) == 0:
-        save_checkpoint(model, config["checkpoint"], episode)
 
 
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
@@ -119,62 +113,35 @@ def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma
     returns = compute_returns(next_value, rewards, masks, gamma)
 
     log_probs = torch.cat(saved_log_probs)
-    returns = torch.cat(returns)
+    returns = torch.cat(returns).detach()
     values = torch.cat(saved_values)
 
-    advantages = returns - values
-    action_loss = -(log_probs * advantages.detach()).mean()
-    value_loss = advantages.pow(2).mean()
+    advantages = returns - values.squeeze(-1)
+    action_loss = -(log_probs * advantages).mean()
+    value_loss = (returns - values.squeeze(-1)).pow(2).mean()
 
-    loss = action_loss + value_loss
     optimizer.zero_grad()
-    loss.backward()
+    (action_loss + value_loss).backward()
     optimizer.step()
-    return loss.item()
+    return (action_loss + value_loss).item()
 
 
-def run_eval(model, env, config):
-    num_eval_episodes = config.get("num_eval_episodes", 10)
-    sequence_length = config["sequence_length"]
-    device = config["device"]
+def post_episode_jobs(model, config, episode, train_rewards, losses):
+    if episode % config.get("plot_every", 10) == 0:
+        plot_losses("./results/", f"latest_{config['episode_length']}", losses)
+        plot_best_attempts(
+            "./results/",
+            "latest",
+            f"PPO_training_{config['episode_length']}",
+            train_rewards,
+        )
+    if episode % config.get("checkpoint_interval", 100) == 0:
+        save_checkpoint(model, config["checkpoint"], episode)
 
-    model.eval()  # Set the model to evaluation mode
 
-    total_rewards = []
-    for _ in range(num_eval_episodes):
-        state = env.reset()
-        episode_rewards = 0
-        done = False
-        states_seq = []
+def continue_from_point(env, buttons):
+    env.play_button_sequence(buttons)
 
-        with torch.no_grad():  # No need to track gradients during evaluation
-            while not done:
-                state_tensor = image_to_tensor(state, device)
-                states_seq.append(state_tensor)
-                if len(states_seq) < sequence_length:
-                    continue  # Wait until we have enough states for a full sequence
-
-                state_sequence_tensor = torch.stack(
-                    states_seq[-sequence_length:]
-                ).unsqueeze(0)
-
-                action_probs, _ = model(state_sequence_tensor)
-                action = (
-                    torch.distributions.Categorical(action_probs[0]).sample().item()
-                )
-
-                next_state, reward, done = env.step(action)
-                env.record(0, "ppo_eval", False, 0)
-                episode_rewards += reward
-                state = next_state
-
-                if len(states_seq) == sequence_length:
-                    states_seq.pop(0)  # Keep the sequence buffer at fixed size
-
-        total_rewards.append(episode_rewards)
-    avg_reward = sum(total_rewards) / num_eval_episodes
-    model.train()  # Set the model back to training mode
-    return avg_reward
 
 
 def load_latest_checkpoint(model, checkpoint_dir):
