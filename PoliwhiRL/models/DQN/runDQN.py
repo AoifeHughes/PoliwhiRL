@@ -45,7 +45,8 @@ def run_model(config):
         while not done:
             action = agent.act(state)
             next_state, reward, done = env.step(action)
-            env.record(epsilon, "dqn", 0, reward)
+            if episode % 25== 0:
+                env.record(epsilon, "dqn", 0, reward)
             episode_transitions.append((state, action, reward, next_state, done))
             state = next_state
             episode_reward += reward
