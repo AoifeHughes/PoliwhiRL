@@ -1,0 +1,12 @@
+{
+    "model": "DQN",
+    "device": "mps",
+    "num_episodes": 10000,
+    "epsilon_decay": 0.9999,
+    "epsilon_min": 0.1,
+    "episode_length": 25,
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "scaling_factor": 0.25,
+    "use_grayscale": true
+}
