@@ -2,6 +2,7 @@ import numpy as np
 import random
 from collections import deque
 import torch
+import os
 import torch.nn as nn
 import torch.optim as optim
 
@@ -66,7 +67,9 @@ class DQNAgent:
             return random.randrange(self.action_size)      
         state = torch.tensor(np.transpose(state, (2, 0, 1)), dtype=torch.float32).unsqueeze(0).to(self.device)
         q_values = self.model(state)
-        return torch.argmax(q_values).item()
+        probabilities = torch.softmax(q_values, dim=0)
+        action = torch.multinomial(probabilities, 1).item()
+        return action
 
     def replay(self):
         if self.epsilon > self.epsilon_min:
@@ -98,11 +101,22 @@ class DQNAgent:
         self.update_counter += 1
         if self.update_counter % self.target_update == 0:
             self.target_model.load_state_dict(self.model.state_dict())
+
     def save(self, path):
-        torch.save(self.model.state_dict(), path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'epsilon': self.epsilon,
+            'memory': self.memory
+        }, path)
 
     def load(self, path):
-        self.model.load_state_dict(torch.load(path))
+        checkpoint = torch.load(path)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.epsilon = checkpoint['epsilon']
+        self.memory = checkpoint['memory']
 
 
 class ReplayMemory:
@@ -118,7 +132,13 @@ class ReplayMemory:
         # Normalize the state and next_state
         state = state / 255.0
         next_state = next_state / 255.0
-
+        
+        if len(self.memory) == self.memory_size:
+            # Memory is full, pop the lowest priority memory
+            min_priority_index = self.priorities.index(min(self.priorities))
+            self.memory.pop(min_priority_index)
+            self.priorities.pop(min_priority_index)
+        
         max_priority = max(self.priorities) if self.memory else 1.0
         self.memory.append((state, action, reward, next_state, done))
         self.priorities.append(max_priority)
@@ -130,15 +150,11 @@ class ReplayMemory:
         priorities = np.array(self.priorities)
         probabilities = priorities ** self.alpha
         probabilities /= probabilities.sum()
-
         indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
         samples = [self.memory[i] for i in indices]
-
         weights = (len(self.memory) * probabilities[indices]) ** (-self.beta)
         weights /= weights.max()
-
         self.beta = min(1.0, self.beta + self.beta_increment)
-
         return samples, indices, weights
 
     def update_priorities(self, indices, priorities):
@@ -147,7 +163,6 @@ class ReplayMemory:
 
     def __len__(self):
         return len(self.memory)
-
 
 class EpisodicMemory:
     def __init__(self, memory_size):

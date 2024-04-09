@@ -1,12 +1,15 @@
 {
     "model": "DQN",
     "device": "mps",
-    "num_episodes": 2000,
-    "epsilon_decay": 0.995,
+    "num_episodes": 1000,
+    "epsilon_decay": 0.999,
+    "reward_image_folder": "./configs/reward_images",
     "epsilon_min": 0.1,
-    "episode_length": 25,
-    "batch_size": 128,
+    "episode_length": 1000,
+    "batch_size": 256,
     "learning_rate": 0.001,
     "scaling_factor": 1,
-    "use_grayscale": false
+    "checkpoint": "./checkpoints/final_model.pth",
+    "use_grayscale": false,
+    "erase": false
 }

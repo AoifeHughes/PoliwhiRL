@@ -21,13 +21,13 @@ def run_model(config):
     memory_size = config.get("memory_size", 10000)
     num_episodes = config.get("num_episodes", 1000)
     device = config.get("device", "cpu")
-    update_frequency = config.get("update_frequency", 100)
+    checkpoint = config.get("checkpoint", "final_model.pth")
 
     # Create the DQN agent
     agent = DQNAgent(state_size, action_size, batch_size, gamma, lr, epsilon, epsilon_decay, epsilon_min, memory_size, device)
     try:
-        agent.load("final_model.pth")
-        print("Loaded model from final_model.pth")
+        agent.load(checkpoint)
+        print(f"Loaded model from {checkpoint}")
     except FileNotFoundError as e:
         print(e)
         print("No model found, training from scratch")
@@ -64,12 +64,12 @@ def run_model(config):
 
         tqdm.write(f"Episode: {episode+1}/{num_episodes}, Reward: {episode_reward:.2f}, Best Reward: {best_reward:.2f}, Epsilon: {agent.epsilon:.2f}")
 
-        if (episode + 1) % 50 == 0:
-            #agent.save(f"model_checkpoint_{episode+1}.pth")
+        if (episode + 1) % 100 == 0:
+            agent.save(f"model_checkpoint_{episode+1}.pth")
             plot_best_attempts("./results/", "DQN", 0, rewards)
 
     # Save the final trained model
-    agent.save("final_model.pth")
+    agent.save(checkpoint)
 
     # Close the environment
     env.close()
