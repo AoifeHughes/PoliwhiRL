@@ -8,32 +8,21 @@ import torch.optim as optim
 class DQNModel(nn.Module):
     def __init__(self, state_size, action_size):
         super(DQNModel, self).__init__()
-        self.conv1 = nn.Conv2d(state_size[0], 32, kernel_size=8, stride=4, padding=2)
+        self.conv1 = nn.Conv2d(state_size[0], 32, kernel_size=8, stride=4)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
         self.relu2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
-        self.relu3 = nn.ReLU()
-        self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
-        self.relu4 = nn.ReLU()
         self.flatten = nn.Flatten()
         
-        # Calculate the output size of the convolutional layers
         conv_out_size = self._get_conv_out_size(state_size)
         self.fc1 = nn.Linear(conv_out_size, 512)
-        self.relu5 = nn.ReLU()
-        self.fc2 = nn.Linear(512, 256)
-        self.relu6 = nn.ReLU()
-        
-        self.lstm = nn.LSTM(256, 128, batch_first=True)
-        self.fc3 = nn.Linear(128, action_size)
+        self.relu3 = nn.ReLU()
+        self.fc2 = nn.Linear(512, action_size)
 
     def _get_conv_out_size(self, state_size):
         x = torch.zeros(1, *state_size)
         x = self.conv1(x)
         x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
         return int(np.prod(x.size()))
 
     def forward(self, x):
@@ -41,21 +30,14 @@ class DQNModel(nn.Module):
         x = self.relu1(x)
         x = self.conv2(x)
         x = self.relu2(x)
-        x = self.conv3(x)
-        x = self.relu3(x)
-        x = self.conv4(x)
-        x = self.relu4(x)
         x = self.flatten(x)
         x = self.fc1(x)
-        x = self.relu5(x)
+        x = self.relu3(x)
         x = self.fc2(x)
-        x = self.relu6(x)
-        x, _ = self.lstm(x.unsqueeze(1))
-        x = self.fc3(x.squeeze(1))
         return x
 
 class DQNAgent:
-    def __init__(self, state_size, action_size, batch_size, gamma, lr, epsilon, epsilon_decay, epsilon_min, memory_size, device):
+    def __init__(self, state_size, action_size, batch_size, gamma, lr, epsilon, epsilon_decay, epsilon_min, memory_size, device, target_update=200):
         self.state_size = state_size
         self.action_size = action_size
         self.batch_size = batch_size
@@ -63,11 +45,16 @@ class DQNAgent:
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
         self.epsilon_min = epsilon_min
-        self.memory = EpisodicMemory(memory_size)
+        self.memory = ReplayMemory(memory_size)
         self.device = device
         self.model = DQNModel(state_size, action_size).to(self.device)
+        self.target_model = DQNModel(state_size, action_size).to(self.device)
+        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model.eval()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = nn.MSELoss()
+        self.target_update = target_update
+        self.update_counter = 0
 
     def memorize(self, state, action, reward, next_state, done):
         state_tensor = torch.tensor(np.transpose(state, (2, 0, 1)), dtype=torch.float32).to(self.device)
@@ -87,36 +74,80 @@ class DQNAgent:
         if len(self.memory) < self.batch_size:
             return
 
-        episodes = self.memory.sample(self.batch_size)
+        transitions, indices, weights = self.memory.sample(self.batch_size)
+        batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = zip(*transitions)
+        batch_states = torch.stack(batch_states)
+        batch_actions = torch.tensor(batch_actions, dtype=torch.long).to(self.device)
+        batch_rewards = torch.tensor(batch_rewards, dtype=torch.float32).to(self.device)
+        batch_next_states = torch.stack(batch_next_states)
+        batch_dones = torch.tensor(batch_dones, dtype=torch.float32).to(self.device)
+        weights = torch.tensor(weights, dtype=torch.float32).to(self.device)
 
-        for episode in episodes:
-            states, actions, rewards, next_states, dones = zip(*episode)
-            states = torch.stack(states)
-            actions = torch.tensor(actions, dtype=torch.long).to(self.device)
-            rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-            next_states = torch.stack(next_states)
-            dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+        current_q_values = self.model(batch_states).gather(1, batch_actions.unsqueeze(1)).squeeze(1)
+        next_q_values = self.target_model(batch_next_states).max(1)[0]
+        expected_q_values = batch_rewards + (1 - batch_dones) * self.gamma * next_q_values
 
-            q_values = self.model(states)
-            next_q_values = self.model(next_states)
-            targets = q_values.clone()
+        td_errors = (current_q_values - expected_q_values.detach()).abs().cpu().detach().numpy()
+        self.memory.update_priorities(indices, td_errors)
 
-            for i in range(len(episode)):
-                if dones[i]:
-                    targets[i][actions[i]] = rewards[i]
-                else:
-                    targets[i][actions[i]] = rewards[i] + self.gamma * torch.max(next_q_values[i])
+        self.optimizer.zero_grad()
+        loss = (weights * (current_q_values - expected_q_values.detach()) ** 2).mean()
+        loss.backward()
+        self.optimizer.step()
 
-            self.optimizer.zero_grad()
-            loss = self.criterion(q_values, targets)
-            loss.backward()
-            self.optimizer.step()
-
+        self.update_counter += 1
+        if self.update_counter % self.target_update == 0:
+            self.target_model.load_state_dict(self.model.state_dict())
     def save(self, path):
         torch.save(self.model.state_dict(), path)
 
     def load(self, path):
         self.model.load_state_dict(torch.load(path))
+
+
+class ReplayMemory:
+    def __init__(self, memory_size, alpha=0.6, beta=0.4, beta_increment=0.001):
+        self.memory_size = memory_size
+        self.memory = deque(maxlen=memory_size)
+        self.priorities = deque(maxlen=memory_size)
+        self.alpha = alpha
+        self.beta = beta
+        self.beta_increment = beta_increment
+
+    def add(self, state, action, reward, next_state, done):
+        # Normalize the state and next_state
+        state = state / 255.0
+        next_state = next_state / 255.0
+
+        max_priority = max(self.priorities) if self.memory else 1.0
+        self.memory.append((state, action, reward, next_state, done))
+        self.priorities.append(max_priority)
+
+    def sample(self, batch_size):
+        if len(self.memory) < batch_size:
+            return None
+
+        priorities = np.array(self.priorities)
+        probabilities = priorities ** self.alpha
+        probabilities /= probabilities.sum()
+
+        indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
+        samples = [self.memory[i] for i in indices]
+
+        weights = (len(self.memory) * probabilities[indices]) ** (-self.beta)
+        weights /= weights.max()
+
+        self.beta = min(1.0, self.beta + self.beta_increment)
+
+        return samples, indices, weights
+
+    def update_priorities(self, indices, priorities):
+        for i, priority in zip(indices, priorities):
+            self.priorities[i] = (priority + 1e-5) ** self.alpha
+
+    def __len__(self):
+        return len(self.memory)
+
 
 class EpisodicMemory:
     def __init__(self, memory_size):

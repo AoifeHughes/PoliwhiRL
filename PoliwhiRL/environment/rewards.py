@@ -55,7 +55,7 @@ class Rewards:
     def update_for_movement(self, total_reward, default_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += default_reward * 1
+            total_reward += default_reward * 10
             self.xy.add(cur_xy)
         return total_reward
 
@@ -114,7 +114,7 @@ class Rewards:
     def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = -default_reward * 0.1
+        total_reward = -default_reward
         # if use_sight:
         #     total_reward = self.update_for_vision(total_reward, default_reward)
 

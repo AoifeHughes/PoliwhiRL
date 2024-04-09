@@ -21,8 +21,8 @@ action_space_buttons = np.array(
                 "right",
                 "a",
                 "b",
-                "start",
-                "select",
+                # "start",
+                # "select",
                 "pass",
             ]
         )
