@@ -13,7 +13,20 @@ from PoliwhiRL.utils import OCR, document
 from .rewards import Rewards
 from .imagememory import ImageMemory
 
-
+action_space_buttons = np.array(
+            [
+                "up",
+                "down",
+                "left",
+                "right",
+                "a",
+                "b",
+                "start",
+                "select",
+                "pass",
+            ]
+        )
+action_space = np.arange(len(action_space_buttons))
 class Controller:
     def __init__(self, config):
         self.config = config
@@ -41,21 +54,6 @@ class Controller:
         self.pyboy.set_emulation_speed(0)
         self.ram = RAM.RAMManagement(self.pyboy)
         self.rewards = Rewards(self)
-
-        self.action_space_buttons = np.array(
-            [
-                "up",
-                "down",
-                "left",
-                "right",
-                "a",
-                "b",
-                "start",
-                "select",
-                "pass",
-            ]
-        )
-        self.action_space = np.arange(len(self.action_space_buttons))
 
         self.reset(init=True)
 
@@ -107,7 +105,7 @@ class Controller:
         self.run_time = time.time()
         self.done = False
         self.rewards = Rewards(self)
-        self.step(len(self.action_space) - 1, init=True)  # pass
+        self.step(len(action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
 
@@ -120,7 +118,7 @@ class Controller:
 
     def step(self, movement, ticks_per_input=10, wait=75, init=False):
         movement_int = movement
-        movement = self.action_space_buttons[movement]
+        movement = action_space_buttons[movement]
         if movement != "pass":
             self.pyboy.button_press(movement)
             self.pyboy.tick(ticks_per_input, False)
