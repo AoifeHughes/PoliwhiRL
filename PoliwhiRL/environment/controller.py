@@ -14,19 +14,21 @@ from .rewards import Rewards
 from .imagememory import ImageMemory
 
 action_space_buttons = np.array(
-            [
-                "up",
-                "down",
-                "left",
-                "right",
-                "a",
-                "b",
-                # "start",
-                # "select",
-                "pass",
-            ]
-        )
+    [
+        "up",
+        "down",
+        "left",
+        "right",
+        "a",
+        "b",
+        # "start",
+        # "select",
+        "pass",
+    ]
+)
 action_space = np.arange(len(action_space_buttons))
+
+
 class Controller:
     def __init__(self, config):
         self.config = config
@@ -132,8 +134,6 @@ class Controller:
             self.steps += 1
             self.button = movement
             self.buttons.append(movement_int)
-            if self.steps == self.timeout:
-                self.done = True
         else:
             self.reward = 0
         return next_state, self.reward, self.done

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from skimage.metrics import structural_similarity as ssim
-import cv2
+
 
 class Rewards:
     def __init__(self, controller):
@@ -26,16 +25,11 @@ class Rewards:
         self.time_in_last_screen = 0
         self.max_time_in_last_screen = 100
         self.done = False
+        self.timeout = controller.timeout
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
         self.env_vars = self.controller.get_RAM_variables()
-
-    def update_for_vision(self, total_reward):
-        is_new_vision, _ = self.img_memory.check_and_store_image()
-        if is_new_vision:
-            total_reward += 0.2
-        return total_reward
 
     def update_for_party_pokemon(self, total_reward):
         total_level, total_hp, total_exp = self.env_vars["party_info"]
@@ -56,7 +50,7 @@ class Rewards:
     def update_for_movement(self, total_reward):
         cur_xy = (self.env_vars["X"], self.env_vars["Y"])
         if cur_xy not in self.xy:
-            total_reward += 0.1
+            total_reward += 0.01
             self.xy.add(cur_xy)
         return total_reward
 
@@ -64,9 +58,9 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += 0.3 * self.reward_image_multipliers[img_hash]
+            total_reward += 1  # * self.reward_image_multipliers[img_hash]
             self.img_rewards.pop_image(img_hash)
-            self.done = True
+            # self.done = True
         return total_reward
 
     def update_for_pokedex(self, total_reward):
@@ -89,45 +83,26 @@ class Rewards:
             self.money = player_money
         return total_reward
 
-    def update_for_menuing(self, total_reward):
-        if self.button_pressed == "start" or self.button_pressed == "select":
-            total_reward -= 0.1
-        return total_reward
 
-    def update_for_same_screen(self, total_reward):
-        if self.last_screen is None:
-            self.last_screen = self.controller.screen_image()
-            return total_reward
-
-        current_screen = self.controller.screen_image()
-        last_screen_gray = cv2.cvtColor(self.last_screen, cv2.COLOR_BGR2GRAY)
-        current_screen_gray = cv2.cvtColor(current_screen, cv2.COLOR_BGR2GRAY)
-        ssim_index = ssim(last_screen_gray, current_screen_gray)
-
-        if ssim_index >= 0.99:
-            self.time_in_last_screen += 1
-            total_reward -= 0.1 * min(self.time_in_last_screen / self.max_time_in_last_screen, 1.0)
-        else:
-            self.last_screen = current_screen
-            self.time_in_last_screen = 0
-
+    def update_for_timeout(self, total_reward):
+        if self.controller.steps >= self.timeout:
+            # total_reward -= 0.5
+            self.done = True
         return total_reward
 
     def calc_rewards(self, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = -0.01  
+        total_reward = -0.001
         self.done = False
 
         for func in [
-            # self.update_for_vision,
-            # self.update_for_party_pokemon,
+            self.update_for_party_pokemon,
             self.update_for_movement,
-            # self.update_for_pokedex,
-            # self.update_for_money,
+            self.update_for_pokedex,
+            self.update_for_money,
             self.update_for_image_reward,
-            # self.update_for_menuing,
-            # self.update_for_same_screen
+            self.update_for_timeout,
         ]:
             total_reward = func(total_reward)
 

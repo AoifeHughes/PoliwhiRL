@@ -2,7 +2,7 @@
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.PPO import setup_and_train_ppo
-from PoliwhiRL.models.DQN import run_model as dqn
+from PoliwhiRL.models.DQN import run_curriculum as dqn
 from torch import device
 import os
 import shutil

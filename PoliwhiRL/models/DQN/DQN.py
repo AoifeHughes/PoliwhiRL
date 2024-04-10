@@ -1,25 +1,29 @@
-import multiprocessing
+# -*- coding: utf-8 -*-
 import numpy as np
 import random
-from collections import deque
 import torch
-import os
 import torch.nn as nn
 import torch.optim as optim
+import sqlite3
+import pickle
+
 
 class DQNModel(nn.Module):
     def __init__(self, state_size, action_size):
         super(DQNModel, self).__init__()
-        self.conv1 = nn.Conv2d(state_size[0], 32, kernel_size=8, stride=4)
+        self.conv1 = nn.Conv2d(state_size[0], 32, kernel_size=8, stride=4, padding=2)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1)
         self.relu2 = nn.ReLU()
         self.flatten = nn.Flatten()
-        
+
+        # Calculate the output size of the convolutional layers
         conv_out_size = self._get_conv_out_size(state_size)
         self.fc1 = nn.Linear(conv_out_size, 512)
         self.relu3 = nn.ReLU()
-        self.fc2 = nn.Linear(512, action_size)
+
+        self.lstm = nn.LSTM(512, 128)
+        self.fc2 = nn.Linear(128, action_size)
 
     def _get_conv_out_size(self, state_size):
         x = torch.zeros(1, *state_size)
@@ -28,6 +32,12 @@ class DQNModel(nn.Module):
         return int(np.prod(x.size()))
 
     def forward(self, x):
+        # x has shape [sequence, c, h, w]
+        sequence_length = x.size(0)
+        x = x.view(
+            sequence_length, x.size(-3), x.size(-2), x.size(-1)
+        )  # Reshape to [sequence, c, h, w]
+
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.conv2(x)
@@ -35,11 +45,25 @@ class DQNModel(nn.Module):
         x = self.flatten(x)
         x = self.fc1(x)
         x = self.relu3(x)
-        x = self.fc2(x)
+        x, _ = self.lstm(x.unsqueeze(1))  # Add a dimension for LSTM input
+        x = self.fc2(x.squeeze(1))  # Remove the extra dimension after LSTM
         return x
 
+
 class DQNAgent:
-    def __init__(self, state_size, action_size, batch_size, gamma, lr, epsilon, epsilon_decay, epsilon_min, memory_size, device, target_update=200):
+    def __init__(
+        self,
+        state_size,
+        action_size,
+        batch_size,
+        gamma,
+        lr,
+        epsilon,
+        epsilon_decay,
+        epsilon_min,
+        memory_size,
+        device,
+    ):
         self.state_size = state_size
         self.action_size = action_size
         self.batch_size = batch_size
@@ -47,32 +71,25 @@ class DQNAgent:
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
         self.epsilon_min = epsilon_min
-        self.memory = ReplayMemory(memory_size)
+        self.memory = EpisodicMemory(memory_size)
         self.device = device
         self.model = DQNModel(state_size, action_size).to(self.device)
-        self.target_model = DQNModel(state_size, action_size).to(self.device)
-        self.target_model.load_state_dict(self.model.state_dict())
-        self.target_model.eval()
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = nn.MSELoss()
-        self.target_update = target_update
-        self.update_counter = 0
 
     def memorize(self, state, action, reward, next_state, done):
-        state_tensor = torch.tensor(np.transpose(state, (2, 0, 1)), dtype=torch.float32).to(self.device)
-        next_state_tensor = torch.tensor(np.transpose(next_state, (2, 0, 1)), dtype=torch.float32).to(self.device)
-        self.memory.add(state_tensor, action, reward, next_state_tensor, done)
+        self.memory.add(state, action, reward, next_state, done)
 
-    def epsilon_reset(self):
-        self.epsilon = 1.0
-
-    def act(self, state):
+    def act(self, state_sequence):
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)      
-        state = torch.tensor(np.transpose(state, (2, 0, 1)), dtype=torch.float32).unsqueeze(0).to(self.device)
-        q_values = self.model(state)
-        probabilities = torch.softmax(q_values, dim=0)
-        action = torch.multinomial(probabilities, 1).item()
+            return random.randrange(self.action_size)
+
+        state_sequence = torch.tensor(
+            np.transpose(state_sequence, (0, 3, 1, 2)), dtype=torch.float32
+        ).to(self.device)
+        q_values = self.model(state_sequence)[-1]
+        action_probs = torch.softmax(q_values, dim=-1)
+        action = torch.multinomial(action_probs, num_samples=1).item()
         return action
 
     def replay(self):
@@ -81,115 +98,145 @@ class DQNAgent:
         if len(self.memory) < self.batch_size:
             return
 
-        transitions, indices, weights = self.memory.sample(self.batch_size)
-        batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = zip(*transitions)
-        batch_states = torch.stack(batch_states)
-        batch_actions = torch.tensor(batch_actions, dtype=torch.long).to(self.device)
-        batch_rewards = torch.tensor(batch_rewards, dtype=torch.float32).to(self.device)
-        batch_next_states = torch.stack(batch_next_states)
-        batch_dones = torch.tensor(batch_dones, dtype=torch.float32).to(self.device)
-        weights = torch.tensor(weights, dtype=torch.float32).to(self.device)
+        episodes = self.memory.sample(self.batch_size)
 
-        current_q_values = self.model(batch_states).gather(1, batch_actions.unsqueeze(1)).squeeze(1)
-        next_q_values = self.target_model(batch_next_states).max(1)[0]
-        expected_q_values = batch_rewards + (1 - batch_dones) * self.gamma * next_q_values
+        for episode in episodes:
+            states, actions, rewards, next_states, dones = zip(*episode)
+            states = torch.tensor(
+                np.transpose(np.stack(states), (0, 3, 1, 2)), dtype=torch.float32
+            ).to(self.device)
+            actions = torch.tensor(actions, dtype=torch.long).to(self.device)
+            rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+            next_states = torch.tensor(
+                np.transpose(np.stack(next_states), (0, 3, 1, 2)), dtype=torch.float32
+            ).to(self.device)
+            dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
-        td_errors = (current_q_values - expected_q_values.detach()).abs().cpu().detach().numpy()
-        self.memory.update_priorities(indices, td_errors)
+            q_values = self.model(states)
+            next_q_values = self.model(next_states)
+            targets = q_values.clone()
 
-        self.optimizer.zero_grad()
-        loss = (weights * (current_q_values - expected_q_values.detach()) ** 2).mean()
-        loss.backward()
-        self.optimizer.step()
+            for i in range(len(episode)):
+                if dones[i]:
+                    targets[i, actions[i]] = rewards[i]
+                else:
+                    targets[i, actions[i]] = rewards[i] + self.gamma * torch.max(
+                        next_q_values[i]
+                    )
 
-        self.update_counter += 1
-        if self.update_counter % self.target_update == 0:
-            self.target_model.load_state_dict(self.model.state_dict())
+            self.optimizer.zero_grad()
+            loss = self.criterion(q_values, targets)
+            loss.backward()
+            self.optimizer.step()
 
     def save(self, path):
-        try:
-            torch.save({
-                'model_state_dict': self.model.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict(),
-                'epsilon': self.epsilon,
-                'memory': self.memory
-            }, path)
-        except Exception as e:
-            print(e)
-            print("Failed to save model")
+        torch.save(self.model.state_dict(), path)
 
     def load(self, path):
-        checkpoint = torch.load(path)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.epsilon = checkpoint['epsilon']
-        self.memory = checkpoint['memory']
+        self.model.load_state_dict(torch.load(path))
 
-
-class ReplayMemory:
-    def __init__(self, memory_size, alpha=0.6, beta=0.4, beta_increment=0.001):
-        self.memory_size = memory_size
-        self.memory = deque(maxlen=memory_size)
-        self.priorities = deque(maxlen=memory_size)
-        self.alpha = alpha
-        self.beta = beta
-        self.beta_increment = beta_increment
-
-    def add(self, state, action, reward, next_state, done):
-        # Normalize the state and next_state
-        state = state / 255.0
-        next_state = next_state / 255.0
-        
-        if len(self.memory) == self.memory_size:
-            # Memory is full, pop the lowest priority memory
-            min_priority_index = self.priorities.index(min(self.priorities))
-            del self.memory[min_priority_index]
-            del self.priorities[min_priority_index]
-        
-        max_priority = max(self.priorities) if self.memory else 1.0
-        self.memory.append((state, action, reward, next_state, done))
-        self.priorities.append(max_priority)
-
-    def sample(self, batch_size):
-        if len(self.memory) < batch_size:
-            return None
-
-        priorities = np.array(self.priorities)
-        probabilities = priorities ** self.alpha
-        probabilities /= probabilities.sum()
-        indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
-        samples = [self.memory[i] for i in indices]
-        weights = (len(self.memory) * probabilities[indices]) ** (-self.beta)
-        weights /= weights.max()
-        self.beta = min(1.0, self.beta + self.beta_increment)
-        return samples, indices, weights
-
-    def update_priorities(self, indices, priorities):
-        for i, priority in zip(indices, priorities):
-            self.priorities[i] = (priority + 1e-5) ** self.alpha
-
-    def __len__(self):
-        return len(self.memory)
 
 class EpisodicMemory:
-    def __init__(self, memory_size):
+    def __init__(self, memory_size, db_path="./episodic_memory.db"):
         self.memory_size = memory_size
-        self.memory = deque(maxlen=memory_size)
+        self.db_path = db_path
         self.current_episode = []
+        self._create_table()
+
+    def _create_table(self):
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS episodes
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          states BLOB,
+                          actions BLOB,
+                          rewards BLOB,
+                          next_states BLOB,
+                          dones BLOB,
+                          total_reward REAL)"""
+            )
+            conn.commit()
 
     def add(self, state, action, reward, next_state, done):
         self.current_episode.append((state, action, reward, next_state, done))
         if done:
-            self.memory.append(self.current_episode)
+            states, actions, rewards, next_states, dones = zip(*self.current_episode)
+            states = np.stack(states)
+            next_states = np.stack(next_states)
+            actions = np.array(actions)
+            rewards = np.array(rewards)
+            dones = np.array(dones)
+            total_reward = np.sum(rewards)
+
+            with sqlite3.connect(self.db_path) as conn:
+                c = conn.cursor()
+                c.execute(
+                    """INSERT INTO episodes (states, actions, rewards, next_states, dones, total_reward)
+                             VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        pickle.dumps(states),
+                        pickle.dumps(actions),
+                        pickle.dumps(rewards),
+                        pickle.dumps(next_states),
+                        pickle.dumps(dones),
+                        total_reward,
+                    ),
+                )
+                conn.commit()
+
             self.current_episode = []
 
+            # Limit the number of stored episodes to memory_size
+            with sqlite3.connect(self.db_path) as conn:
+                c = conn.cursor()
+                c.execute(
+                    "DELETE FROM episodes WHERE id NOT IN (SELECT id FROM episodes ORDER BY id DESC LIMIT ?)",
+                    (self.memory_size,),
+                )
+                conn.commit()
+
     def sample(self, batch_size):
+        half_batch_size = batch_size // 2
+
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+
+            # Retrieve half the batch from the best-rewarded episodes
+            c.execute(
+                """SELECT states, actions, rewards, next_states, dones
+                         FROM episodes
+                         ORDER BY total_reward DESC
+                         LIMIT ?""",
+                (half_batch_size,),
+            )
+            best_rows = c.fetchall()
+
+            # Retrieve the other half randomly
+            c.execute(
+                """SELECT states, actions, rewards, next_states, dones
+                         FROM episodes
+                         ORDER BY RANDOM()
+                         LIMIT ?""",
+                (batch_size - half_batch_size,),
+            )
+            random_rows = c.fetchall()
+
         episodes = []
-        if len(self.memory) >= batch_size:
-            episodes = random.sample(self.memory, batch_size)
-        else:
-            episodes = list(self.memory)
+        for row in best_rows + random_rows:
+            states = pickle.loads(row[0])
+            actions = pickle.loads(row[1])
+            rewards = pickle.loads(row[2])
+            next_states = pickle.loads(row[3])
+            dones = pickle.loads(row[4])
+            episode = list(zip(states, actions, rewards, next_states, dones))
+            episodes.append(episode)
+
         return episodes
 
     def __len__(self):
-        return len(self.memory)
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM episodes")
+            count = c.fetchone()[0]
+        return count
