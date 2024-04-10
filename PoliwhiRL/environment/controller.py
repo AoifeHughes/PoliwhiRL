@@ -127,12 +127,13 @@ class Controller:
             self.pyboy.tick(ticks_per_input, False)
         self.pyboy.tick(wait, True)
         next_state = self.screen_image()
-        self.reward = self.rewards.calc_rewards(button_pressed=movement)
+        self.reward, self.done = self.rewards.calc_rewards(button_pressed=movement)
         if not init:
             self.steps += 1
             self.button = movement
             self.buttons.append(movement_int)
-            self.done = True if self.steps == self.timeout else False
+            if self.steps == self.timeout:
+                self.done = True
         else:
             self.reward = 0
         return next_state, self.reward, self.done

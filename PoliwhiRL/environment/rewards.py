@@ -25,6 +25,7 @@ class Rewards:
         self.last_screen = None
         self.time_in_last_screen = 0
         self.max_time_in_last_screen = 100
+        self.done = False
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -63,8 +64,9 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += 0.3 #* self.reward_image_multipliers[img_hash]
+            total_reward += 0.3 * self.reward_image_multipliers[img_hash]
             self.img_rewards.pop_image(img_hash)
+            self.done = True
         return total_reward
 
     def update_for_pokedex(self, total_reward):
@@ -114,7 +116,8 @@ class Rewards:
     def calc_rewards(self, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = 0.0
+        total_reward = -0.01  
+        self.done = False
 
         for func in [
             # self.update_for_vision,
@@ -131,4 +134,4 @@ class Rewards:
         # Clip the reward to be between -1 and 1
         total_reward = np.clip(total_reward, -1.0, 1.0)
 
-        return total_reward
+        return total_reward, self.done

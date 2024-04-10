@@ -1,3 +1,4 @@
+import multiprocessing
 import numpy as np
 import random
 from collections import deque
@@ -62,6 +63,9 @@ class DQNAgent:
         next_state_tensor = torch.tensor(np.transpose(next_state, (2, 0, 1)), dtype=torch.float32).to(self.device)
         self.memory.add(state_tensor, action, reward, next_state_tensor, done)
 
+    def epsilon_reset(self):
+        self.epsilon = 1.0
+
     def act(self, state):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)      
@@ -103,13 +107,16 @@ class DQNAgent:
             self.target_model.load_state_dict(self.model.state_dict())
 
     def save(self, path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'epsilon': self.epsilon,
-            'memory': self.memory
-        }, path)
+        try:
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'epsilon': self.epsilon,
+                'memory': self.memory
+            }, path)
+        except Exception as e:
+            print(e)
+            print("Failed to save model")
 
     def load(self, path):
         checkpoint = torch.load(path)
@@ -136,8 +143,8 @@ class ReplayMemory:
         if len(self.memory) == self.memory_size:
             # Memory is full, pop the lowest priority memory
             min_priority_index = self.priorities.index(min(self.priorities))
-            self.memory.pop(min_priority_index)
-            self.priorities.pop(min_priority_index)
+            del self.memory[min_priority_index]
+            del self.priorities[min_priority_index]
         
         max_priority = max(self.priorities) if self.memory else 1.0
         self.memory.append((state, action, reward, next_state, done))
