@@ -27,7 +27,6 @@ def run_model(config, record_id=0, done_lim=1000):
         agent.load("final_model.pth")
         print("Loaded model from final_model.pth")
     except FileNotFoundError as e:
-        print(e)
         print("No model found, training from scratch")
 
     if config["num_workers"] > 1:

@@ -22,7 +22,7 @@ class ParallelDQNAgent(BaseDQNAgent):
         self.reward_queues = [Queue() for _ in range(self.num_workers)]
         self.work_queues = [Queue() for _ in range(self.num_workers)]
         for idx in range(self.num_workers):
-            worker = Worker(self.model, self.memory, self.config, idx, self.reward_queues[idx], self.work_queues[idx])
+            worker = Worker(self.model, self.memory, self.config, idx, self.reward_queues[idx], self.work_queues[idx], record=(True if idx > 0 else False))
             self.workers.append(worker)
 
     def train(self, num_episodes):
@@ -59,7 +59,7 @@ class ParallelDQNAgent(BaseDQNAgent):
             worker.join()
 
 class Worker(mp.Process):
-    def __init__(self, model, memory, config, worker_id, reward_queue, work_queue):
+    def __init__(self, model, memory, config, worker_id, reward_queue, work_queue, record=False):
         super().__init__()
         self.model = model
         self.memory = memory
@@ -68,6 +68,7 @@ class Worker(mp.Process):
         self.reward_queue = reward_queue
         self.work_queue = work_queue
         self.epsilon = config["epsilon_start"]
+        self.record = record
 
     def run(self):
         env = Env(self.config)
@@ -88,8 +89,8 @@ class Worker(mp.Process):
                 self.memory.add(state, action, reward, next_state, done, self.worker_id)
                 state = next_state
                 episode_reward += reward
-
-            #env.record(self.epsilon, f"dqn{self.worker_id}", 0, reward)
+                if self.record:    
+                    env.record(self.epsilon, f"dqn{self.worker_id}", 0, reward)
             self.reward_queue.put(episode_reward)
             self.epsilon = self.epsilon * self.config["epsilon_decay"]
 
