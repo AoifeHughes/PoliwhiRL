@@ -1,6 +1,6 @@
 {
     "model": "DQN",
-    "device": "mps",
+    "device": "cpu",
     "num_episodes": 1000,
     "epsilon_decay": 0.994,
     "reward_image_folder": "./configs/reward_images",
@@ -15,5 +15,6 @@
     "erase": false,
     "memory_size": 1000,
     "gamma": 0.95,
-    "database_location": "./database/database.db"
+    "database_location": "./database/database.db",
+    "num_workers": 4
 }

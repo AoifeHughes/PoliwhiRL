@@ -3,6 +3,8 @@
 from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.PPO import setup_and_train_ppo
 from PoliwhiRL.models.DQN import run_curriculum as dqn
+from PoliwhiRL.models.DQN import run_model as dqn_multi
+
 from torch import device
 import os
 import shutil
@@ -87,7 +89,8 @@ def main():
     elif config["model"] == "PPO":
         setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
-        dqn(config)
+        #dqn(config)
+        dqn_multi(config)
     else:
         raise ValueError(f"Model {config['model']} not recognized")
 
