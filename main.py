@@ -73,7 +73,7 @@ def main():
 
     if config["erase"]:
         print("Erasing all logs, checkpoints, runs, and results")
-        folders = ["checkpoints", "logs", "runs", "results"]
+        folders = ["checkpoints", "logs", "runs", "results", "database"]
         for folder in folders:
             if folder in os.listdir():
                 shutil.rmtree(folder)
