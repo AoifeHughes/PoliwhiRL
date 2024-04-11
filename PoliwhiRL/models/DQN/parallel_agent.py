@@ -11,6 +11,7 @@ from .base_agent import BaseDQNAgent
 from PoliwhiRL.environment.controller import Controller as Env
 from .episodic_memory import EpisodicMemory
 
+
 class ParallelDQNAgent(BaseDQNAgent):
     def __init__(self, config):
         super().__init__(config)
@@ -58,6 +59,7 @@ class ParallelDQNAgent(BaseDQNAgent):
         for worker in self.workers:
             worker.join()
 
+
 class Worker(mp.Process):
     def __init__(self, model, memory, config, worker_id, reward_queue, work_queue, record=False):
         super().__init__()
@@ -102,7 +104,7 @@ class Worker(mp.Process):
 
         state_sequence = state_sequence.reshape(
             1, *state_sequence.shape
-        ) # Add batch dimension
+        )  # Add batch dimension
         state_sequence = torch.tensor(
             np.transpose(state_sequence, (0, 1, 4, 2, 3)), dtype=torch.float32
         )

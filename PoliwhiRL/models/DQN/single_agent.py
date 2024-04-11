@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 from tqdm import tqdm
 from .base_agent import BaseDQNAgent
+
 
 class DQNAgent(BaseDQNAgent):
     def __init__(self, config):
