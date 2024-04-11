@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.PPO import setup_and_train_ppo
-from PoliwhiRL.models.DQN import run_curriculum as dqn
-from PoliwhiRL.models.DQN import run_model as dqn_multi
+from PoliwhiRL.models.DQN import run_model as dqn
 
 from torch import device
 import os
@@ -84,13 +82,11 @@ def main():
 
     pprint.pprint(config)
 
-    if config["model"] == "RainbowDQN":
-        rainbow(**config)
-    elif config["model"] == "PPO":
+    if config["model"] == "PPO":
         setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
         #dqn(config)
-        dqn_multi(config)
+        dqn(config)
     else:
         raise ValueError(f"Model {config['model']} not recognized")
 
