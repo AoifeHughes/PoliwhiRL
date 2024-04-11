@@ -45,7 +45,7 @@ def run_model(config, record_id=0, done_lim=1000):
         epsilon_min,
         memory_size,
         device,
-        db_location
+        db_location,
     )
 
     try:
@@ -60,7 +60,7 @@ def run_model(config, record_id=0, done_lim=1000):
     best_reward = float("-inf")
 
     # Training loop
-    for episode in tqdm(range(num_episodes+random_episodes), desc="Training"):
+    for episode in tqdm(range(num_episodes + random_episodes), desc="Training"):
         state = env.reset()
         episode_reward = 0
         episode_length = 0

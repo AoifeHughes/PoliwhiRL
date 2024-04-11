@@ -83,7 +83,6 @@ class Rewards:
             self.money = player_money
         return total_reward
 
-
     def update_for_timeout(self, total_reward):
         if self.controller.steps >= self.timeout:
             # total_reward -= 0.5

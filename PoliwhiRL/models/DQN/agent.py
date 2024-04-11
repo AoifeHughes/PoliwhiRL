@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import random
 import torch
@@ -5,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from .episodic_memory import EpisodicMemory
 from .DQN import DQNModel
+
 
 class DQNAgent:
     def __init__(
@@ -42,12 +44,18 @@ class DQNAgent:
             return random.randrange(self.action_size)
 
         state_sequence = np.array(state_sequence)
-        state_sequence = state_sequence.reshape(1, *state_sequence.shape)  # Add batch dimension
-        state_sequence = torch.tensor(np.transpose(state_sequence, (0, 1, 4, 2, 3)), dtype=torch.float32).to(self.device)
+        state_sequence = state_sequence.reshape(
+            1, *state_sequence.shape
+        )  # Add batch dimension
+        state_sequence = torch.tensor(
+            np.transpose(state_sequence, (0, 1, 4, 2, 3)), dtype=torch.float32
+        ).to(self.device)
 
         with torch.no_grad():
             q_values = self.model(state_sequence)
-            action_probs = torch.softmax(q_values[0, -1], dim=-1)  # Get the Q-values for the last state in the sequence
+            action_probs = torch.softmax(
+                q_values[0, -1], dim=-1
+            )  # Get the Q-values for the last state in the sequence
             action = torch.multinomial(action_probs, num_samples=1).item()
 
         return action
@@ -96,9 +104,9 @@ class DQNAgent:
                 if dones[i, j]:
                     targets[i, j, actions[i, j]] = rewards[i, j]
                 else:
-                    targets[i, j, actions[i, j]] = rewards[i, j] + self.gamma * torch.max(
-                        next_q_values[i, j]
-                    )
+                    targets[i, j, actions[i, j]] = rewards[
+                        i, j
+                    ] + self.gamma * torch.max(next_q_values[i, j])
 
         self.optimizer.zero_grad()
         loss = self.criterion(q_values, targets)
@@ -110,5 +118,3 @@ class DQNAgent:
 
     def load(self, path):
         self.model.load_state_dict(torch.load(path))
-
-

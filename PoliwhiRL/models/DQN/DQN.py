@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+
 class DQNModel(nn.Module):
     def __init__(self, state_size, action_size):
         super(DQNModel, self).__init__()
@@ -41,9 +42,13 @@ class DQNModel(nn.Module):
         x = self.fc1(x)
         x = self.relu3(x)
 
-        x = x.view(num_episodes, max_sequence_length, -1)  # Reshape to [num_episodes, max_sequence_length, hidden_size]
-        x, _ = self.lstm(x)  # LSTM input shape: [num_episodes, max_sequence_length, hidden_size]
-        x = self.fc2(x)  # Output shape: [num_episodes, max_sequence_length, action_size]
+        x = x.view(
+            num_episodes, max_sequence_length, -1
+        )  # Reshape to [num_episodes, max_sequence_length, hidden_size]
+        x, _ = self.lstm(
+            x
+        )  # LSTM input shape: [num_episodes, max_sequence_length, hidden_size]
+        x = self.fc2(
+            x
+        )  # Output shape: [num_episodes, max_sequence_length, action_size]
         return x
-
-
