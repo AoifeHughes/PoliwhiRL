@@ -16,5 +16,5 @@
     "memory_size": 1000,
     "gamma": 0.95,
     "database_location": "./database/database.db",
-    "num_workers": 4
+    "num_workers": 8
 }

@@ -85,7 +85,7 @@ def main():
     if config["model"] == "PPO":
         setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
-        #dqn(config)
+        # dqn(config)
         dqn(config)
     else:
         raise ValueError(f"Model {config['model']} not recognized")

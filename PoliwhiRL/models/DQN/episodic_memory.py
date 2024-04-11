@@ -2,20 +2,22 @@
 import os
 import pickle
 import sqlite3
-import numpy as np
 import multiprocessing as mp
 
+
 class EpisodicMemory:
-    def __init__(self, memory_size, db_path="./database/episodic_memory.db", parallel=False):
+    def __init__(
+        self, memory_size, db_path="./database/episodic_memory.db", parallel=False
+    ):
         self.memory_size = memory_size
         self.db_path = db_path
         self.current_episode = []
         self.parallel = parallel
-        
+
         if parallel:
             self.lock = mp.Lock()
             self.partial_sequences = {}
-        
+
         self._create_table()
 
     def _create_table(self):
@@ -25,13 +27,15 @@ class EpisodicMemory:
 
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("""CREATE TABLE IF NOT EXISTS episodes
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS episodes
                          (id INTEGER PRIMARY KEY AUTOINCREMENT,
                           states BLOB,
                           actions BLOB,
                           rewards BLOB,
                           next_states BLOB,
-                          dones BLOB)""")
+                          dones BLOB)"""
+            )
             conn.commit()
 
     def _get_connection(self):
@@ -45,7 +49,9 @@ class EpisodicMemory:
             if worker_id not in self.partial_sequences:
                 self.partial_sequences[worker_id] = []
 
-            self.partial_sequences[worker_id].append((state, action, reward, next_state, done))
+            self.partial_sequences[worker_id].append(
+                (state, action, reward, next_state, done)
+            )
 
             if done:
                 with self.lock:
@@ -61,24 +67,35 @@ class EpisodicMemory:
         states, actions, rewards, next_states, dones = zip(*episode)
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("""INSERT INTO episodes (states, actions, rewards, next_states, dones)
+            c.execute(
+                """INSERT INTO episodes (states, actions, rewards, next_states, dones)
                          VALUES (?, ?, ?, ?, ?)""",
-                      (pickle.dumps(states), pickle.dumps(actions), pickle.dumps(rewards),
-                       pickle.dumps(next_states), pickle.dumps(dones)))
+                (
+                    pickle.dumps(states),
+                    pickle.dumps(actions),
+                    pickle.dumps(rewards),
+                    pickle.dumps(next_states),
+                    pickle.dumps(dones),
+                ),
+            )
             conn.commit()
 
         # Limit the number of stored episodes to memory_size
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("DELETE FROM episodes WHERE id NOT IN (SELECT id FROM episodes ORDER BY id DESC LIMIT ?)",
-                      (self.memory_size,))
+            c.execute(
+                "DELETE FROM episodes WHERE id NOT IN (SELECT id FROM episodes ORDER BY id DESC LIMIT ?)",
+                (self.memory_size,),
+            )
             conn.commit()
 
     def sample(self, batch_size):
         with self._get_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT states, actions, rewards, next_states, dones FROM episodes ORDER BY RANDOM() LIMIT ?",
-                      (batch_size,))
+            c.execute(
+                "SELECT states, actions, rewards, next_states, dones FROM episodes ORDER BY RANDOM() LIMIT ?",
+                (batch_size,),
+            )
             rows = c.fetchall()
 
         episodes = []
