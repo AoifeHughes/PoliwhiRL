@@ -8,14 +8,15 @@ from PoliwhiRL.utils import plot_best_attempts
 
 
 def run_curriculum(config):
+    done_lims = [1, 3, 5]
     for i in range(3):
         print(f"Running curriculum {i}")
         mutli = 10 * i if i > 0 else 1
         config["episode_length"] = config["episode_length"] * mutli
-        run_model(config, i)
+        run_model(config, i, done_lim=done_lims[i])
 
 
-def run_model(config, record_id=0):
+def run_model(config, record_id=0, done_lim=1000):
     env = Env(config)
     # Define the hyperparameters
     state_size = (1 if config.get("use_grayscale", False) else 3, *env.screen_size())
@@ -29,7 +30,7 @@ def run_model(config, record_id=0):
     memory_size = config.get("memory_size", 10000)
     num_episodes = config.get("num_episodes", 1000)
     device = config.get("device", "cpu")
-    random_episodes = config.get("random_episodes", 10)
+    random_episodes = config.get("random_episodes", 100)
 
     # Create the DQN agent
     agent = DQNAgent(
@@ -73,6 +74,8 @@ def run_model(config, record_id=0):
             state_sequence.append(state)
             action = agent.act(np.array(state_sequence))
             next_state, reward, done = env.step(action)
+            if np.sum(reward_sequence) >= done_lim:
+                done = True
             env.record(epsilon, f"dqn{record_id}", 0, reward)
             action_sequence.append(action)
             reward_sequence.append(reward)
@@ -104,7 +107,7 @@ def run_model(config, record_id=0):
         avg_reward = np.mean(rewards[-100:])
 
         tqdm.write(
-            f"Episode: {episode+1}/{num_episodes}, Reward: {episode_reward:.2f}, Best Reward: {best_reward:.2f}, "
+            f"Episode: {episode+1}/{num_episodes+random_episodes}, Reward: {episode_reward:.2f}, Best Reward: {best_reward:.2f}, "
             f"Avg Reward (100 eps): {avg_reward:.2f},  Epsilon: {agent.epsilon:.2f}"
         )
         if (episode + 1) % 50 == 0:
