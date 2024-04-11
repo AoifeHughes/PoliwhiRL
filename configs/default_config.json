@@ -42,5 +42,6 @@
   "replay_frequency": 500,
   "opt_runs": 1,
   "sequence_length": 4,
-  "results_path": "./results/"
+  "results_path": "./results/",
+  "record_id": "DQN"
 }

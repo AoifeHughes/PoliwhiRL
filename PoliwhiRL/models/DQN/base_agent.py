@@ -6,22 +6,29 @@ import torch.optim as optim
 from .episodic_memory import EpisodicMemory
 from .DQN import DQNModel
 from PoliwhiRL.utils import plot_best_attempts
+from PoliwhiRL.environment.controller import action_space
 
 class BaseDQNAgent:
     def __init__(self, config):
         self.config = config
-        self.state_size = config['state_size']
-        self.action_size = config['action_size']
+        y = int(160 * config.get("scaling_factor", 1))
+        x = int(144 * config.get("scaling_factor", 1))
+        self.state_size = (1 if config.get("use_grayscale", False) else 3, x, y)
+        self.action_size = len(action_space)
         self.batch_size = config['batch_size']
         self.gamma = config['gamma']
-        self.epsilon = config['epsilon']
+        self.epsilon = config['epsilon_start']
         self.epsilon_decay = config['epsilon_decay']
         self.epsilon_min = config['epsilon_min']
         self.memory = EpisodicMemory(config['memory_size'], config['db_path'])
         self.device = config['device']
         self.model = DQNModel(self.state_size, self.action_size).to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=config['lr'])
+        self.optimizer = optim.Adam(self.model.parameters(), lr=config['learning_rate'])
         self.criterion = nn.MSELoss()
+
+    def epsilon_update(self):
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
 
     def act(self, state_sequence):
         if np.random.rand() <= self.epsilon:
@@ -39,6 +46,7 @@ class BaseDQNAgent:
         return action
 
     def update_model(self, batch):
+        self.epsilon_update()
         max_length = max(len(episode[0]) for episode in batch)
 
         padded_episodes = []
