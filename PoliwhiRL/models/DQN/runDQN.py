@@ -30,7 +30,8 @@ def run_model(config, record_id=0, done_lim=1000):
     memory_size = config.get("memory_size", 10000)
     num_episodes = config.get("num_episodes", 1000)
     device = config.get("device", "cpu")
-    random_episodes = config.get("random_episodes", 100)
+    random_episodes = config.get("random_episodes", 0)
+    db_location = config.get("database_location", "./database/memory.db")
 
     # Create the DQN agent
     agent = DQNAgent(
@@ -44,6 +45,7 @@ def run_model(config, record_id=0, done_lim=1000):
         epsilon_min,
         memory_size,
         device,
+        db_location
     )
 
     try:
