@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PoliwhiRL.models.RainbowDQN.rainbowDQN import Attention
 
+
 class FeatureCNN(nn.Module):
     def __init__(self, input_dim):
         super(FeatureCNN, self).__init__()
@@ -30,6 +31,7 @@ class FeatureCNN(nn.Module):
 
     def forward(self, x):
         return self.attention(self.feature_layer(x))
+
 
 class Actor(nn.Module):
     def __init__(self, feature_dim, num_actions):

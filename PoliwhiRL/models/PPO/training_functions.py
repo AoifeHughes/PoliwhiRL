@@ -18,8 +18,10 @@ def compute_returns(next_value, rewards, masks, gamma=0.99):
         returns.insert(0, R)
     return returns
 
+
 def make_new_env(config):
     return Env(config)
+
 
 def setup_environment_and_model(config):
     env = Env(config)
@@ -29,6 +31,7 @@ def setup_environment_and_model(config):
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     return env, model, optimizer, start_episode
+
 
 def train(model, env, optimizer, config, start_episode):
     losses = []
@@ -56,7 +59,7 @@ def train(model, env, optimizer, config, start_episode):
             if len(states_seq) < config["sequence_length"]:
                 continue
             state_sequence_tensor = torch.stack(list(states_seq)).unsqueeze(0)
-            action_probs, value_estimates = model(state_sequence_tensor) 
+            action_probs, value_estimates = model(state_sequence_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
             action = dist.sample()
             next_state, reward, done = env.step(action.item())
@@ -103,9 +106,7 @@ def train(model, env, optimizer, config, start_episode):
         prev_input_sequences.append(env.get_buttons())
 
         print("Post episode jobs for episode", episode)
-        post_episode_jobs(
-            model, config, episode, train_rewards, losses
-        )
+        post_episode_jobs(model, config, episode, train_rewards, losses)
 
 
 def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
@@ -141,7 +142,6 @@ def post_episode_jobs(model, config, episode, train_rewards, losses):
 
 def continue_from_point(env, buttons):
     env.play_button_sequence(buttons)
-
 
 
 def load_latest_checkpoint(model, checkpoint_dir):
