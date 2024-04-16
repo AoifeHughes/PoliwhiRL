@@ -13,9 +13,9 @@ from .episodic_memory import EpisodicMemory
 
 
 class ParallelDQNAgent(BaseDQNAgent):
-    def __init__(self, config):
+    def __init__(self, config, workers_override=None):
         super().__init__(config)
-        self.num_workers = config["num_workers"]
+        self.num_workers = config["num_workers"] if workers_override is None else workers_override
         self.memory = EpisodicMemory(
             self.config["memory_size"], self.config["db_path"], parallel=True
         )
@@ -30,7 +30,7 @@ class ParallelDQNAgent(BaseDQNAgent):
                 idx,
                 self.reward_queues[idx],
                 self.work_queues[idx],
-                record=(True if idx > 0 else False),
+                record=(True if idx == 0 else False),
             )
             self.workers.append(worker)
 
@@ -52,7 +52,8 @@ class ParallelDQNAgent(BaseDQNAgent):
 
             rewards.extend(total_rewards)
             batch = self.memory.sample(self.batch_size)
-            self.update_model(batch)
+            for ep in batch:
+                self.update_model(ep)
 
             for worker in self.workers:
                 worker.model.load_state_dict(self.model.state_dict())
@@ -62,6 +63,18 @@ class ParallelDQNAgent(BaseDQNAgent):
         # Signal the workers to terminate
         for queue in self.work_queues:
             queue.put(("terminate", None))
+
+        # Wait for the worker processes to finish
+        for worker in self.workers:
+            worker.join()
+
+    def populate_db(self, num_episodes):
+        # Start the worker processes
+        for worker in self.workers:
+            worker.start()
+        # Signal the workers to start populating the database
+        for queue in self.work_queues:
+            queue.put(("populate", num_episodes))
 
         # Wait for the worker processes to finish
         for worker in self.workers:
@@ -86,30 +99,52 @@ class Worker(mp.Process):
         env = Env(self.config)
 
         while True:
-            signal, _ = self.work_queue.get()
+            signal, data = self.work_queue.get()
 
             if signal == "terminate":
                 break
+            elif signal == "populate":
+                num_episodes = data
+                self.populate_db(env, num_episodes)
+                break
+            elif signal == "run":
+                state = env.reset()
+                done = False
+                episode_reward = 0
 
-            state = env.reset()
-            done = False
-            episode_reward = 0
-
-            while not done:
-                action = self.act(np.array([state]))
-                next_state, reward, done = env.step(action)
-                self.memory.add(state, action, reward, next_state, done, self.worker_id)
-                state = next_state
-                episode_reward += reward
-                if self.record:
-                    env.record(self.epsilon, f"dqn{self.worker_id}", 0, reward)
-            self.reward_queue.put(episode_reward)
-            self.epsilon = self.epsilon * self.config["epsilon_decay"]
+                while not done:
+                    action = self.act(np.array([state]))
+                    next_state, reward, done = env.step(action)
+                    self.memory.add(state, action, reward, next_state, done, self.worker_id)
+                    state = next_state
+                    episode_reward += reward
+                    if self.record:
+                        env.record(self.epsilon, f"dqn{self.worker_id}", 0, reward)
+                self.reward_queue.put(episode_reward)
+                self.epsilon = self.epsilon * self.config["epsilon_decay"]
 
         env.close()
 
-    def act(self, state_sequence):
-        if np.random.rand() <= self.epsilon:
+    def populate_db(self, env, num_episodes):
+        for _ in tqdm(range(num_episodes), desc=f"Worker {self.worker_id} - Populating DB"):
+            state = env.reset()
+            done = False
+            steps = 0
+
+            while not done:
+                action = random.randrange(self.config["action_size"])
+                next_state, reward, done = env.step(action)
+                steps += 1
+                self.memory.add(state, action, reward, next_state, done, self.worker_id)
+                state = next_state
+
+
+
+    def act(self, state_sequence, epsilon=None):
+        if epsilon is None:
+            epsilon = self.epsilon
+
+        if np.random.rand() <= epsilon:
             return random.randrange(self.config["action_size"])
 
         state_sequence = state_sequence.reshape(

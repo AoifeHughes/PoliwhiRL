@@ -53,50 +53,44 @@ class BaseDQNAgent:
 
         return action
 
-    def update_model(self, batch):
-        self.epsilon_update()
-        max_length = max(len(episode[0]) for episode in batch)
-
-        padded_episodes = []
-        for episode in batch:
-            states, actions, rewards, next_states, dones = episode
-            pad_size = max_length - len(states)
-            states = list(states) + [np.zeros_like(states[0])] * pad_size
-            actions = list(actions) + [0] * pad_size
-            rewards = list(rewards) + [0] * pad_size
-            next_states = list(next_states) + [np.zeros_like(next_states[0])] * pad_size
-            dones = list(dones) + [True] * pad_size
-            padded_episodes.append((states, actions, rewards, next_states, dones))
-
-        states, actions, rewards, next_states, dones = zip(*padded_episodes)
-
+    def update_model(self, episode):
+        states, actions, rewards, next_states, dones = episode
+        
+        states = np.stack(states)
+        states = states.reshape(1, *states.shape)  # Add batch dimension
         states = torch.tensor(
-            np.transpose(np.stack(states), (0, 1, 4, 2, 3)), dtype=torch.float32
+            np.transpose(states, (0, 1, 4, 2, 3)),
+            dtype=torch.float32
         ).to(self.device)
-        actions = torch.tensor(np.stack(actions), dtype=torch.long).to(self.device)
-        rewards = torch.tensor(np.stack(rewards), dtype=torch.float32).to(self.device)
+        
+        actions = torch.tensor(actions, dtype=torch.long).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        
+        next_states = np.stack(next_states)
+        next_states = next_states.reshape(1, *next_states.shape)  # Add batch dimension
         next_states = torch.tensor(
-            np.transpose(np.stack(next_states), (0, 1, 4, 2, 3)), dtype=torch.float32
+            np.transpose(next_states, (0, 1, 4, 2, 3)),
+            dtype=torch.float32
         ).to(self.device)
-        dones = torch.tensor(np.stack(dones), dtype=torch.float32).to(self.device)
-
+        
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+        
         q_values = self.model(states)
         next_q_values = self.model(next_states)
+        
         targets = q_values.clone()
-
-        for i in range(len(batch)):
-            for j in range(len(batch[i][0])):
-                if dones[i, j]:
-                    targets[i, j, actions[i, j]] = rewards[i, j]
-                else:
-                    targets[i, j, actions[i, j]] = rewards[
-                        i, j
-                    ] + self.gamma * torch.max(next_q_values[i, j])
-
+        
+        for j in range(len(episode[0])):
+            if dones[j]:
+                targets[0, j, actions[j]] = rewards[j]
+            else:
+                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(next_q_values[0, j])
+        
         self.optimizer.zero_grad()
         loss = self.criterion(q_values, targets)
         loss.backward()
         self.optimizer.step()
+
 
     def plot_progress(self, rewards, id):
         plot_best_attempts(self.config["results_path"], "", id, rewards)

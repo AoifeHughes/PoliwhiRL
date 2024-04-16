@@ -26,6 +26,7 @@ class Rewards:
         self.max_time_in_last_screen = 100
         self.done = False
         self.timeout = controller.timeout
+        self.done_lim = controller.done_lim
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -84,8 +85,8 @@ class Rewards:
         return total_reward
 
     def update_for_timeout(self, total_reward):
-        if self.controller.steps >= self.timeout:
-            # total_reward -= 0.5
+        self.rewards.append(total_reward)
+        if self.controller.steps >= self.timeout or np.sum(self.rewards) >= self.done_lim:
             self.done = True
         return total_reward
 
@@ -107,5 +108,4 @@ class Rewards:
 
         # Clip the reward to be between -1 and 1
         total_reward = np.clip(total_reward, -1.0, 1.0)
-
         return total_reward, self.done

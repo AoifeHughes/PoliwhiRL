@@ -22,8 +22,7 @@ action_space_buttons = np.array(
         "a",
         "b",
         # "start",
-        # "select",
-        "pass",
+        # "select"
     ]
 )
 action_space = np.arange(len(action_space_buttons))
@@ -55,6 +54,7 @@ class Controller:
         self.pyboy = PyBoy(self.paths[0], debug=False, window="null")
         self.pyboy.set_emulation_speed(0)
         self.ram = RAM.RAMManagement(self.pyboy)
+        self.done_lim = config.get("done_lim", 1)
         self.rewards = Rewards(self)
 
         self.reset(init=True)
