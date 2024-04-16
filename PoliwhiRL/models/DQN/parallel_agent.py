@@ -15,7 +15,9 @@ from .episodic_memory import EpisodicMemory
 class ParallelDQNAgent(BaseDQNAgent):
     def __init__(self, config, workers_override=None):
         super().__init__(config)
-        self.num_workers = config["num_workers"] if workers_override is None else workers_override
+        self.num_workers = (
+            config["num_workers"] if workers_override is None else workers_override
+        )
         self.memory = EpisodicMemory(
             self.config["memory_size"], self.config["db_path"], parallel=True
         )
@@ -115,7 +117,9 @@ class Worker(mp.Process):
                 while not done:
                     action = self.act(np.array([state]))
                     next_state, reward, done = env.step(action)
-                    self.memory.add(state, action, reward, next_state, done, self.worker_id)
+                    self.memory.add(
+                        state, action, reward, next_state, done, self.worker_id
+                    )
                     state = next_state
                     episode_reward += reward
                     if self.record:
@@ -126,7 +130,9 @@ class Worker(mp.Process):
         env.close()
 
     def populate_db(self, env, num_episodes):
-        for _ in tqdm(range(num_episodes), desc=f"Worker {self.worker_id} - Populating DB"):
+        for _ in tqdm(
+            range(num_episodes), desc=f"Worker {self.worker_id} - Populating DB"
+        ):
             state = env.reset()
             done = False
             steps = 0
@@ -137,8 +143,6 @@ class Worker(mp.Process):
                 steps += 1
                 self.memory.add(state, action, reward, next_state, done, self.worker_id)
                 state = next_state
-
-
 
     def act(self, state_sequence, epsilon=None):
         if epsilon is None:

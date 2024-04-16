@@ -41,7 +41,11 @@ def run_model(config, record_id=0):
         agent.train(config["num_episodes"])
     else:
         agent.train(
-            env, config["num_episodes"], config["random_episodes"], config['done_lim'], record_id
+            env,
+            config["num_episodes"],
+            config["random_episodes"],
+            config["done_lim"],
+            record_id,
         )
     env.close()
     agent.save("final_model.pth")
