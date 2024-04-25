@@ -154,3 +154,4 @@ states/*
 *.prof
 *.pstats
 *.db
+database/episodic_memory.h5
