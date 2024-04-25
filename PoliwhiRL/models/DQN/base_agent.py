@@ -53,33 +53,57 @@ class BaseDQNAgent:
 
         return action
 
-    def update_model(self, episode):
-        states = episode["state"].to(self.device)
-        actions = episode["action"].to(self.device)
-        rewards = episode["reward"].to(self.device)
-        next_states = episode["next_state"].to(self.device)
-        dones = episode["done"].to(self.device)
+    def update_model(self, episodes):
+        # Group episodes by sequence length
+        grouped_episodes = {}
+        for episode in episodes:
+            seq_length = len(episode["state"])
+            if seq_length not in grouped_episodes:
+                grouped_episodes[seq_length] = []
+            grouped_episodes[seq_length].append(episode)
 
-        states = states.unsqueeze(0)  # Add batch dimension
-        next_states = next_states.unsqueeze(0)  # Add batch dimension
+        # Process each group of episodes as a batch
+        for seq_length, episode_group in grouped_episodes.items():
 
-        q_values = self.model(states)
-        next_q_values = self.model(next_states)
+            states = torch.stack(
+                [episode["state"] for episode in episode_group], dim=0
+            ).to(self.device)
+            actions = torch.stack(
+                [episode["action"] for episode in episode_group], dim=0
+            ).to(self.device)
+            rewards = torch.stack(
+                [episode["reward"] for episode in episode_group], dim=0
+            ).to(self.device)
+            next_states = torch.stack(
+                [episode["next_state"] for episode in episode_group], dim=0
+            ).to(self.device)
+            dones = torch.stack(
+                [episode["done"] for episode in episode_group], dim=0
+            ).to(self.device)
 
-        targets = q_values.clone()
+            q_values = self.model(states)
+            next_q_values = self.model(next_states)
 
-        for j in range(len(episode["state"])):
-            if dones[j]:
-                targets[0, j, actions[j]] = rewards[j]
-            else:
-                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(
-                    next_q_values[0, j]
+            targets = q_values.clone()
+
+            for j in range(seq_length):
+                mask = dones[:, j]
+                mask_indices = torch.where(mask)[0]
+                targets[mask_indices, j, actions[mask_indices, j]] = rewards[
+                    mask_indices, j
+                ]
+
+                not_mask = torch.logical_not(mask)
+                not_mask_indices = torch.where(not_mask)[0]
+                targets[not_mask_indices, j, actions[not_mask_indices, j]] = (
+                    rewards[not_mask_indices, j]
+                    + self.gamma * next_q_values[not_mask_indices, j].max(dim=1)[0]
                 )
 
-        self.optimizer.zero_grad()
-        loss = self.criterion(q_values, targets)
-        loss.backward()
-        self.optimizer.step()
+            self.optimizer.zero_grad()
+            loss = self.criterion(q_values, targets)
+            loss.backward()
+            self.optimizer.step()
 
     def plot_progress(self, rewards, id):
         plot_best_attempts(self.config["results_path"], "", id, rewards)

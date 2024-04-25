@@ -1,7 +1,7 @@
 {
     "model": "DQN",
     "device": "mps",
-    "num_episodes": 250,
+    "num_episodes": 500,
     "epsilon_decay": 0.99,
     "reward_image_folder": "./configs/reward_images",
     "epsilon_min": 0.01,

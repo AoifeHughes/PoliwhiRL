@@ -18,8 +18,7 @@ class DQNAgent(BaseDQNAgent):
             return
 
         episodes = self.memory.sample(self.batch_size)
-        for ep in episodes:
-            self.update_model(ep)
+        self.update_model(episodes)
 
     def train(self, env, num_episodes, random_episodes, extend_threshold, record_id=0):
         rewards = []
@@ -68,6 +67,6 @@ class DQNAgent(BaseDQNAgent):
                     done_sequence[i],
                 )
 
-            if len(self.memory) >= self.batch_size and episode > random_episodes:
+            if len(self.memory) >= self.batch_size:
                 self.replay()
             self.plot_progress(rewards, record_id)

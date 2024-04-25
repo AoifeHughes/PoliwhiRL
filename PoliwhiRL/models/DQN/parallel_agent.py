@@ -51,9 +51,8 @@ class ParallelDQNAgent(BaseDQNAgent):
                 total_rewards.append(reward_queue.get())
 
             rewards.extend(total_rewards)
-            batch = self.memory.sample(self.batch_size)
-            for ep in batch:
-                self.update_model(ep)
+            episodes = self.memory.sample(self.batch_size)
+            self.update_model(episodes)
 
             for worker in self.workers:
                 worker.model.load_state_dict(self.model.state_dict())
