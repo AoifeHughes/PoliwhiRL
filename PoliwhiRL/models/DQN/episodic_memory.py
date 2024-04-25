@@ -1,118 +1,103 @@
-# -*- coding: utf-8 -*-
 import os
-import pickle
-import sqlite3
+import h5py
+import numpy as np
+import torch
 import multiprocessing as mp
 
-
 class EpisodicMemory:
-    def __init__(
-        self, memory_size, db_path="./database/episodic_memory.db", parallel=False
-    ):
+    def __init__(self, memory_size, file_path="./database/episodic_memory.h5"):
         self.memory_size = memory_size
-        self.db_path = db_path
-        self.current_episode = []
-        self.parallel = parallel
+        self.file_path = file_path
+        self.partial_episodes = {}
+        self.lock = mp.Lock()
 
-        if parallel:
-            self.lock = mp.Lock()
-            self.partial_sequences = {}
+    def add(self, state, action, reward, next_state, done, worker_id=0):
+        if worker_id not in self.partial_episodes:
+            self.partial_episodes[worker_id] = []
 
-        self._create_table()
+        self.partial_episodes[worker_id].append((state, action, reward, done))
 
-    def _create_table(self):
-        db_folder = os.path.dirname(self.db_path)
-        if not os.path.exists(db_folder):
-            os.makedirs(db_folder)
+        if done:
+            self._store_episode(worker_id)
+            self.partial_episodes[worker_id] = []
 
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                """CREATE TABLE IF NOT EXISTS episodes
-                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          states BLOB,
-                          actions BLOB,
-                          rewards BLOB,
-                          next_states BLOB,
-                          dones BLOB)"""
-            )
-            conn.commit()
+    def _store_episode(self, worker_id):
+        episode = self.partial_episodes[worker_id]
+        if not episode:
+            return
 
-    def _get_connection(self):
-        if self.parallel:
-            return sqlite3.connect(self.db_path, check_same_thread=False)
-        else:
-            return sqlite3.connect(self.db_path)
+        states, actions, rewards, dones = zip(*episode)
 
-    def add(self, state, action, reward, next_state, done, worker_id=None):
-        if self.parallel:
-            if worker_id not in self.partial_sequences:
-                self.partial_sequences[worker_id] = []
+        episode_data = {
+            "state": torch.stack([torch.from_numpy(s).permute(2, 0, 1).float() for s in states]),
+            "action": torch.tensor(actions),
+            "reward": torch.tensor(rewards, dtype=torch.float32),
+            "done": torch.tensor(dones, dtype=torch.float32),
+            "total_reward": torch.tensor(sum(rewards), dtype=torch.float32),
+        }
 
-            self.partial_sequences[worker_id].append(
-                (state, action, reward, next_state, done)
-            )
+        with self.lock:
+            os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
 
-            if done:
-                with self.lock:
-                    self._add_episode(self.partial_sequences[worker_id])
-                    self.partial_sequences[worker_id] = []
-        else:
-            self.current_episode.append((state, action, reward, next_state, done))
-            if done:
-                self._add_episode(self.current_episode)
-                self.current_episode = []
+            if not os.path.exists(self.file_path):
+                with h5py.File(self.file_path, "w") as f:
+                    f.attrs["num_episodes"] = 0
 
-    def _add_episode(self, episode):
-        states, actions, rewards, next_states, dones = zip(*episode)
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                """INSERT INTO episodes (states, actions, rewards, next_states, dones)
-                         VALUES (?, ?, ?, ?, ?)""",
-                (
-                    pickle.dumps(states),
-                    pickle.dumps(actions),
-                    pickle.dumps(rewards),
-                    pickle.dumps(next_states),
-                    pickle.dumps(dones),
-                ),
-            )
-            conn.commit()
+            with h5py.File(self.file_path, "a") as f:
+                episode_id = f.attrs["num_episodes"]
+                f.attrs["num_episodes"] += 1
 
-        # Limit the number of stored episodes to memory_size
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "DELETE FROM episodes WHERE id NOT IN (SELECT id FROM episodes ORDER BY id DESC LIMIT ?)",
-                (self.memory_size,),
-            )
-            conn.commit()
+                episode_group = f.create_group(str(episode_id))
+                for key, value in episode_data.items():
+                    episode_group.create_dataset(key, data=value.numpy())
+
+            # Limit the number of stored episodes to memory_size
+            with h5py.File(self.file_path, "a") as f:
+                if len(f.keys()) > self.memory_size:
+                    oldest_episode_id = min(int(k) for k in f.keys())
+                    del f[str(oldest_episode_id)]
 
     def sample(self, batch_size):
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT states, actions, rewards, next_states, dones FROM episodes ORDER BY RANDOM() LIMIT ?",
-                (batch_size,),
-            )
-            rows = c.fetchall()
+        with h5py.File(self.file_path, "r") as f:
+            episode_ids = list(f.keys())
+            total_rewards = [f[episode_id]["total_reward"][()] for episode_id in episode_ids]
 
-        episodes = []
-        for row in rows:
-            states = pickle.loads(row[0])
-            actions = pickle.loads(row[1])
-            rewards = pickle.loads(row[2])
-            next_states = pickle.loads(row[3])
-            dones = pickle.loads(row[4])
-            episode = (states, actions, rewards, next_states, dones)
-            episodes.append(episode)
+            # Convert total rewards to probabilities using softmax
+            total_rewards = np.array(total_rewards)
+            probabilities = np.exp(total_rewards) / np.sum(np.exp(total_rewards))
+
+            # Sample episode IDs based on probabilities
+            sampled_episode_ids = np.random.choice(episode_ids, size=batch_size, replace=True, p=probabilities)
+
+            episodes = []
+            for episode_id in sampled_episode_ids:
+                episode_group = f[episode_id]
+                episode_data = {}
+                for key, value in episode_group.items():
+                    data = value[()]
+                    if isinstance(data, np.ndarray):
+                        episode_data[key] = torch.from_numpy(data)
+                    else:
+                        episode_data[key] = torch.tensor(data)
+                episodes.append(episode_data)
+
+        for episode_data in episodes:
+            states = episode_data["state"]
+            next_states = states[1:]  # Shift the state sequence by one step
+            
+            # Handle the last step separately
+            last_state = states[-1]
+            last_next_state = torch.zeros_like(last_state)  # Placeholder for the last next_state
+            
+            next_states = torch.cat((next_states, last_next_state.unsqueeze(0)))
+            
+            episode_data["next_state"] = next_states
 
         return episodes
 
     def __len__(self):
-        with self._get_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM episodes")
-            count = c.fetchone()[0]
-        return count
+        with h5py.File(self.file_path, "r") as f:
+            if "num_episodes" in f.attrs:
+                return f.attrs["num_episodes"]
+            else:
+                return 0

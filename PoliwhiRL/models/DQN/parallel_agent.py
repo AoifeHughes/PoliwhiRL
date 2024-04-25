@@ -19,7 +19,7 @@ class ParallelDQNAgent(BaseDQNAgent):
             config["num_workers"] if workers_override is None else workers_override
         )
         self.memory = EpisodicMemory(
-            self.config["memory_size"], self.config["db_path"], parallel=True
+            self.config["memory_size"], self.config["db_path"]
         )
         self.workers = []
         self.reward_queues = [Queue() for _ in range(self.num_workers)]
@@ -134,6 +134,7 @@ class Worker(mp.Process):
             range(num_episodes), desc=f"Worker {self.worker_id} - Populating DB"
         ):
             state = env.reset()
+            env.extend_timeout(self.config['random_episode_length'])
             done = False
             steps = 0
 

@@ -44,7 +44,7 @@ def run_model(config, record_id=0):
             env,
             config["num_episodes"],
             config["random_episodes"],
-            config["done_lim"],
+            config["extend_threshold"],
             record_id,
         )
     env.close()

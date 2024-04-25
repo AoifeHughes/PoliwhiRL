@@ -54,37 +54,25 @@ class BaseDQNAgent:
         return action
 
     def update_model(self, episode):
-        states, actions, rewards, next_states, dones = episode
+        states = episode["state"].to(self.device)
+        actions = episode["action"].to(self.device)
+        rewards = episode["reward"].to(self.device)
+        next_states = episode["next_state"].to(self.device)
+        dones = episode["done"].to(self.device)
 
-        states = np.stack(states)
-        states = states.reshape(1, *states.shape)  # Add batch dimension
-        states = torch.tensor(
-            np.transpose(states, (0, 1, 4, 2, 3)), dtype=torch.float32
-        ).to(self.device)
-
-        actions = torch.tensor(actions, dtype=torch.long).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-
-        next_states = np.stack(next_states)
-        next_states = next_states.reshape(1, *next_states.shape)  # Add batch dimension
-        next_states = torch.tensor(
-            np.transpose(next_states, (0, 1, 4, 2, 3)), dtype=torch.float32
-        ).to(self.device)
-
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+        states = states.unsqueeze(0)  # Add batch dimension
+        next_states = next_states.unsqueeze(0)  # Add batch dimension
 
         q_values = self.model(states)
         next_q_values = self.model(next_states)
 
         targets = q_values.clone()
 
-        for j in range(len(episode[0])):
+        for j in range(len(episode["state"])):
             if dones[j]:
                 targets[0, j, actions[j]] = rewards[j]
             else:
-                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(
-                    next_q_values[0, j]
-                )
+                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(next_q_values[0, j])
 
         self.optimizer.zero_grad()
         loss = self.criterion(q_values, targets)

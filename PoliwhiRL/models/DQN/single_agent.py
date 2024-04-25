@@ -21,7 +21,7 @@ class DQNAgent(BaseDQNAgent):
         for ep in episodes:
             self.update_model(ep)
 
-    def train(self, env, num_episodes, random_episodes, done_lim, record_id=0):
+    def train(self, env, num_episodes, random_episodes, extend_threshold, record_id=0):
         rewards = []
         episode_lengths = []
         best_reward = float("-inf")
@@ -43,9 +43,6 @@ class DQNAgent(BaseDQNAgent):
                 state_sequence.append(state)
                 action = self.act(np.array(state_sequence))
                 next_state, reward, done = env.step(action)
-                if np.sum(reward_sequence) >= done_lim:
-                    done = True
-                    print("Reward limit reached after ", episode_length, " steps")
                 env.record(self.epsilon, f"dqn{record_id}", 0, reward)
                 action_sequence.append(action)
                 reward_sequence.append(reward)
