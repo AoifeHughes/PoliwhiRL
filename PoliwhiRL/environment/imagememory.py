@@ -58,7 +58,8 @@ class ImageMemory:
                 self.features, index, axis=0
             )  # Remove image from features
             self.ids.pop(index)  # Remove image from ids
-            self.feature_index.fit(self.features)  # Update nearest neighbors index
+            if len(self.features) > 0:
+                self.feature_index.fit(self.features)  # Update nearest neighbors index
 
     def check_and_store_image(self, target_image, threshold=100):
         """Check if a similar image exists; store the new image in memory if

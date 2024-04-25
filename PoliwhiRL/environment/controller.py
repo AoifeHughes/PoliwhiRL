@@ -13,6 +13,20 @@ from PoliwhiRL.utils import OCR, document
 from .rewards import Rewards
 from .imagememory import ImageMemory
 
+action_space_buttons = np.array(
+    [
+        "up",
+        "down",
+        "left",
+        "right",
+        "a",
+        "b",
+        # "start",
+        # "select"
+    ]
+)
+action_space = np.arange(len(action_space_buttons))
+
 
 class Controller:
     def __init__(self, config):
@@ -40,22 +54,8 @@ class Controller:
         self.pyboy = PyBoy(self.paths[0], debug=False, window="null")
         self.pyboy.set_emulation_speed(0)
         self.ram = RAM.RAMManagement(self.pyboy)
+        self.extend_threshold = config.get("extend_threshold", 1)
         self.rewards = Rewards(self)
-
-        self.action_space_buttons = np.array(
-            [
-                "up",
-                "down",
-                "left",
-                "right",
-                "a",
-                "b",
-                "start",
-                "select",
-                "pass",
-            ]
-        )
-        self.action_space = np.arange(len(self.action_space_buttons))
 
         self.reset(init=True)
 
@@ -107,7 +107,7 @@ class Controller:
         self.run_time = time.time()
         self.done = False
         self.rewards = Rewards(self)
-        self.step(len(self.action_space) - 1, init=True)  # pass
+        self.step(len(action_space) - 1, init=True)  # pass
         self.timeout = self.ogTimeout
         return self.screen_image()
 
@@ -120,7 +120,7 @@ class Controller:
 
     def step(self, movement, ticks_per_input=10, wait=75, init=False):
         movement_int = movement
-        movement = self.action_space_buttons[movement]
+        movement = action_space_buttons[movement]
         if movement != "pass":
             self.pyboy.button_press(movement)
             self.pyboy.tick(ticks_per_input, False)
@@ -129,12 +129,11 @@ class Controller:
             self.pyboy.tick(ticks_per_input, False)
         self.pyboy.tick(wait, True)
         next_state = self.screen_image()
-        self.reward = self.rewards.calc_rewards(button_pressed=movement)
+        self.reward, self.done = self.rewards.calc_rewards(button_pressed=movement)
         if not init:
             self.steps += 1
             self.button = movement
             self.buttons.append(movement_int)
-            self.done = True if self.steps == self.timeout else False
         else:
             self.reward = 0
         return next_state, self.reward, self.done
@@ -169,7 +168,7 @@ class Controller:
         return self.frames_per_loc[self.get_current_location()]
 
     def extend_timeout(self, time):
-        self.timeout += time
+        self.rewards.extend_timeout(time)
 
     def screen_size(self):
         return self.screen_image().shape[:2]

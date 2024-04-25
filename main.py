@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.PPO import setup_and_train_ppo
+from PoliwhiRL.models.DQN import run_model as dqn
+
 from torch import device
 import os
 import shutil
@@ -72,7 +73,7 @@ def main():
 
     if config["erase"]:
         print("Erasing all logs, checkpoints, runs, and results")
-        folders = ["checkpoints", "logs", "runs", "results"]
+        folders = ["checkpoints", "logs", "runs", "results", "database"]
         for folder in folders:
             if folder in os.listdir():
                 shutil.rmtree(folder)
@@ -81,12 +82,11 @@ def main():
 
     pprint.pprint(config)
 
-    if config["model"] == "RainbowDQN":
-        rainbow(**config)
-    elif config["model"] == "PPO":
+    if config["model"] == "PPO":
         setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
-        raise NotImplementedError(f"{config['model']} is not implemented yet.")
+        # dqn(config)
+        dqn(config)
     else:
         raise ValueError(f"Model {config['model']} not recognized")
 
