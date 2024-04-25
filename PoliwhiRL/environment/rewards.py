@@ -60,7 +60,7 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += 1  
+            total_reward += 1
             self.img_rewards.pop_image(img_hash)
         return total_reward
 
@@ -91,7 +91,7 @@ class Rewards:
         if self.controller.steps >= self.timeout:
             self.done = True
         return total_reward
-    
+
     def extend_timeout(self, timeout):
         if not self.extended:
             self.timeout += timeout

@@ -72,7 +72,9 @@ class BaseDQNAgent:
             if dones[j]:
                 targets[0, j, actions[j]] = rewards[j]
             else:
-                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(next_q_values[0, j])
+                targets[0, j, actions[j]] = rewards[j] + self.gamma * torch.max(
+                    next_q_values[0, j]
+                )
 
         self.optimizer.zero_grad()
         loss = self.criterion(q_values, targets)

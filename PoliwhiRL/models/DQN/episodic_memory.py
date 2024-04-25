@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import os
 import h5py
 import numpy as np
 import torch
 import multiprocessing as mp
+
 
 class EpisodicMemory:
     def __init__(self, memory_size, file_path="./database/episodic_memory.h5"):
@@ -29,7 +31,9 @@ class EpisodicMemory:
         states, actions, rewards, dones = zip(*episode)
 
         episode_data = {
-            "state": torch.stack([torch.from_numpy(s).permute(2, 0, 1).float() for s in states]),
+            "state": torch.stack(
+                [torch.from_numpy(s).permute(2, 0, 1).float() for s in states]
+            ),
             "action": torch.tensor(actions),
             "reward": torch.tensor(rewards, dtype=torch.float32),
             "done": torch.tensor(dones, dtype=torch.float32),
@@ -60,14 +64,18 @@ class EpisodicMemory:
     def sample(self, batch_size):
         with h5py.File(self.file_path, "r") as f:
             episode_ids = list(f.keys())
-            total_rewards = [f[episode_id]["total_reward"][()] for episode_id in episode_ids]
+            total_rewards = [
+                f[episode_id]["total_reward"][()] for episode_id in episode_ids
+            ]
 
             # Convert total rewards to probabilities using softmax
             total_rewards = np.array(total_rewards)
             probabilities = np.exp(total_rewards) / np.sum(np.exp(total_rewards))
 
             # Sample episode IDs based on probabilities
-            sampled_episode_ids = np.random.choice(episode_ids, size=batch_size, replace=True, p=probabilities)
+            sampled_episode_ids = np.random.choice(
+                episode_ids, size=batch_size, replace=True, p=probabilities
+            )
 
             episodes = []
             for episode_id in sampled_episode_ids:
@@ -84,13 +92,15 @@ class EpisodicMemory:
         for episode_data in episodes:
             states = episode_data["state"]
             next_states = states[1:]  # Shift the state sequence by one step
-            
+
             # Handle the last step separately
             last_state = states[-1]
-            last_next_state = torch.zeros_like(last_state)  # Placeholder for the last next_state
-            
+            last_next_state = torch.zeros_like(
+                last_state
+            )  # Placeholder for the last next_state
+
             next_states = torch.cat((next_states, last_next_state.unsqueeze(0)))
-            
+
             episode_data["next_state"] = next_states
 
         return episodes
