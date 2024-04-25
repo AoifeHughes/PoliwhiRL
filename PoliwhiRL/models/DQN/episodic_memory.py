@@ -4,11 +4,13 @@ import h5py
 import numpy as np
 import torch
 import multiprocessing as mp
+import time
+import random
 
 
 class EpisodicMemory:
     def __init__(
-        self, memory_size, file_path="./database/episodic_memory.h5", clear_interval=100
+        self, memory_size, file_path="./database/episodic_memory.h5", clear_interval=25
     ):
         self.memory_size = memory_size
         self.file_path = file_path
@@ -20,6 +22,7 @@ class EpisodicMemory:
         try:
             print("Current memory size: ", self.memory_size)
             print("Current best reward: ", self.get_highest_reward())
+            self._clear_file()
         except FileNotFoundError:
             pass
 
@@ -44,9 +47,7 @@ class EpisodicMemory:
         states, actions, rewards, dones = zip(*episode)
 
         episode_data = {
-            "state": torch.stack(
-                [torch.from_numpy(s).permute(2, 0, 1).float() for s in states]
-            ),
+            "state": torch.stack([torch.from_numpy(s).permute(2, 0, 1).float() for s in states]),
             "action": torch.tensor(actions),
             "reward": torch.tensor(rewards, dtype=torch.float32),
             "done": torch.tensor(dones, dtype=torch.float32),
@@ -61,18 +62,23 @@ class EpisodicMemory:
                     f.attrs["num_episodes"] = 0
 
             with h5py.File(self.file_path, "a") as f:
-                episode_id = f.attrs["num_episodes"]
-                f.attrs["num_episodes"] += 1
+                timestamp = int(time.time() * 1000)  # Get current timestamp in milliseconds
+                random_num = random.randint(0, 999999)  # Generate a random number
+                episode_id = f"{timestamp}_{random_num}"  # Combine timestamp and random number
 
-                episode_group = f.create_group(str(episode_id))
+                episode_group = f.create_group(episode_id)
                 for key, value in episode_data.items():
                     episode_group.create_dataset(key, data=value.numpy())
+
+                f.attrs["num_episodes"] = len(f.keys())
 
             # Limit the number of stored episodes to memory_size
             with h5py.File(self.file_path, "a") as f:
                 if len(f.keys()) > self.memory_size:
-                    oldest_episode_id = min(int(k) for k in f.keys())
-                    del f[str(oldest_episode_id)]
+                    episode_ids = list(f.keys())
+                    oldest_episode_id = min(episode_ids)
+                    del f[oldest_episode_id]
+
 
     def sample(self, batch_size):
         with h5py.File(self.file_path, "r") as f:

@@ -26,6 +26,12 @@ class BaseDQNAgent:
         self.model = DQNModel(self.state_size, self.action_size).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=config["learning_rate"])
         self.criterion = nn.MSELoss()
+        self.target_model = DQNModel(self.state_size, self.action_size).to(self.device)
+        self.target_model.load_state_dict(self.model.state_dict())
+        self.target_model.eval()
+        self.target_update_frequency = config["target_update_frequency"]
+        self.steps = 0
+
 
     def epsilon_update(self):
         if self.epsilon > self.epsilon_min:
@@ -51,6 +57,7 @@ class BaseDQNAgent:
 
     def update_model(self, episodes, tbptt_steps=100):
         # Group episodes by sequence length
+        self.steps
         grouped_episodes = {}
         for episode in episodes:
             seq_length = len(episode["state"])
@@ -59,7 +66,6 @@ class BaseDQNAgent:
             grouped_episodes[seq_length].append(episode)
 
         for seq_length, episode_group in grouped_episodes.items():
-
             states = torch.stack([episode["state"] for episode in episode_group], dim=0).to(self.device)
             actions = torch.stack([episode["action"] for episode in episode_group], dim=0).to(self.device)
             rewards = torch.stack([episode["reward"] for episode in episode_group], dim=0).to(self.device)
@@ -77,7 +83,7 @@ class BaseDQNAgent:
                 dones_tbptt = dones[:, start:end]
 
                 q_values = self.model(states_tbptt)
-                next_q_values = self.model(next_states_tbptt)
+                next_q_values = self.target_model(next_states_tbptt)
 
                 targets = q_values.clone()
 
@@ -96,6 +102,10 @@ class BaseDQNAgent:
                 loss = self.criterion(q_values, targets)
                 loss.backward()
                 self.optimizer.step()
+
+        # Update the target network
+        if self.steps % self.target_update_frequency == 0:
+            self.target_model.load_state_dict(self.model.state_dict())
 
     def plot_progress(self, rewards, id):
         plot_best_attempts(self.config["results_path"], "", id, rewards)

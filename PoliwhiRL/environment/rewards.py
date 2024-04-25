@@ -26,8 +26,6 @@ class Rewards:
         self.max_time_in_last_screen = 100
         self.done = False
         self.timeout = controller.timeout
-        self.extend_threshold = controller.extend_threshold
-        self.extended = False
 
     def update_env_vars(self):
         self.screen = self.controller.screen_image(no_resize=True)
@@ -57,11 +55,15 @@ class Rewards:
         return total_reward
 
     def update_for_image_reward(self, total_reward):
+        if self.N_images_rewarded > 2:
+            return total_reward
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
             total_reward += 1
             self.img_rewards.pop_image(img_hash)
+            self.extend_timeout(500)
+
         return total_reward
 
     def update_for_pokedex(self, total_reward):
@@ -86,16 +88,12 @@ class Rewards:
 
     def update_for_timeout(self, total_reward):
         self.rewards.append(total_reward)
-        if np.sum(self.rewards) >= self.extend_threshold:
-            self.extend_timeout(1000)
         if self.controller.steps >= self.timeout:
             self.done = True
         return total_reward
 
     def extend_timeout(self, timeout):
-        if not self.extended:
-            self.timeout += timeout
-            self.extended = True
+        self.timeout += timeout
 
     def calc_rewards(self, use_sight=False, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start

@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from .base_agent import BaseDQNAgent
 from PoliwhiRL.environment.controller import Controller as Env
-from .episodic_memory import EpisodicMemory
 
 
 class ParallelDQNAgent(BaseDQNAgent):
@@ -18,7 +17,6 @@ class ParallelDQNAgent(BaseDQNAgent):
         self.num_workers = (
             config["num_workers"] if workers_override is None else workers_override
         )
-        self.memory = EpisodicMemory(self.config["memory_size"], self.config["db_path"])
         self.workers = []
         self.reward_queues = [Queue() for _ in range(self.num_workers)]
         self.work_queues = [Queue() for _ in range(self.num_workers)]

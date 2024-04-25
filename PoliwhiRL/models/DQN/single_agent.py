@@ -26,7 +26,7 @@ class DQNAgent(BaseDQNAgent):
         best_reward = float("-inf")
 
         # Training loop
-        for episode in tqdm(range(num_episodes + random_episodes), desc="Training"):
+        for _ in tqdm(range(num_episodes), desc="Training"):
             state = env.reset()
             episode_reward = 0
             episode_length = 0

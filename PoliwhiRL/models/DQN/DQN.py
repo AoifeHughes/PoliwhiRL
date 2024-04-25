@@ -32,7 +32,7 @@ class DQNModel(nn.Module):
         batch_size, seq_length = x.size(0), x.size(1)        
         # Reshape to [batch_size * seq_length, c, h, w]
         x = x.reshape(batch_size * seq_length, x.size(2), x.size(3), x.size(4))
-
+        x = x / 255.0  # Normalize the input
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.conv2(x)
