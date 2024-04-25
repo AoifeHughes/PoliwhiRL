@@ -28,11 +28,10 @@ class DQNModel(nn.Module):
         return int(np.prod(x.size()))
 
     def forward(self, x):
-        # x has shape [num_episodes, max_sequence_length, c, h, w]
-        num_episodes, max_sequence_length = x.size(0), x.size(1)
-        x = x.view(
-            num_episodes * max_sequence_length, x.size(2), x.size(3), x.size(4)
-        )  # Reshape to [num_episodes * max_sequence_length, c, h, w]
+        # x has shape [batch_size, seq_length, c, h, w]
+        batch_size, seq_length = x.size(0), x.size(1)        
+        # Reshape to [batch_size * seq_length, c, h, w]
+        x = x.reshape(batch_size * seq_length, x.size(2), x.size(3), x.size(4))
 
         x = self.conv1(x)
         x = self.relu1(x)
@@ -42,7 +41,9 @@ class DQNModel(nn.Module):
         x = self.fc1(x)
         x = self.relu3(x)
 
-        x = x.view(num_episodes, max_sequence_length, -1)
-        x, _ = self.lstm(x)
-        x = self.fc2(x)
+        # Reshape to [batch_size, seq_length, hidden_size]
+        x = x.reshape(batch_size, seq_length, -1)
+        
+        x, _ = self.lstm(x)  # LSTM input shape: [batch_size, seq_length, hidden_size]
+        x = self.fc2(x)  # Output shape: [batch_size, seq_length, action_size]
         return x

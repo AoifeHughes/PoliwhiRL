@@ -36,7 +36,6 @@ def run_single_training(agent, env, config, record_id):
         env,
         config["num_episodes"],
         config["random_episodes"],
-        config["extend_threshold"],
         record_id,
     )
 
@@ -50,7 +49,7 @@ def run_model(config, record_id=0):
     config["action_size"] = len(action_space)
     config["record_id"] = record_id
 
-    populate_database(config)
+    #populate_database(config)
     if config["num_workers"] > 1:
         if config["device"] != "cpu":
             print(

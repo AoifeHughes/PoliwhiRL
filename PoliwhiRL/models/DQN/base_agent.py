@@ -49,7 +49,7 @@ class BaseDQNAgent:
 
         return action
 
-    def update_model(self, episodes):
+    def update_model(self, episodes, tbptt_steps=100):
         # Group episodes by sequence length
         grouped_episodes = {}
         for episode in episodes:
@@ -58,48 +58,44 @@ class BaseDQNAgent:
                 grouped_episodes[seq_length] = []
             grouped_episodes[seq_length].append(episode)
 
-        # Process each group of episodes as a batch
         for seq_length, episode_group in grouped_episodes.items():
 
-            states = torch.stack(
-                [episode["state"] for episode in episode_group], dim=0
-            ).to(self.device)
-            actions = torch.stack(
-                [episode["action"] for episode in episode_group], dim=0
-            ).to(self.device)
-            rewards = torch.stack(
-                [episode["reward"] for episode in episode_group], dim=0
-            ).to(self.device)
-            next_states = torch.stack(
-                [episode["next_state"] for episode in episode_group], dim=0
-            ).to(self.device)
-            dones = torch.stack(
-                [episode["done"] for episode in episode_group], dim=0
-            ).to(self.device)
+            states = torch.stack([episode["state"] for episode in episode_group], dim=0).to(self.device)
+            actions = torch.stack([episode["action"] for episode in episode_group], dim=0).to(self.device)
+            rewards = torch.stack([episode["reward"] for episode in episode_group], dim=0).to(self.device)
+            next_states = torch.stack([episode["next_state"] for episode in episode_group], dim=0).to(self.device)
+            dones = torch.stack([episode["done"] for episode in episode_group], dim=0).to(self.device)
 
-            q_values = self.model(states)
-            next_q_values = self.model(next_states)
+            # Truncated Backpropagation Through Time
+            for start in range(0, seq_length, tbptt_steps):
+                end = min(start + tbptt_steps, seq_length)
 
-            targets = q_values.clone()
+                states_tbptt = states[:, start:end]
+                actions_tbptt = actions[:, start:end]
+                rewards_tbptt = rewards[:, start:end]
+                next_states_tbptt = next_states[:, start:end]
+                dones_tbptt = dones[:, start:end]
 
-            for j in range(seq_length):
-                mask = dones[:, j]
-                mask_indices = torch.where(mask)[0]
-                targets[mask_indices, j, actions[mask_indices, j]] = rewards[
-                    mask_indices, j
-                ]
+                q_values = self.model(states_tbptt)
+                next_q_values = self.model(next_states_tbptt)
 
-                not_mask = torch.logical_not(mask)
-                not_mask_indices = torch.where(not_mask)[0]
-                targets[not_mask_indices, j, actions[not_mask_indices, j]] = (
-                    rewards[not_mask_indices, j]
-                    + self.gamma * next_q_values[not_mask_indices, j].max(dim=1)[0]
-                )
+                targets = q_values.clone()
 
-            self.optimizer.zero_grad()
-            loss = self.criterion(q_values, targets)
-            loss.backward()
-            self.optimizer.step()
+                for j in range(end - start):
+                    mask = dones_tbptt[:, j]
+                    mask_indices = torch.where(mask)[0]
+                    targets[mask_indices, j, actions_tbptt[mask_indices, j]] = rewards_tbptt[mask_indices, j]
+
+                    not_mask = torch.logical_not(mask)
+                    not_mask_indices = torch.where(not_mask)[0]
+                    targets[not_mask_indices, j, actions_tbptt[not_mask_indices, j]] = (
+                        rewards_tbptt[not_mask_indices, j] + self.gamma * next_q_values[not_mask_indices, j].max(dim=1)[0]
+                    )
+
+                self.optimizer.zero_grad()
+                loss = self.criterion(q_values, targets)
+                loss.backward()
+                self.optimizer.step()
 
     def plot_progress(self, rewards, id):
         plot_best_attempts(self.config["results_path"], "", id, rewards)
