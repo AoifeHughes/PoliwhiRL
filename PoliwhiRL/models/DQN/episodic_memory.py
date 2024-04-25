@@ -47,7 +47,9 @@ class EpisodicMemory:
         states, actions, rewards, dones = zip(*episode)
 
         episode_data = {
-            "state": torch.stack([torch.from_numpy(s).permute(2, 0, 1).float() for s in states]),
+            "state": torch.stack(
+                [torch.from_numpy(s).permute(2, 0, 1).float() for s in states]
+            ),
             "action": torch.tensor(actions),
             "reward": torch.tensor(rewards, dtype=torch.float32),
             "done": torch.tensor(dones, dtype=torch.float32),
@@ -62,9 +64,13 @@ class EpisodicMemory:
                     f.attrs["num_episodes"] = 0
 
             with h5py.File(self.file_path, "a") as f:
-                timestamp = int(time.time() * 1000)  # Get current timestamp in milliseconds
+                timestamp = int(
+                    time.time() * 1000
+                )  # Get current timestamp in milliseconds
                 random_num = random.randint(0, 999999)  # Generate a random number
-                episode_id = f"{timestamp}_{random_num}"  # Combine timestamp and random number
+                episode_id = (
+                    f"{timestamp}_{random_num}"  # Combine timestamp and random number
+                )
 
                 episode_group = f.create_group(episode_id)
                 for key, value in episode_data.items():
@@ -78,7 +84,6 @@ class EpisodicMemory:
                     episode_ids = list(f.keys())
                     oldest_episode_id = min(episode_ids)
                     del f[oldest_episode_id]
-
 
     def sample(self, batch_size):
         with h5py.File(self.file_path, "r") as f:

@@ -32,7 +32,6 @@ class BaseDQNAgent:
         self.target_update_frequency = config["target_update_frequency"]
         self.steps = 0
 
-
     def epsilon_update(self):
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
@@ -66,11 +65,21 @@ class BaseDQNAgent:
             grouped_episodes[seq_length].append(episode)
 
         for seq_length, episode_group in grouped_episodes.items():
-            states = torch.stack([episode["state"] for episode in episode_group], dim=0).to(self.device)
-            actions = torch.stack([episode["action"] for episode in episode_group], dim=0).to(self.device)
-            rewards = torch.stack([episode["reward"] for episode in episode_group], dim=0).to(self.device)
-            next_states = torch.stack([episode["next_state"] for episode in episode_group], dim=0).to(self.device)
-            dones = torch.stack([episode["done"] for episode in episode_group], dim=0).to(self.device)
+            states = torch.stack(
+                [episode["state"] for episode in episode_group], dim=0
+            ).to(self.device)
+            actions = torch.stack(
+                [episode["action"] for episode in episode_group], dim=0
+            ).to(self.device)
+            rewards = torch.stack(
+                [episode["reward"] for episode in episode_group], dim=0
+            ).to(self.device)
+            next_states = torch.stack(
+                [episode["next_state"] for episode in episode_group], dim=0
+            ).to(self.device)
+            dones = torch.stack(
+                [episode["done"] for episode in episode_group], dim=0
+            ).to(self.device)
 
             # Truncated Backpropagation Through Time
             for start in range(0, seq_length, tbptt_steps):
@@ -90,12 +99,15 @@ class BaseDQNAgent:
                 for j in range(end - start):
                     mask = dones_tbptt[:, j]
                     mask_indices = torch.where(mask)[0]
-                    targets[mask_indices, j, actions_tbptt[mask_indices, j]] = rewards_tbptt[mask_indices, j]
+                    targets[mask_indices, j, actions_tbptt[mask_indices, j]] = (
+                        rewards_tbptt[mask_indices, j]
+                    )
 
                     not_mask = torch.logical_not(mask)
                     not_mask_indices = torch.where(not_mask)[0]
                     targets[not_mask_indices, j, actions_tbptt[not_mask_indices, j]] = (
-                        rewards_tbptt[not_mask_indices, j] + self.gamma * next_q_values[not_mask_indices, j].max(dim=1)[0]
+                        rewards_tbptt[not_mask_indices, j]
+                        + self.gamma * next_q_values[not_mask_indices, j].max(dim=1)[0]
                     )
 
                 self.optimizer.zero_grad()

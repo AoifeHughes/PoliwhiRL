@@ -29,7 +29,7 @@ class DQNModel(nn.Module):
 
     def forward(self, x):
         # x has shape [batch_size, seq_length, c, h, w]
-        batch_size, seq_length = x.size(0), x.size(1)        
+        batch_size, seq_length = x.size(0), x.size(1)
         # Reshape to [batch_size * seq_length, c, h, w]
         x = x.reshape(batch_size * seq_length, x.size(2), x.size(3), x.size(4))
         x = x / 255.0  # Normalize the input
@@ -43,7 +43,7 @@ class DQNModel(nn.Module):
 
         # Reshape to [batch_size, seq_length, hidden_size]
         x = x.reshape(batch_size, seq_length, -1)
-        
+
         x, _ = self.lstm(x)  # LSTM input shape: [batch_size, seq_length, hidden_size]
         x = self.fc2(x)  # Output shape: [batch_size, seq_length, action_size]
         return x
