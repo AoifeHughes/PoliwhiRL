@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -33,9 +32,6 @@ class BaseDQNAgent:
             self.epsilon *= self.epsilon_decay
 
     def act(self, state_sequence):
-        if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
-
         state_sequence = np.array(state_sequence)
         state_sequence = state_sequence.reshape(
             1, *state_sequence.shape

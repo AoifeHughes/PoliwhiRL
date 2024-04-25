@@ -1,7 +1,7 @@
 {
     "model": "DQN",
     "device": "mps",
-    "num_episodes": 500,
+    "num_episodes": 1000,
     "epsilon_decay": 0.99,
     "reward_image_folder": "./configs/reward_images",
     "epsilon_min": 0.01,
@@ -12,11 +12,11 @@
     "checkpoint": "./checkpoints/final_model.pth",
     "use_grayscale": false,
     "erase": false,
-    "memory_size": 50,
-    "gamma": 0.95,
+    "memory_size": 100,
+    "gamma": 0.99,
     "db_path": "./database/episodic_memory.h5",
     "num_workers": 1,
-    "extend_threshold": 5,
-    "random_episodes": 4,
+    "extend_threshold": 3,
+    "random_episodes": 10,
     "random_episode_length": 100
 }

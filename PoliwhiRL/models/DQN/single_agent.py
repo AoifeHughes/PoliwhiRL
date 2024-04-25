@@ -20,7 +20,7 @@ class DQNAgent(BaseDQNAgent):
         episodes = self.memory.sample(self.batch_size)
         self.update_model(episodes)
 
-    def train(self, env, num_episodes, random_episodes, extend_threshold, record_id=0):
+    def train(self, env, num_episodes, random_episodes, record_id=0):
         rewards = []
         episode_lengths = []
         best_reward = float("-inf")

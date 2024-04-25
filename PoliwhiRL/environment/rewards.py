@@ -87,7 +87,7 @@ class Rewards:
     def update_for_timeout(self, total_reward):
         self.rewards.append(total_reward)
         if np.sum(self.rewards) >= self.extend_threshold:
-            self.extend_timeout(5000)
+            self.extend_timeout(1000)
         if self.controller.steps >= self.timeout:
             self.done = True
         return total_reward

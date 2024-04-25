@@ -42,13 +42,7 @@ class DQNModel(nn.Module):
         x = self.fc1(x)
         x = self.relu3(x)
 
-        x = x.view(
-            num_episodes, max_sequence_length, -1
-        )  # Reshape to [num_episodes, max_sequence_length, hidden_size]
-        x, _ = self.lstm(
-            x
-        )  # LSTM input shape: [num_episodes, max_sequence_length, hidden_size]
-        x = self.fc2(
-            x
-        )  # Output shape: [num_episodes, max_sequence_length, action_size]
+        x = x.view(num_episodes, max_sequence_length, -1)
+        x, _ = self.lstm(x)
+        x = self.fc2(x)
         return x

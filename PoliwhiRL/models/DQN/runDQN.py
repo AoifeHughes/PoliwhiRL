@@ -4,6 +4,7 @@ from .single_agent import DQNAgent
 from PoliwhiRL.environment.controller import Controller as Env
 from PoliwhiRL.environment.controller import action_space
 
+
 def populate_database(config):
     cur_device = config["device"]
     config["device"] = "cpu"
@@ -21,11 +22,14 @@ def load_model(agent):
     except FileNotFoundError:
         print("No model found, training from scratch")
 
+
 def save_model(agent):
     agent.save("final_model.pth")
 
+
 def run_parallel_training(agent, config):
     agent.train(config["num_episodes"])
+
 
 def run_single_training(agent, env, config, record_id):
     agent.train(
@@ -35,6 +39,7 @@ def run_single_training(agent, env, config, record_id):
         config["extend_threshold"],
         record_id,
     )
+
 
 def run_model(config, record_id=0):
     env = Env(config)
@@ -48,7 +53,9 @@ def run_model(config, record_id=0):
     populate_database(config)
     if config["num_workers"] > 1:
         if config["device"] != "cpu":
-            print("Warning: ParallelDQNAgent only supports CPU training. Switching to CPU")
+            print(
+                "Warning: ParallelDQNAgent only supports CPU training. Switching to CPU"
+            )
             config["device"] = "cpu"
         agent = ParallelDQNAgent(config)
     else:

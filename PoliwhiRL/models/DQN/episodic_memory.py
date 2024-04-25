@@ -17,8 +17,11 @@ class EpisodicMemory:
         self.clear_interval = clear_interval
         self.add_count = 0
 
-        print("Current memory size: ", self.memory_size)
-        print("Current best reward: ", self.get_highest_reward())
+        try:
+            print("Current memory size: ", self.memory_size)
+            print("Current best reward: ", self.get_highest_reward())
+        except FileNotFoundError:
+            pass
 
     def add(self, state, action, reward, next_state, done, worker_id=0):
         if worker_id not in self.partial_episodes:
