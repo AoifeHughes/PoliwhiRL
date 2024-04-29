@@ -19,6 +19,7 @@ def image_to_tensor(image, device):
     image = image.to(device)
     return image
 
+
 def images_to_tensors(images, device):
     tensors = []
     for image in images:
@@ -26,6 +27,7 @@ def images_to_tensors(images, device):
         tensor = tensor.to(device)
         tensors.append(tensor)
     return tensors
+
 
 def select_action(state, epsilon, device, movements, model):
     if random.random() > epsilon:
