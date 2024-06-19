@@ -38,7 +38,7 @@
   "hybrid_start": 10,
   "record_frequency": 10,
   "eval_episodes": 5,
-  "eval_frequency": 100,
+  "eval_frequency": 25,
   "eval_mode": false,
   "replay_frequency": 5,
   "opt_runs": 1,

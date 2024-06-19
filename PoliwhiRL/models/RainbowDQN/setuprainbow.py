@@ -79,7 +79,7 @@ def finalize_training(
     plot_best_attempts(
         "./results/",
         config["num_episodes"],
-        f"RainbowDQN_{config['run_parallel']}_final",
+        f"RainbowDQN_final",
         rewards,
     )
     # Save checkpoint
