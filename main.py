@@ -2,6 +2,7 @@
 
 from PoliwhiRL.models.RainbowDQN import run as rainbow
 from PoliwhiRL.models.PPO import setup_and_train_ppo
+from PoliwhiRL.models.RNN import run as rnn
 from torch import device
 import os
 import shutil
@@ -84,7 +85,7 @@ def main():
     if config["model"] == "RainbowDQN":
         rainbow(**config)
     elif config["model"] == "PPO":
-        setup_and_train_ppo(config)
+        rnn(**config)
     elif config["model"] in ["DQN"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
     else:
