@@ -37,6 +37,8 @@ class RNN(nn.Module):
         return x.view(x.size(0), -1)
     
     def forward(self, x, hidden):
+        if x.dim() == 4:
+            x = x.unsqueeze(0) # add batch size if needed
         batch_size, seq_len, c, h, w = x.size()
         x = x.view(batch_size * seq_len, c, h, w)
         

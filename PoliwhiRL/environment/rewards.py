@@ -30,11 +30,11 @@ class Rewards:
         self.screen = self.controller.screen_image(no_resize=True)
         self.env_vars = self.controller.get_RAM_variables()
 
-    def update_for_vision(self, total_reward, default_reward):
-        is_new_vision, _ = self.img_memory.check_and_store_image()
-        if is_new_vision:
-            total_reward += default_reward * 10
-        return total_reward
+    # def update_for_vision(self, total_reward, default_reward):
+    #     is_new_vision, _ = self.img_memory.check_and_store_image()
+    #     if is_new_vision:
+    #         total_reward += default_reward * 10
+    #     return total_reward
 
     def update_for_party_pokemon(self, total_reward, default_reward):
         total_level, total_hp, total_exp = self.env_vars["party_info"]
@@ -63,8 +63,19 @@ class Rewards:
         is_reward_image, img_hash = self.img_rewards.check_if_image_exists(self.screen)
         if is_reward_image:
             self.N_images_rewarded += 1
-            total_reward += default_reward * self.reward_image_multipliers[img_hash]
+
+            #temp to stop after this point
+            #reward = (default_reward * self.reward_image_multipliers[img_hash])
+            #total_reward += reward
             self.img_rewards.pop_image(img_hash)
+
+
+            num_steps = self.controller.steps
+            step_lim = self.controller.timeout
+            timeLeftPercent = (step_lim - num_steps) / step_lim
+            total_reward += (default_reward * 200) * (1+timeLeftPercent)
+            self.controller.set_done()
+
         return total_reward
 
     def update_for_pokedex(self, total_reward, default_reward):
@@ -73,8 +84,17 @@ class Rewards:
             self.pkdex_seen = self.env_vars["pkdex_seen"]
 
         if self.env_vars["pkdex_owned"] > self.pkdex_owned:
-            total_reward += default_reward * 200
             self.pkdex_owned = self.env_vars["pkdex_owned"]
+
+            num_steps = self.controller.steps
+            step_lim = self.controller.timeout
+            timeLeftPercent = (step_lim - num_steps) / step_lim
+            total_reward += (default_reward * 200) * (1+timeLeftPercent)
+            # set as goal complete 
+            self.controller.set_done()
+            print("Ping... got a pokemon!")
+            print("After ", num_steps, " steps")
+
         return total_reward
 
     def update_for_money(self, total_reward, default_reward):
@@ -111,20 +131,18 @@ class Rewards:
 
         return total_reward
 
-    def calc_rewards(self, default_reward=0.01, use_sight=False, button_pressed=None):
+    def calc_rewards(self, default_reward=0.01, button_pressed=None):
         self.update_env_vars()  # Update env_vars at the start
         self.button_pressed = button_pressed
-        total_reward = 0
-        # if use_sight:
-        #     total_reward = self.update_for_vision(total_reward, default_reward)
-
+        total_reward = -default_reward # negative reward for not doing anything
+ 
         for func in [
             self.update_for_party_pokemon,
             self.update_for_movement,
             self.update_for_pokedex,
             self.update_for_money,
             self.update_for_image_reward,
-            # self.update_for_menuing,
+            self.update_for_menuing,
             # self.update_for_same_screen
         ]:
             total_reward = func(total_reward, default_reward)

@@ -23,13 +23,17 @@ class PPO:
         rewards = torch.tensor(rewards).float().to(device)
         dones = torch.tensor(dones).float().to(device)
         next_states = torch.stack(next_states).float().to(device)
+        batch_size = 1
+
+
+        # print the shape of the states 
+        print(states.shape)
 
         # Compute discounted rewards-to-go
         discounted_rewards = compute_discounted_rewards(rewards, self.gamma).to(device)  # Ensure tensor is on correct device
         
         for _ in range(self.ppo_epochs):
-            hidden = self.model.init_hidden(self.batch_size)
-            
+            hidden = self.model.init_hidden(batch_size)  # Use the actual batch size
             logits, values, _ = self.model(states, hidden)
             probs = nn.functional.softmax(logits, dim=-1)
             log_probs = nn.functional.log_softmax(logits, dim=-1)

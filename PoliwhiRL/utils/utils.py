@@ -114,7 +114,6 @@ def plot_best_attempts(results_path, episodes, phase, results):
 
     fig.savefig(results_path)
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
-
     plt.close(fig)
 
 

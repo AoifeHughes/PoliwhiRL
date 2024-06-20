@@ -85,7 +85,7 @@ def main():
     if config["model"] == "RainbowDQN":
         rainbow(**config)
     elif config["model"] == "PPO":
-        rnn(**config)
+        setup_and_train_ppo(config)
     elif config["model"] in ["DQN"]:
         raise NotImplementedError(f"{config['model']} is not implemented yet.")
     else:

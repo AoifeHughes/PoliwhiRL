@@ -10,7 +10,8 @@ def setup_and_train_ppo(config):
 
     updated_vars = {}
     for var in ["episode_length", "sequence_length", "num_episodes"]:
-        if "," in config[var]:
+        # check if var is a string
+        if isinstance(config[var], str) and "," in config[var]:
             updated_vars[var] = [int(i) for i in config[var].split(",")]
         else:
             updated_vars[var] = [int(config[var])]
