@@ -40,5 +40,6 @@
   "sequence_length": "5,5",
   "update_timestep": 50,
   "vision": false,
-  "random_frequency": 30
+  "random_frequency": 30,
+  "N_goals_target": 1
 }

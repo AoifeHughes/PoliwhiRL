@@ -1,7 +1,7 @@
 import numpy as np
 
 class Rewards:
-    def __init__(self, goals=None):
+    def __init__(self, goals=None, N_goals_target=2):
         self.xy = set()
         self.pkdex_seen = 0
         self.pkdex_owned = 0
@@ -16,7 +16,7 @@ class Rewards:
         self.default_reward = 0.1
         self.steps = 0
         self.steps_since_goal = 0
-        self.N_goals_target = 2
+        self.N_goals_target = N_goals_target
         self.N_goals = 0
         if goals:
             self.set_goals(goals)

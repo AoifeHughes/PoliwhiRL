@@ -10,7 +10,7 @@ from PoliwhiRL.environment import RAM
 from PoliwhiRL.utils.utils import document
 from .rewards import Rewards
 
-actions = ['', 'a', 'b', 'left', 'right', 'up', 'down', 'start', 'select']
+actions = ['', 'a', 'b', 'left', 'right', 'up', 'down', 'start']#, 'select']
 
 class PyBoyEnvironment(gym.Env):
     def __init__(self, config):
@@ -61,19 +61,22 @@ class PyBoyEnvironment(gym.Env):
         return self.get_screen_image().shape
 
     def _calculate_fitness(self):
-        self._fitness, self.done = self.reward_calculator.calc_rewards(self.get_RAM_variables(), self.steps)
+        self._fitness, reward_done = self.reward_calculator.calc_rewards(self.get_RAM_variables(), self.steps)
+        if reward_done:
+            self.done = True
 
     def reset(self):
         self.button = 0
         with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
-        self.reward_calculator = Rewards(self.config.get("reward_goals", None))
+        self.reward_calculator = Rewards(self.config.get("reward_goals", None), self.config.get("N_goals_target", 2) )
         self._fitness = 0
         self.handle_action(0)
         observation = self.get_game_area() if not self.config.get("vision", False) else self.get_screen_image()
         self.steps = 0
         self.episode += 1
         self.render = self.config.get("vision", False)
+        self._calculate_fitness()
         return observation, {}
 
     def render(self, mode='human'):
