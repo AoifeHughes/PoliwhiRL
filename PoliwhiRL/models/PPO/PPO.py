@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# TODO: create two models, one for the ram map and one with imgs to save the if statements
+
 class FeatureCNN(nn.Module):
     def __init__(self, input_dim, vision=True):
         super(FeatureCNN, self).__init__()
@@ -37,11 +39,13 @@ class FeatureCNN(nn.Module):
                 nn.ReLU(),
                 nn.Flatten(),
             )
+
     def feature_size(self, input_dim):
         if self.vision:
             return self.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1)
         else:
             return self.feature_layer(torch.zeros(1, input_dim)).view(1, -1).size(1)
+
     def forward(self, x):
         return self.feature_layer(x)
 
@@ -90,6 +94,9 @@ class PPOModel(nn.Module):
         else:
             batch_size, seq_len, input_dim = x.size()
             x = x.view(batch_size * seq_len, input_dim)
+
+        # Normalize the input images from uint8 to float
+        x = x.float() / 255.0
 
         features = self.FeatureCNN(x)
         features = features.view(batch_size, seq_len, -1)

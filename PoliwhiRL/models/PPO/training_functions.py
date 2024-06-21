@@ -7,7 +7,7 @@ import os
 from tqdm import tqdm
 from .PPO import PPOModel
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
-from PoliwhiRL.environment.gym_env import GenericPyBoyEnv as Env
+from PoliwhiRL.environment import PyBoyEnvironment as Env
 
 
 def compute_returns(next_value, rewards, masks, gamma=0.99):
@@ -24,9 +24,10 @@ def make_new_env(config):
 def setup_environment_and_model(config):
     env = Env(config)
     if config["vision"]:
-        input_dim = (1 if config["use_grayscale"] else 3, *env.screen_size())
+        height, width, channels = env.get_screen_size()
+        input_dim = (channels, height, width)
     else:
-        input_dim = env.pyboy.game_area().shape[0] * env.pyboy.game_area().shape[1]
+        input_dim = np.prod(env.get_game_area().shape)
     output_dim = env.action_space.n
     model = PPOModel(input_dim, output_dim, config['vision']).to(config["device"])
     start_episode = load_latest_checkpoint(model, config["checkpoint"])

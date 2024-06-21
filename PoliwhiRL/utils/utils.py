@@ -42,30 +42,21 @@ def select_action(state, epsilon, device, movements, model):
 def document(
     episode_id,
     step_id,
-    img,  # img is a NumPy array, could be in grayscale or RGB format
+    img, 
     button_press,
     reward,
-    timeout,
-    epsilon,
-    phase,
-    location,
-    x,
-    y,
-    was_random,
-    priority_val,
+    phase
 ):
     try:
         if not os.path.isdir("./runs"):
             os.mkdir("./runs")
     except Exception as e:
         print(e)
-
     fldr = f"./runs/{phase}/"
     # Ensure all directories exist
     os.makedirs(fldr, exist_ok=True)
     save_dir = f"{fldr}/{episode_id}"
     os.makedirs(save_dir, exist_ok=True)
-
     # Determine if the image is grayscale or RGB and handle accordingly
     if img.ndim == 2:  # Grayscale
         img = Image.fromarray(img, mode="L")  # 'L' mode for grayscale
@@ -75,9 +66,8 @@ def document(
         img = Image.fromarray(img[:, :, 0], mode="L")
     else:
         raise ValueError("Unsupported image format")
-
     # Construct filename with relevant information
-    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}_ep_{np.around(epsilon,4)}_loc_{location}_X_{x}_Y_{y}_timeout_{timeout}_was_random_{was_random}_priority_val_{priority_val}.png"
+    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward,4)}.png"
     # Save image
     img.save(os.path.join(save_dir, filename))
 
