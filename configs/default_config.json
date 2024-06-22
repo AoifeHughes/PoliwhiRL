@@ -34,8 +34,8 @@
       [59, 8, 3, 50]
     ]
   ],
-  "use_grayscale": true,
-  "learning_rate": 1e-5,
+  "use_grayscale": false,
+  "learning_rate": 1e-4,
   "record_frequency": 3,
   "update_timestep": 64,
   "vision": false,

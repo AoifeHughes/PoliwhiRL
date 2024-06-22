@@ -186,8 +186,9 @@ def update_model_from_memory(model, optimizer, memory, config):
     for start_idx in range(0, num_sequences, batch_size):
         end_idx = min(start_idx + batch_size, num_sequences)
         batch_states = states[start_idx:end_idx].permute(
-            (1, 0, 2)
-        )  # Note this needs tweaked for when using images
+            (1,0,2,3,4)
+             if config["vision"] else (1, 0, 2)
+        )  
         batch_actions = actions[start_idx:end_idx]
         batch_old_log_probs = old_log_probs[start_idx:end_idx]
         batch_old_values = old_values[start_idx:end_idx]
