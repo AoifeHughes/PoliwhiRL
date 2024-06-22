@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import shutil
 import tempfile
@@ -10,7 +11,8 @@ from PoliwhiRL.environment import RAM
 from PoliwhiRL.utils.utils import document
 from .rewards import Rewards
 
-actions = ['', 'a', 'b', 'left', 'right', 'up', 'down', 'start']#, 'select']
+actions = ["", "a", "b", "left", "right", "up", "down", "start"]  # , 'select']
+
 
 class PyBoyEnvironment(gym.Env):
     def __init__(self, config):
@@ -25,7 +27,9 @@ class PyBoyEnvironment(gym.Env):
         self.render = config.get("vision", False)
 
         files_to_copy = [config.get("rom_path"), config.get("state_path")]
-        files_to_copy.extend([file for file in config.get("extra_files", []) if os.path.isfile(file)])
+        files_to_copy.extend(
+            [file for file in config.get("extra_files", []) if os.path.isfile(file)]
+        )
         self.paths = [shutil.copy(file, self.temp_dir) for file in files_to_copy]
         self.state_path = self.paths[1]
 
@@ -51,17 +55,23 @@ class PyBoyEnvironment(gym.Env):
     def step(self, action):
         self.handle_action(action)
         self._calculate_fitness()
-        observation = self.get_game_area() if not self.config.get("vision", False) else self.get_screen_image()
+        observation = (
+            self.get_game_area()
+            if not self.config.get("vision", False)
+            else self.get_screen_image()
+        )
         return observation, self._fitness, self.done, False, {}
 
     def get_game_area(self):
-        return self.pyboy.game_area()[:18,:20]
+        return self.pyboy.game_area()[:18, :20]
 
     def get_screen_size(self):
         return self.get_screen_image().shape
 
     def _calculate_fitness(self):
-        self._fitness, reward_done = self.reward_calculator.calc_rewards(self.get_RAM_variables(), self.steps)
+        self._fitness, reward_done = self.reward_calculator.calc_rewards(
+            self.get_RAM_variables(), self.steps
+        )
         if reward_done:
             self.done = True
 
@@ -69,17 +79,23 @@ class PyBoyEnvironment(gym.Env):
         self.button = 0
         with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
-        self.reward_calculator = Rewards(self.config.get("reward_goals", None), self.config.get("N_goals_target", 2) )
+        self.reward_calculator = Rewards(
+            self.config.get("reward_goals", None), self.config.get("N_goals_target", 2)
+        )
         self._fitness = 0
         self.handle_action(0)
-        observation = self.get_game_area() if not self.config.get("vision", False) else self.get_screen_image()
+        observation = (
+            self.get_game_area()
+            if not self.config.get("vision", False)
+            else self.get_screen_image()
+        )
         self.steps = 0
         self.episode += 1
         self.render = self.config.get("vision", False)
         self._calculate_fitness()
         return observation, {}
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         pass
 
     def close(self):
@@ -90,24 +106,37 @@ class PyBoyEnvironment(gym.Env):
 
     def get_screen_image(self, no_resize=False):
         original_image = np.array(self.pyboy.screen.image)[:, :, :3]
-        
+
         if self.config.get("use_grayscale", False) and not no_resize:
             original_image = cv2.cvtColor(original_image, cv2.COLOR_RGB2GRAY)
             original_image = np.expand_dims(original_image, axis=-1)
-        
+
         if self.config.get("scaling_factor", 1) == 1.0 or no_resize:
             return original_image.astype(np.uint8)
         else:
-            new_width = int(original_image.shape[1] * self.config.get("scaling_factor", 1))
-            new_height = int(original_image.shape[0] * self.config.get("scaling_factor", 1))
-            resized_image = cv2.resize(original_image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            new_width = int(
+                original_image.shape[1] * self.config.get("scaling_factor", 1)
+            )
+            new_height = int(
+                original_image.shape[0] * self.config.get("scaling_factor", 1)
+            )
+            resized_image = cv2.resize(
+                original_image, (new_width, new_height), interpolation=cv2.INTER_AREA
+            )
             return resized_image.astype(np.uint8)
-        
+
     def get_pyboy_bg(self):
-        return self.pyboy.tilemap_background[:18,:20]
-    
+        return self.pyboy.tilemap_background[:18, :20]
+
     def get_pyboy_wnd(self):
-        return self.pyboy.tilemap_window[:18,:20]
-    
+        return self.pyboy.tilemap_window[:18, :20]
+
     def record(self, fldr):
-        document(self.episode, self.steps, self.get_screen_image(), self.button, self._fitness, fldr)
+        document(
+            self.episode,
+            self.steps,
+            self.get_screen_image(),
+            self.button,
+            self._fitness,
+            fldr,
+        )

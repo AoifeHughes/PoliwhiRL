@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 import numpy as np
+
 
 class Rewards:
     def __init__(self, goals=None, N_goals_target=2):
@@ -9,7 +11,7 @@ class Rewards:
         self.total_level = 0
         self.total_hp = 0
         self.total_exp = 0
-        self.goal = ''
+        self.goal = ""
         self.done = False
         self.reward_goals = {}
         self.reward_goals_rewards = {}
@@ -34,21 +36,22 @@ class Rewards:
             for idy, option in enumerate(goal):
                 self.reward_goals[idx].append(option[:-1])
                 self.reward_goals_rewards[idx] = option[-1]
-        
 
     def update_for_goals(self, ram):
-        reward = 0 
-        cur_x = ram['X']
-        cur_y = ram['Y']
-        cur_loc = ram['map_num_loc']
+        reward = 0
+        cur_x = ram["X"]
+        cur_y = ram["Y"]
+        cur_loc = ram["map_num_loc"]
         xyl = [cur_x, cur_y, cur_loc]
 
         for key, value in self.reward_goals.items():
             for idx, goal in enumerate(value):
                 if xyl == goal:
                     del self.reward_goals[key]
-                    reward = self.reward_goals_rewards[key] * (1-(self.steps_since_goal/500)) # todo: come up with better way to time this
-                    reward = max(reward, self.default_reward*25)
+                    reward = self.reward_goals_rewards[key] * (
+                        1 - (self.steps_since_goal / 500)
+                    )  # todo: come up with better way to time this
+                    reward = max(reward, self.default_reward * 25)
                     self.steps_since_goal = 0
                     self.N_goals += 1
                     print("Completed goal", key, "reward:", reward)
@@ -58,9 +61,6 @@ class Rewards:
                     return reward
         self.steps_since_goal += 1
         return reward
-
-
-
 
     def update_for_party_pokemon(self, ram):
         total_level, total_hp, total_exp = ram["party_info"]
@@ -78,7 +78,7 @@ class Rewards:
 
     def update_for_movement(self, ram):
         reward = 0
-        cur_xy = (ram['X'], ram['Y'])
+        cur_xy = (ram["X"], ram["Y"])
         if cur_xy not in self.xy:
             reward += self.default_reward * 5
         self.xy.add(cur_xy)
@@ -86,36 +86,37 @@ class Rewards:
 
     def update_for_pokedex(self, ram):
         reward = 0
-        if ram['pkdex_seen'] > self.pkdex_seen:
+        if ram["pkdex_seen"] > self.pkdex_seen:
             reward += self.default_reward * 100
-        self.pkdex_seen = ram['pkdex_seen']
-        if ram['pkdex_owned'] > self.pkdex_owned:
-            self.pkdex_owned = ram['pkdex_owned'] 
-            reward += (self.default_reward * 200)
+        self.pkdex_seen = ram["pkdex_seen"]
+        if ram["pkdex_owned"] > self.pkdex_owned:
+            self.pkdex_owned = ram["pkdex_owned"]
+            reward += self.default_reward * 200
             # set as goal complete
-            if self.goal == 'pkmn':
+            if self.goal == "pkmn":
                 print("Got a new pokemon!")
                 self.done = True
         return reward
 
     def update_for_money(self, ram):
         reward = 0
-        if ram['money'] > self.money:
+        if ram["money"] > self.money:
             reward += self.default_reward * 3
-        elif ram['money'] < self.money:
+        elif ram["money"] < self.money:
             reward -= self.default_reward * 3
-        self.money = ram['money']
+        self.money = ram["money"]
         return reward
-    
 
     def calc_rewards(self, env_vars, steps):
         total_reward = -self.default_reward  # negative reward for not doing anything
         self.steps = steps
-        for f in [self.update_for_party_pokemon, 
-                  self.update_for_movement, 
-                  self.update_for_pokedex,
-                  self.update_for_money,
-                  self.update_for_goals]:
+        for f in [
+            self.update_for_party_pokemon,
+            self.update_for_movement,
+            self.update_for_pokedex,
+            self.update_for_money,
+            self.update_for_goals,
+        ]:
             total_reward += f(env_vars)
 
         return total_reward, self.done

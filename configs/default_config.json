@@ -1,7 +1,7 @@
 {
   "rom_path": "./emu_files/Pokemon - Crystal Version.gbc",
   "state_path": "./emu_files/states/start.state",
-  "episode_length": "5000,5000,5000",
+  "episode_length": "50000,5000,5000",
   "device": "mps",
   "num_episodes": "300,300,300",
   "batch_size": 16,
@@ -17,14 +17,14 @@
   ],
   "reward_goals":[
     [
-      [9, 1, 6, 50] 
+      [9, 1, 6, 50]
     ],
 
     [
-      [13, 6, 4, 50] 
+      [13, 6, 4, 50]
     ],
     [
-      [6, 5, 4, 50] 
+      [6, 5, 4, 50]
     ],
     [
       [4, 10, 5, 50]
@@ -35,14 +35,16 @@
     ]
   ],
   "use_grayscale": true,
-  "learning_rate": 1e-4,
+  "learning_rate": 1e-5,
   "record_frequency": 3,
-  "update_timestep": 32,
-  "vision": true,
+  "update_timestep": 64,
+  "vision": false,
   "random_frequency": 4,
   "N_goals_target": "1,2,3",
-  "clip_epsilon": 0.2,
+  "epsilon": 0.2,
   "value_loss_coef": 0.5,
+  "ppo_epochs": 4,
   "entropy_coef": 0.01,
-  "max_grad_norm": 0.5
+  "max_grad_norm": 0.5,
+  "sequence_length": 16
 }

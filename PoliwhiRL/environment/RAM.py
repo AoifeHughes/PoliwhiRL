@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
+
 class RAMManagement:
     def __init__(self, pyboy):
         self.pyboy = pyboy
-        
+
         # Memory locations
         self.location_mem_loc = 0xD148
         self.MAP_mem_number_loc = 0xDCB6
@@ -16,11 +17,10 @@ class RAMManagement:
         self.num_pokemon_mem_loc = 0xDCD7
         self.pokedex_seen_mem_loc = (0xDEB9, 0xDED8)
         self.pokedex_owned_mem_loc = (0xDE99, 0xDEB8)
-        
+
         # Additional variables from comments
         self.warp_number_loc = 0xDCB4
         self.map_bank_loc = 0xDCB5
-
 
         self.update_variables()
 
@@ -93,7 +93,7 @@ class RAMManagement:
                 total_owned += byte_value & 1
                 byte_value >>= 1
         return total_owned
-    
+
     def get_map_num_loc(self):
         return self.get_memory_value(self.MAP_mem_number_loc)
 
@@ -107,7 +107,6 @@ class RAMManagement:
         self.map_num_loc = self.get_map_num_loc()
         self.warp_number = self.get_memory_value(self.warp_number_loc)
         self.map_bank = self.get_memory_value(self.map_bank_loc)
-
 
     def get_variables(self):
         self.update_variables()

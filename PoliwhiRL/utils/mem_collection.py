@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from PoliwhiRL.environment import PyBoyEnvironment as Env
 import numpy as np
 import sqlite3
@@ -6,6 +7,7 @@ import os
 from PIL import Image
 from tqdm import tqdm
 import hashlib
+
 
 def memory_collector(config):
     """
@@ -20,7 +22,8 @@ def memory_collector(config):
     cursor = conn.cursor()
 
     # Create a table to store the image data and associated information
-    cursor.execute("""
+    cursor.execute(
+        """
     CREATE TABLE IF NOT EXISTS memory_data (
     id INTEGER PRIMARY KEY,
     image BLOB,
@@ -38,7 +41,8 @@ def memory_collector(config):
     warp_number INTEGER,
     map_bank INTEGER
     )
-    """)
+    """
+    )
 
     # Create a set to store image hashes
     image_hashes = set()
@@ -56,7 +60,7 @@ def memory_collector(config):
 
         # Convert the image to bytes
         img_bytes = io.BytesIO()
-        Image.fromarray(img).save(img_bytes, format='PNG')
+        Image.fromarray(img).save(img_bytes, format="PNG")
         img_bytes = img_bytes.getvalue()
 
         # Calculate image hash
@@ -72,7 +76,8 @@ def memory_collector(config):
             mem_view = str(mem_view.tolist())
 
             # Insert the image data and ram_vars into the database
-            cursor.execute("""
+            cursor.execute(
+                """
             INSERT INTO memory_data (
             image, money, location, X, Y, party_info,
             pkdex_seen, pkdex_owned, map_num_loc, mem_view, mem_view_bg,
@@ -80,27 +85,30 @@ def memory_collector(config):
             warp_number, map_bank
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-            img_bytes,
-            ram_vars["money"],
-            ram_vars["location"],
-            ram_vars["X"],
-            ram_vars["Y"],
-            str(ram_vars["party_info"]),
-            str(ram_vars["pkdex_seen"]),
-            str(ram_vars["pkdex_owned"]),
-            str(ram_vars["map_num_loc"]),
-            mem_view,
-            mem_view_bg,
-            mem_view_wnd,
-            ram_vars["warp_number"],
-            ram_vars["map_bank"]
-            ))
+            """,
+                (
+                    img_bytes,
+                    ram_vars["money"],
+                    ram_vars["location"],
+                    ram_vars["X"],
+                    ram_vars["Y"],
+                    str(ram_vars["party_info"]),
+                    str(ram_vars["pkdex_seen"]),
+                    str(ram_vars["pkdex_owned"]),
+                    str(ram_vars["map_num_loc"]),
+                    mem_view,
+                    mem_view_bg,
+                    mem_view_wnd,
+                    ram_vars["warp_number"],
+                    ram_vars["map_bank"],
+                ),
+            )
             conn.commit()
 
     # Close the database connection
     conn.close()
     extract_images_by_map()
+
 
 def extract_images_by_map(db_path="memory_data.db", output_dir="extracted_images"):
     """
@@ -124,7 +132,9 @@ def extract_images_by_map(db_path="memory_data.db", output_dir="extracted_images
         map_dir = os.path.join(output_dir, f"map_{map_loc}")
 
         # Get all images for this map_num_loc
-        cursor.execute("SELECT id, image FROM memory_data WHERE map_num_loc = ?", (map_loc,))
+        cursor.execute(
+            "SELECT id, image FROM memory_data WHERE map_num_loc = ?", (map_loc,)
+        )
         images = cursor.fetchall()
 
         for img_id, img_data in images:

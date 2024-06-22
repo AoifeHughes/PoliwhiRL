@@ -77,7 +77,7 @@ def main():
             if folder in os.listdir():
                 shutil.rmtree(folder)
 
-    config["device"] = device(config.get("device", 'cpu'))
+    config["device"] = device(config.get("device", "cpu"))
 
     pprint.pprint(config)
 
