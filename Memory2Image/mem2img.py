@@ -137,7 +137,7 @@ dataset = MemoryDataset('memory_data.db')
 
 # Hyperparameters
 batch_size = 64
-learning_rate = 0.001
+learning_rate = 0.0001
 num_epochs = 100
 
 # DataLoader

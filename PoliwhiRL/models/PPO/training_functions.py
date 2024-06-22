@@ -3,6 +3,7 @@ import collections
 import numpy as np
 import torch.optim as optim
 import torch
+import torch.nn.functional as F
 import os
 from tqdm import tqdm
 from .PPO import PPOModel
@@ -41,57 +42,90 @@ def train(model, env, optimizer, config, start_episode):
         state, _ = env.reset()
         if episode % config.get("record_frequency", 10) == 0:
             env.enable_render()
-        episode_rewards = 0  # Initialize episode_rewards before the while loop
+        
+        episode_rewards = 0
         saved_log_probs, saved_values, rewards, masks = [], [], [], []
+        saved_states, saved_actions = [], []
         done = False
-        hidden = None  # Initialize hidden state to None
         steps_since_update = 0
-        total = 0
-        rand = False
+        
         while not done:
             if config["vision"]:
-                state_tensor = image_to_tensor(state, config["device"]).unsqueeze(0).unsqueeze(0)  # Add batch and sequence dimensions
+                state_tensor = image_to_tensor(state, config["device"]).unsqueeze(0).unsqueeze(0)
             else:
-                state_tensor = torch.tensor(state.flatten().astype(np.float32), dtype=torch.float32, device=config["device"]).unsqueeze(0).unsqueeze(0)  # Add batch and sequence dimensions
-            action_probs, value_estimates, hidden = model(state_tensor, hidden)
+                state_tensor = torch.tensor(state.flatten().astype(np.float32), dtype=torch.float32, device=config["device"]).unsqueeze(0).unsqueeze(0)
+            
+            action_probs, value_estimates = model(state_tensor)
             dist = torch.distributions.Categorical(action_probs[0])
-            if episode % config.get("random_frequency", 10) == 0:
-                    num_actions = dist.probs.size(0)
-                    action = torch.randint(0, num_actions, (1,)).item()
-                    rand = True
-            action = dist.sample() 
+            action = dist.sample()
+            
             next_state, reward, done, _, _ = env.step(action.item())
+            
             if episode % config.get("record_frequency", 10) == 0:
-                env.record(f"PPO_training_{config['episode_length']}_random_ep_{rand}")
+                env.record(f"PPO_training_{config['episode_length']}_N_goals_{config['N_goals_target']}")
+            
             episode_rewards += reward
             state = next_state
+            
             saved_log_probs.append(dist.log_prob(action).unsqueeze(0))
             saved_values.append(value_estimates)
+            saved_states.append(state_tensor)
+            saved_actions.append(action.unsqueeze(0))
             rewards.append(reward)
             masks.append(1.0 - done)
+            
             steps_since_update += 1
+            
             if steps_since_update == config["update_timestep"] or done:
-                loss = update_model(optimizer, saved_log_probs, saved_values, rewards, masks, config["gamma"])
+                states = torch.cat(saved_states)
+                actions = torch.cat(saved_actions)
+                loss = update_model(model, optimizer, saved_log_probs, saved_values, rewards, masks, states, actions, config["gamma"])
                 losses.append(loss)
-                saved_log_probs, saved_values, rewards, masks = [], [], [], []
+                saved_log_probs, saved_values, rewards, masks, saved_states, saved_actions = [], [], [], [], [], []
                 steps_since_update = 0
-                hidden = None  # Reset hidden state after each update
-        train_rewards.append(episode_rewards)  # Append the total episode rewards to train_rewards
+        
+        train_rewards.append(episode_rewards)
         post_episode_jobs(model, config, episode, train_rewards, losses)
+    
+    return train_rewards, losses
 
-def update_model(optimizer, saved_log_probs, saved_values, rewards, masks, gamma):
+def update_model(model, optimizer, saved_log_probs, saved_values, rewards, masks, states, actions, gamma=0.99, epsilon=0.2, epochs=1):
     next_value = saved_values[-1].detach()
     returns = compute_returns(next_value, rewards, masks, gamma)
-    log_probs = torch.cat(saved_log_probs)
+    old_log_probs = torch.cat(saved_log_probs).detach()
     returns = torch.cat(returns).detach()
     values = torch.cat(saved_values)
     advantages = returns - values.squeeze(-1)
-    action_loss = -(log_probs * advantages).mean()
-    value_loss = (returns - values.squeeze(-1)).pow(2).mean()
-    optimizer.zero_grad()
-    (action_loss + value_loss).backward()
-    optimizer.step()
-    return (action_loss + value_loss).item()
+    # Normalize advantages
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+    for _ in range(epochs):
+        # Detach tensors at the start of each epoch
+        detached_advantages = advantages.detach()
+        detached_returns = returns.detach()
+        detached_old_log_probs = old_log_probs.detach()
+
+        # Recalculate probabilities and values
+        action_probs, new_values = model(states)
+        dist = torch.distributions.Categorical(action_probs.squeeze(1))
+        new_log_probs = dist.log_prob(actions)
+        ratio = (new_log_probs - detached_old_log_probs).exp()
+
+        # Clipped surrogate objective
+        surr1 = ratio * detached_advantages
+        surr2 = torch.clamp(ratio, 1.0 - epsilon, 1.0 + epsilon) * detached_advantages
+        action_loss = -torch.min(surr1, surr2).mean()
+        value_loss = F.mse_loss(new_values, detached_returns)
+
+        # Add entropy bonus
+        entropy = dist.entropy().mean()
+        loss = action_loss + 0.5 * value_loss - 0.01 * entropy
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    return loss.item()
 
 def post_episode_jobs(model, config, episode, train_rewards, losses):
     if episode % config.get("plot_every", 10) == 0:

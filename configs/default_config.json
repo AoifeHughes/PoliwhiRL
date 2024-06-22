@@ -1,45 +1,48 @@
 {
   "rom_path": "./emu_files/Pokemon - Crystal Version.gbc",
   "state_path": "./emu_files/states/start.state",
-  "episode_length": "10000,3000",
+  "episode_length": "5000,5000,5000",
   "device": "mps",
-  "num_episodes": "100,100",
+  "num_episodes": "300,300,300",
   "batch_size": 16,
-  "checkpoint": "./checkpoints/RainbowDQN.pth",
+  "checkpoint": "./checkpoints/PPO.pth",
   "model": "PPO",
-  "erase": false,
+  "erase": true,
   "checkpoint_interval": 100,
   "gamma": 0.99,
-  "scaling_factor": 0.5,
+  "scaling_factor": 1,
   "extra_files": [
     "./emu_files/Pokemon - Crystal Version.gbc.ram",
     "./emu_files/Pokemon - Crystal Version.gbc.rtc"
   ],
   "reward_goals":[
     [
-      [9, 1, 6, 20] 
+      [9, 1, 6, 50] 
     ],
 
     [
-      [13, 6, 4, 20] 
+      [13, 6, 4, 50] 
     ],
     [
-      [6, 5, 4, 20] 
+      [6, 5, 4, 50] 
     ],
     [
-      [4, 10, 5, 20]
+      [4, 10, 5, 50]
     ],
     [
-      [59, 9, 3, 20],
-      [59, 8, 3, 20]
+      [59, 9, 3, 50],
+      [59, 8, 3, 50]
     ]
   ],
-  "use_grayscale": false,
+  "use_grayscale": true,
   "learning_rate": 1e-4,
-  "record_frequency": 10,
-  "sequence_length": "5,5",
-  "update_timestep": 50,
-  "vision": false,
-  "random_frequency": 30,
-  "N_goals_target": 1
+  "record_frequency": 3,
+  "update_timestep": 32,
+  "vision": true,
+  "random_frequency": 4,
+  "N_goals_target": "1,2,3",
+  "clip_epsilon": 0.2,
+  "value_loss_coef": 0.5,
+  "entropy_coef": 0.01,
+  "max_grad_norm": 0.5
 }

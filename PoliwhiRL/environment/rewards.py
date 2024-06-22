@@ -48,7 +48,7 @@ class Rewards:
                 if xyl == goal:
                     del self.reward_goals[key]
                     reward = self.reward_goals_rewards[key] * (1-(self.steps_since_goal/500)) # todo: come up with better way to time this
-                    reward = max(reward, self.default_reward*5)
+                    reward = max(reward, self.default_reward*25)
                     self.steps_since_goal = 0
                     self.N_goals += 1
                     print("Completed goal", key, "reward:", reward)

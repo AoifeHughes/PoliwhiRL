@@ -1,93 +1,75 @@
-# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import TransformerEncoderLayer
 
-# TODO: create two models, one for the ram map and one with imgs to save the if statements
-
-class FeatureCNN(nn.Module):
-    def __init__(self, input_dim, vision=True):
-        super(FeatureCNN, self).__init__()
+class FeatureNN(nn.Module):
+    def __init__(self, input_dim, vision=True, base_channels=32, num_conv_layers=3):
+        super(FeatureNN, self).__init__()
         self.vision = vision
+        
         if self.vision:
-            self.feature_layer = nn.Sequential(
-                nn.Conv2d(input_dim[0], 32, kernel_size=3, stride=1, padding=2),
-                nn.BatchNorm2d(32),
-                nn.ReLU(),
-                nn.Dropout(p=0.2),
-                nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-                nn.BatchNorm2d(64),
-                nn.ReLU(),
-                nn.Dropout(p=0.2),
-                nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-                nn.BatchNorm2d(128),
-                nn.ReLU(),
-                nn.Dropout(p=0.2),
-                nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # Added an additional convolutional layer
-                nn.BatchNorm2d(256),
-                nn.ReLU(),
-                nn.Dropout(p=0.2),
-                nn.Flatten(),
-            )
+            layers = []
+            in_channels = input_dim[0]
+            for i in range(num_conv_layers):
+                out_channels = base_channels * (2**i)
+                layers.extend([
+                    nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1 if i == 0 else 2, padding=1),
+                    nn.BatchNorm2d(out_channels),
+                    nn.ReLU(),
+                    nn.Dropout(p=0.2)
+                ])
+                in_channels = out_channels
+            
+            layers.append(nn.AdaptiveAvgPool2d((1, 1)))  # Global average pooling
+            layers.append(nn.Flatten())
+            
+            self.feature_layer = nn.Sequential(*layers)
         else:
             self.feature_layer = nn.Sequential(
                 nn.Linear(input_dim, 256),
                 nn.ReLU(),
+                nn.Dropout(p=0.2),
                 nn.Linear(256, 512),
                 nn.ReLU(),
+                nn.Dropout(p=0.2),
                 nn.Linear(512, 1024),
                 nn.ReLU(),
-                nn.Flatten(),
+                nn.Dropout(p=0.2)
             )
 
     def feature_size(self, input_dim):
         if self.vision:
             return self.feature_layer(torch.zeros(1, *input_dim)).view(1, -1).size(1)
         else:
-            return self.feature_layer(torch.zeros(1, input_dim)).view(1, -1).size(1)
+            return 1024  # The output size of the last linear layer
 
     def forward(self, x):
         return self.feature_layer(x)
 
-class Actor(nn.Module):
-    def __init__(self, feature_dim, num_actions):
-        super(Actor, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=128, num_layers=2, batch_first=True)  # Increased hidden size and added an extra LSTM layer
-        self.policy_head = nn.Sequential(
-            nn.Linear(128, 256),  # Added an additional fully connected layer
-            nn.ReLU(),
-            nn.Linear(256, num_actions)
-        )
-
-    def forward(self, features):
-        lstm_out, _ = self.lstm(features)
-        return F.softmax(self.policy_head(lstm_out[:, -1, :]), dim=-1)
-
-class Critic(nn.Module):
-    def __init__(self, feature_dim):
-        super(Critic, self).__init__()
-        self.lstm = nn.LSTM(input_size=feature_dim, hidden_size=128, num_layers=2, batch_first=True)  # Increased hidden size and added an extra LSTM layer
-        self.value_head = nn.Sequential(
-            nn.Linear(128, 256),  # Added an additional fully connected layer
-            nn.ReLU(),
-            nn.Linear(256, 1)
-        )
-
-    def forward(self, features):
-        lstm_out, _ = self.lstm(features)
-        return self.value_head(lstm_out[:, -1, :])
-
 class PPOModel(nn.Module):
-    def __init__(self, input_dim, num_actions, vision=True):
+    def __init__(self, input_dim, num_actions, vision=True, num_transformer_layers=3):
         super(PPOModel, self).__init__()
         self.vision = vision
-        self.FeatureCNN = FeatureCNN(input_dim, vision)
+        self.FeatureCNN = FeatureNN(input_dim, vision)
         feature_size = self.FeatureCNN.feature_size(input_dim)
-        self.lstm = nn.LSTM(input_size=feature_size, hidden_size=256, num_layers=2, batch_first=True)
-        self.actor = nn.Linear(256, num_actions)
-        self.critic = nn.Linear(256, 1)
+        
+        encoder_layer = TransformerEncoderLayer(
+            d_model=feature_size, 
+            nhead=8, 
+            dim_feedforward=2048,
+            dropout=0.1,
+            batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=num_transformer_layers
+        )
+        
+        self.actor = nn.Linear(feature_size, num_actions)
+        self.critic = nn.Linear(feature_size, 1)
 
-    def forward(self, x, hidden=None):
+    def forward(self, x):
         if self.vision:
             batch_size, seq_len, channels, height, width = x.size()
             x = x.view(batch_size * seq_len, channels, height, width)
@@ -100,14 +82,14 @@ class PPOModel(nn.Module):
 
         features = self.FeatureCNN(x)
         features = features.view(batch_size, seq_len, -1)
-        if hidden is None:
-            lstm_out, hidden = self.lstm(features)
-        else:
-            lstm_out, hidden = self.lstm(features, hidden)
         
-        lstm_out = lstm_out[:, -1, :]  # Use the last output of the LSTM
+        # Apply transformer encoder
+        features = self.transformer_encoder(features)
         
-        action_probs = F.softmax(self.actor(lstm_out), dim=-1)
-        value_estimates = self.critic(lstm_out)
+        # Use the last output of the Transformer
+        features = features[:, -1, :]
         
-        return action_probs, value_estimates, hidden
+        action_probs = F.softmax(self.actor(features), dim=-1)
+        value_estimates = self.critic(features)
+        
+        return action_probs, value_estimates
