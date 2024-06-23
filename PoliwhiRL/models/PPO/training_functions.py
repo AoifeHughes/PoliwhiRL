@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import collections
+import random
 import numpy as np
 import torch.optim as optim
 import torch
@@ -33,6 +34,7 @@ def setup_environment_and_model(config):
     else:
         input_dim = np.prod(env.get_game_area().shape)
     output_dim = env.action_space.n
+    config['num_actions'] = output_dim
     model = PPOModel(input_dim, output_dim, config["vision"]).to(config["device"])
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
@@ -67,15 +69,24 @@ def run_episode(model, env, optimizer, config):
     done = False
     steps_since_update = 0
     sequence = []
-    if config.get("record_frequency") and episode % config["record_frequency"] == 0:
+    hidden_state = None  # Initialize hidden state
+
+    # Initialize epsilon for this episode
+    epsilon = max(
+        config["final_epsilon"],
+        config["initial_epsilon"] * (config["epsilon_decay_rate"] ** episode)
+    )
+
+    if episode % config["record_frequency"] == 0:
         env.enable_render()
+
     while not done:
         state_tensor = prepare_state_tensor(state, config)
         sequence.append(state_tensor)
 
         if len(sequence) == config["sequence_length"]:
             sequence_tensor = torch.cat(sequence, dim=1)
-            action, log_prob, value = select_action(model, sequence_tensor)
+            action, log_prob, value, hidden_state = select_action(model, sequence_tensor, hidden_state, epsilon, config)
             sequence = sequence[1:]  # Remove the oldest state
         else:
             action = torch.tensor(env.action_space.sample(), device=config["device"])
@@ -92,36 +103,46 @@ def run_episode(model, env, optimizer, config):
             value,
             reward,
             done,
+            hidden_state  # Store hidden state in memory
         )
 
         state = next_state
         steps_since_update += 1
+
+        if episode % config["record_frequency"] == 0:
+            env.record(
+                f"PPO_training_{config['episode_length']}_N_goals_{config['N_goals_target']}"
+            )
 
         if steps_since_update == config["update_timestep"] or done:
             loss = update_model_from_memory(model, optimizer, memory, config)
             episode_losses.append(loss)
             memory.clear()
             steps_since_update = 0
-
-        if config.get("record_frequency") and episode % config["record_frequency"] == 0:
-            env.record(
-                f"PPO_training_{config['episode_length']}_N_goals_{config['N_goals_target']}"
-            )
+            hidden_state = None  # Reset hidden state after update
 
     return episode_rewards, episode_losses
 
 
-def select_action(model, state):
-    action_probs, value_estimates = model(state)
+def select_action(model, state, hidden_state, epsilon, config):
+    if random.random() < epsilon:
+        # Choose a random action
+        rnd_number = random.randint(0, config["num_actions"] - 1)
+        action = torch.tensor(rnd_number, device=config["device"])
+        action_probs, value_estimates, new_hidden_state = model(state, hidden_state)
+        last_step_probs = action_probs[0, -1, :]
+        last_step_value = value_estimates[0, -1, 0]
+        log_prob = torch.log(last_step_probs[action])
+    else:
+        # Choose action based on the model
+        action_probs, value_estimates, new_hidden_state = model(state, hidden_state)
+        last_step_probs = action_probs[0, -1, :]  # shape: [num_actions]
+        last_step_value = value_estimates[0, -1, 0]  # shape: scalar
+        dist = torch.distributions.Categorical(last_step_probs)
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
 
-    # We're only interested in the last time step for action selection
-    last_step_probs = action_probs[0, -1, :]  # shape: [num_actions]
-    last_step_value = value_estimates[0, -1, 0]  # shape: scalar
-
-    dist = torch.distributions.Categorical(last_step_probs)
-    action = dist.sample()
-
-    return action, dist.log_prob(action), last_step_value
+    return action, log_prob, last_step_value, new_hidden_state
 
 
 def prepare_state_tensor(state, config):
@@ -141,37 +162,39 @@ def prepare_state_tensor(state, config):
 
 class EpisodeMemory:
     def __init__(self):
-        self.sequences = []
+        self.states = []
         self.actions = []
         self.log_probs = []
         self.values = []
         self.rewards = []
-        self.masks = []
-
-    def store(self, sequence, action, log_prob, value, reward, done):
-        self.sequences.append(sequence)
+        self.dones = []
+        self.hidden_states = []
+    
+    def store(self, state, action, log_prob, value, reward, done, hidden_state):
+        self.states.append(state)
         self.actions.append(action)
         self.log_probs.append(log_prob)
         self.values.append(value.unsqueeze(0))
         self.rewards.append(reward)
-        self.masks.append(1.0 - done)
-
+        self.dones.append(done)
+        self.hidden_states.append(hidden_state)
+    
     def clear(self):
         self.__init__()
-
+    
     def get_batch(self):
         return (
-            torch.cat(self.sequences, dim=0),
+            torch.cat(self.states),
             torch.cat(self.actions),
             torch.cat(self.log_probs),
             torch.cat(self.values),
             self.rewards,
-            self.masks,
+            self.dones,
+            self.hidden_states
         )
 
-
 def update_model_from_memory(model, optimizer, memory, config):
-    states, actions, old_log_probs, old_values, rewards, masks = memory.get_batch()
+    states, actions, old_log_probs, old_values, rewards, masks, _ = memory.get_batch()
 
     # Compute returns
     next_value = old_values[-1]
@@ -231,10 +254,10 @@ def update_model(
     old_log_probs = saved_log_probs.detach()
     advantages = advantages.detach()
     returns = returns.detach()
-
+    hidden_state = None
     for _ in range(epochs):
         # Recalculate probabilities and values
-        action_probs, new_values = model(sequences)
+        action_probs, new_values, _ = model(sequences, hidden_state)
 
         # Adjust shapes
         action_probs = action_probs.squeeze(0)  # Remove batch dimension if present
@@ -263,6 +286,7 @@ def update_model(
         # Optimize
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
     return loss.item()
@@ -270,11 +294,11 @@ def update_model(
 
 def post_episode_jobs(model, config, episode, train_rewards, losses):
     if episode % config.get("plot_every", 10) == 0:
-        plot_losses("./results/", f"latest_{config['episode_length']}", losses)
+        plot_losses("./results/", f"latest_{config['N_goals_target']}_N_goals", losses)
         plot_best_attempts(
             "./results/",
             "latest",
-            f"PPO_training_{config['episode_length']}",
+            f"PPO_training_{config['N_goals_target']}_N_goals",
             train_rewards,
         )
     if episode % config.get("checkpoint_interval", 100) == 0:

@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
+import math
 import numpy as np
 
 
 class Rewards:
-    def __init__(self, goals=None, N_goals_target=2):
+    def __init__(self, goals=None, N_goals_target=2, max_steps=1000):
         self.xy = set()
         self.pkdex_seen = 0
         self.pkdex_owned = 0
         self.money = 0
+        self.max_steps = max_steps
         self.total_level = 0
         self.total_hp = 0
         self.total_exp = 0
@@ -19,15 +21,13 @@ class Rewards:
         self.steps = 0
         self.steps_since_goal = 0
         self.N_goals_target = N_goals_target
+        self.goal_completion_times = []
         self.N_goals = 0
         if goals:
             self.set_goals(goals)
 
     def set_goals(self, goals):
-        # goals are given as a list of lists
-        # but are converted to dict of list of tuples, and rewards dict
-        # each tuple is a goal, any of them being met completes that
-        # and should then delete the list containing it
+
         self.reward_goals = {}
         self.reward_goals_rewards = {}
 
@@ -36,31 +36,36 @@ class Rewards:
             for idy, option in enumerate(goal):
                 self.reward_goals[idx].append(option[:-1])
                 self.reward_goals_rewards[idx] = option[-1]
+        self.start_time = self.steps  # Record the start time when goals are set
+
 
     def update_for_goals(self, ram):
         reward = 0
-        cur_x = ram["X"]
-        cur_y = ram["Y"]
-        cur_loc = ram["map_num_loc"]
+        cur_x, cur_y, cur_loc = ram["X"], ram["Y"], ram["map_num_loc"]
         xyl = [cur_x, cur_y, cur_loc]
 
-        for key, value in self.reward_goals.items():
+        for key, value in list(self.reward_goals.items()):  # Use list() to avoid runtime error
             for idx, goal in enumerate(value):
                 if xyl == goal:
                     del self.reward_goals[key]
-                    reward = self.reward_goals_rewards[key] * (
-                        1 - (self.steps_since_goal / 500)
-                    )  # todo: come up with better way to time this
+                    time_taken = self.steps - self.start_time
+                    decay_factor = math.exp(-0.005 * time_taken)  # Exponential decay
+                    reward = self.reward_goals_rewards[key] * decay_factor
                     reward = max(reward, self.default_reward * 25)
-                    self.steps_since_goal = 0
                     self.N_goals += 1
-                    print("Completed goal", key, "reward:", reward)
+                    self.goal_completion_times.append(time_taken)
+                    print(f"Completed goal {key}, reward: {reward}, time taken: {time_taken}")
                     if self.N_goals == self.N_goals_target:
                         print("Completed all required goals")
                         self.done = True
+                        # Add bonus for completing all goals
+                        avg_time = sum(self.goal_completion_times) / len(self.goal_completion_times)
+                        bonus = self.default_reward * 1000 * math.exp(-0.001 * avg_time)
+                        reward += bonus
+                        print(f"All goals bonus: {bonus}")
                     return reward
-        self.steps_since_goal += 1
         return reward
+
 
     def update_for_party_pokemon(self, ram):
         total_level, total_hp, total_exp = ram["party_info"]
@@ -108,8 +113,12 @@ class Rewards:
         return reward
 
     def calc_rewards(self, env_vars, steps):
-        total_reward = -self.default_reward  # negative reward for not doing anything
         self.steps = steps
+        total_reward = -self.default_reward  # negative reward for not doing anything
+
+        # Time-based scaling factor
+        time_factor = 1 - (self.steps / self.max_steps)
+        
         for f in [
             self.update_for_party_pokemon,
             self.update_for_movement,
@@ -117,6 +126,9 @@ class Rewards:
             self.update_for_money,
             self.update_for_goals,
         ]:
-            total_reward += f(env_vars)
+            total_reward += f(env_vars) * time_factor
+
+        # Clip reward between -1 and 1
+        total_reward = max(min(total_reward, 1), -1)
 
         return total_reward, self.done
