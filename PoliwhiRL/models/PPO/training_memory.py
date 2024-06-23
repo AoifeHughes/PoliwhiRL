@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 import torch
+
 
 class EpisodeMemory:
     def __init__(self):
@@ -9,7 +11,7 @@ class EpisodeMemory:
         self.rewards = []
         self.dones = []
         self.hidden_states = []
-    
+
     def store(self, state, action, log_prob, value, reward, done, hidden_state):
         self.states.append(state)
         self.actions.append(action)
@@ -18,10 +20,10 @@ class EpisodeMemory:
         self.rewards.append(reward)
         self.dones.append(done)
         self.hidden_states.append(hidden_state)
-    
+
     def clear(self):
         self.__init__()
-    
+
     def get_batch(self):
         return (
             torch.cat(self.states),
@@ -30,5 +32,5 @@ class EpisodeMemory:
             torch.cat(self.values),
             self.rewards,
             self.dones,
-            self.hidden_states
+            self.hidden_states,
         )

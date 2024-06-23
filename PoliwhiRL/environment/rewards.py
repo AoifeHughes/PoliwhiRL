@@ -38,13 +38,14 @@ class Rewards:
                 self.reward_goals_rewards[idx] = option[-1]
         self.start_time = self.steps  # Record the start time when goals are set
 
-
     def update_for_goals(self, ram):
         reward = 0
         cur_x, cur_y, cur_loc = ram["X"], ram["Y"], ram["map_num_loc"]
         xyl = [cur_x, cur_y, cur_loc]
 
-        for key, value in list(self.reward_goals.items()):  # Use list() to avoid runtime error
+        for key, value in list(
+            self.reward_goals.items()
+        ):  # Use list() to avoid runtime error
             for idx, goal in enumerate(value):
                 if xyl == goal:
                     del self.reward_goals[key]
@@ -54,18 +55,21 @@ class Rewards:
                     reward = max(reward, self.default_reward * 25)
                     self.N_goals += 1
                     self.goal_completion_times.append(time_taken)
-                    print(f"Completed goal {key}, reward: {reward}, time taken: {time_taken}")
+                    print(
+                        f"Completed goal {key}, reward: {reward}, time taken: {time_taken}"
+                    )
                     if self.N_goals == self.N_goals_target:
                         print("Completed all required goals")
                         self.done = True
                         # Add bonus for completing all goals
-                        avg_time = sum(self.goal_completion_times) / len(self.goal_completion_times)
+                        avg_time = sum(self.goal_completion_times) / len(
+                            self.goal_completion_times
+                        )
                         bonus = self.default_reward * 1000 * math.exp(-0.001 * avg_time)
                         reward += bonus
                         print(f"All goals bonus: {bonus}")
                     return reward
         return reward
-
 
     def update_for_party_pokemon(self, ram):
         total_level, total_hp, total_exp = ram["party_info"]
@@ -118,7 +122,7 @@ class Rewards:
 
         # Time-based scaling factor
         time_factor = 1 - (self.steps / self.max_steps)
-        
+
         for f in [
             self.update_for_party_pokemon,
             self.update_for_movement,
