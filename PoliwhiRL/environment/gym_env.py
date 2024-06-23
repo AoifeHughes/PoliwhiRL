@@ -80,7 +80,9 @@ class PyBoyEnvironment(gym.Env):
         with open(self.state_path, "rb") as stateFile:
             self.pyboy.load_state(stateFile)
         self.reward_calculator = Rewards(
-            self.config.get("reward_goals", None), self.config.get("N_goals_target", 2), self.config.get("episode_length", 100)
+            self.config.get("reward_goals", None),
+            self.config.get("N_goals_target", 2),
+            self.config.get("episode_length", 100),
         )
         self._fitness = 0
         self.handle_action(0)

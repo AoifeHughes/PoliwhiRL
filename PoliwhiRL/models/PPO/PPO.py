@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import TransformerEncoderLayer
 
+
 class RobustLayerNorm(nn.Module):
     def __init__(self, normalized_shape, eps=1e-5):
         super(RobustLayerNorm, self).__init__()
@@ -18,6 +19,7 @@ class RobustLayerNorm(nn.Module):
         x = x.clamp(-10, 10)  # Clip values to prevent extremes
         return self.weight * x + self.bias
 
+
 def init_weights(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
         nn.init.xavier_uniform_(m.weight)
@@ -28,9 +30,9 @@ def init_weights(m):
         nn.init.constant_(m.bias, 0)
     elif isinstance(m, nn.LSTM):
         for name, param in m.named_parameters():
-            if 'weight' in name:
+            if "weight" in name:
                 nn.init.orthogonal_(param)
-            elif 'bias' in name:
+            elif "bias" in name:
                 nn.init.constant_(param, 0)
 
 
@@ -76,7 +78,7 @@ class FeatureNN(nn.Module):
                 nn.ReLU(),
                 nn.Dropout(p=0.2),
             )
-        
+
         # Apply weight initialization
         self.apply(init_weights)
 
@@ -89,16 +91,24 @@ class FeatureNN(nn.Module):
     def forward(self, x):
         return self.feature_layer(x)
 
+
 class PPOModel(nn.Module):
-    def __init__(self, input_dim, num_actions, vision=True, num_transformer_layers=4, lstm_hidden_size=256):
+    def __init__(
+        self,
+        input_dim,
+        num_actions,
+        vision=True,
+        num_transformer_layers=4,
+        lstm_hidden_size=256,
+    ):
         super(PPOModel, self).__init__()
         self.vision = vision
         self.FeatureCNN = FeatureNN(input_dim, vision)
         self.num_actions = num_actions
         feature_size = self.FeatureCNN.feature_size(input_dim)
-        
+
         self.layer_norm1 = RobustLayerNorm(feature_size)
-        
+
         encoder_layer = TransformerEncoderLayer(
             d_model=feature_size,
             nhead=8,
@@ -109,23 +119,19 @@ class PPOModel(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(
             encoder_layer, num_layers=num_transformer_layers
         )
-        
+
         self.layer_norm2 = RobustLayerNorm(feature_size)
-        
+
         self.lstm = nn.LSTM(feature_size, lstm_hidden_size, batch_first=True)
-        
+
         self.layer_norm3 = RobustLayerNorm(lstm_hidden_size)
-        
+
         self.actor = nn.Sequential(
-            nn.Linear(lstm_hidden_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_actions)
+            nn.Linear(lstm_hidden_size, 128), nn.ReLU(), nn.Linear(128, num_actions)
         )
-        
+
         self.critic = nn.Sequential(
-            nn.Linear(lstm_hidden_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1)
+            nn.Linear(lstm_hidden_size, 128), nn.ReLU(), nn.Linear(128, 1)
         )
 
         self.apply(init_weights)
@@ -137,32 +143,32 @@ class PPOModel(nn.Module):
         else:
             batch_size, seq_len, input_dim = x.size()
             x = x.view(batch_size * seq_len, input_dim)
-        
+
         x = x.float() / 255.0
         features = self.FeatureCNN(x)
         features = features.clamp(-10, 10)  # Clip values
-        
+
         features = features.view(batch_size, seq_len, -1)
         residual = features
         features = self.layer_norm1(features)
-        
+
         features = self.transformer_encoder(features)
         features = features.clamp(-10, 10)  # Clip values
-        
+
         features = features + residual
         features = self.layer_norm2(features)
-        
+
         if hidden_state is None:
             lstm_out, hidden_state = self.lstm(features)
         else:
             lstm_out, hidden_state = self.lstm(features, hidden_state)
-        
+
         lstm_out = self.layer_norm3(lstm_out)
         temperature = 1.0  # Adjust this value as needed
         logits = self.actor(lstm_out) / temperature
         logits = logits.clamp(-10, 10)  # Clip values
         action_probs = F.softmax(logits, dim=-1)
-        
+
         value_estimates = self.critic(lstm_out)
-        
+
         return action_probs, value_estimates, hidden_state

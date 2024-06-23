@@ -34,7 +34,7 @@ def setup_environment_and_model(config):
     else:
         input_dim = np.prod(env.get_game_area().shape)
     output_dim = env.action_space.n
-    config['num_actions'] = output_dim
+    config["num_actions"] = output_dim
     model = PPOModel(input_dim, output_dim, config["vision"]).to(config["device"])
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
@@ -74,7 +74,7 @@ def run_episode(model, env, optimizer, config):
     # Initialize epsilon for this episode
     epsilon = max(
         config["final_epsilon"],
-        config["initial_epsilon"] * (config["epsilon_decay_rate"] ** episode)
+        config["initial_epsilon"] * (config["epsilon_decay_rate"] ** episode),
     )
 
     if episode % config["record_frequency"] == 0:
@@ -86,7 +86,9 @@ def run_episode(model, env, optimizer, config):
 
         if len(sequence) == config["sequence_length"]:
             sequence_tensor = torch.cat(sequence, dim=1)
-            action, log_prob, value, hidden_state = select_action(model, sequence_tensor, hidden_state, epsilon, config)
+            action, log_prob, value, hidden_state = select_action(
+                model, sequence_tensor, hidden_state, epsilon, config
+            )
             sequence = sequence[1:]  # Remove the oldest state
         else:
             action = torch.tensor(env.action_space.sample(), device=config["device"])
@@ -103,7 +105,7 @@ def run_episode(model, env, optimizer, config):
             value,
             reward,
             done,
-            hidden_state  # Store hidden state in memory
+            hidden_state,  # Store hidden state in memory
         )
 
         state = next_state
@@ -169,7 +171,7 @@ class EpisodeMemory:
         self.rewards = []
         self.dones = []
         self.hidden_states = []
-    
+
     def store(self, state, action, log_prob, value, reward, done, hidden_state):
         self.states.append(state)
         self.actions.append(action)
@@ -178,10 +180,10 @@ class EpisodeMemory:
         self.rewards.append(reward)
         self.dones.append(done)
         self.hidden_states.append(hidden_state)
-    
+
     def clear(self):
         self.__init__()
-    
+
     def get_batch(self):
         return (
             torch.cat(self.states),
@@ -190,8 +192,9 @@ class EpisodeMemory:
             torch.cat(self.values),
             self.rewards,
             self.dones,
-            self.hidden_states
+            self.hidden_states,
         )
+
 
 def update_model_from_memory(model, optimizer, memory, config):
     states, actions, old_log_probs, old_values, rewards, masks, _ = memory.get_batch()
