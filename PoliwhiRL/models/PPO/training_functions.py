@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import collections
 import random
 import numpy as np
 import torch.optim as optim

@@ -15,7 +15,6 @@ def memory_collector(config):
     """
     env = Env(config)
     img, _ = env.reset()
-    done = False
 
     # Connect to the SQLite database
     conn = sqlite3.connect("memory_data.db")
@@ -47,7 +46,6 @@ def memory_collector(config):
     # Create a set to store image hashes
     image_hashes = set()
 
-    steps = 0
     for _ in tqdm(range(config.get("episode_length"))):
         action = np.random.randint(1, env.action_space.n)
 
@@ -130,7 +128,7 @@ def extract_images_by_map(db_path="memory_data.db", output_dir="extracted_images
 
         # Create folders for this map_num_loc
         map_dir = os.path.join(output_dir, f"map_{map_loc}")
-
+        os.makedirs(map_dir, exist_ok=True)
         # Get all images for this map_num_loc
         cursor.execute(
             "SELECT id, image FROM memory_data WHERE map_num_loc = ?", (map_loc,)
@@ -141,7 +139,7 @@ def extract_images_by_map(db_path="memory_data.db", output_dir="extracted_images
             # Convert BLOB to image
             image = Image.open(io.BytesIO(img_data))
 
-            image_path = os.path.join(output_dir, f"image_{img_id}.png")
+            image_path = os.path.join(map_dir, f"image_{img_id}.png")
 
             image.save(image_path)
 

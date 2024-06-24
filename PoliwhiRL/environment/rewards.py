@@ -17,7 +17,7 @@ class Rewards:
         self.done = False
         self.reward_goals = {}
         self.reward_goals_rewards = {}
-        self.default_reward = 0.1
+        self.default_reward = 0.01
         self.steps = 0
         self.steps_since_goal = 0
         self.N_goals_target = N_goals_target
