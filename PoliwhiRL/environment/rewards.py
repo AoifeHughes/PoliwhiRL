@@ -76,7 +76,7 @@ class Rewards:
         if cur_xy not in self.xy:
             self.xy.add(cur_xy)
             return self.reward_levels[1]
-        return -self.reward_levels[0] * 0.1
+        return -self.reward_levels[1] * 0.1
 
     def update_for_pokedex(self, ram):
         if ram["pkdex_seen"] > self.pkdex_seen:
