@@ -3,6 +3,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import TransformerEncoderLayer
+import math
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        return x + self.pe[: x.size(0), :]
 
 
 class RobustLayerNorm(nn.Module):
@@ -79,7 +97,6 @@ class FeatureNN(nn.Module):
                 nn.Dropout(p=0.2),
             )
 
-        # Apply weight initialization
         self.apply(init_weights)
 
     def feature_size(self, input_dim):
@@ -100,6 +117,7 @@ class PPOModel(nn.Module):
         vision=True,
         num_transformer_layers=4,
         lstm_hidden_size=256,
+        max_seq_length=50,
     ):
         super(PPOModel, self).__init__()
         self.vision = vision
@@ -108,6 +126,8 @@ class PPOModel(nn.Module):
         feature_size = self.FeatureCNN.feature_size(input_dim)
 
         self.layer_norm1 = RobustLayerNorm(feature_size)
+
+        self.pos_encoder = PositionalEncoding(feature_size, max_seq_length)
 
         encoder_layer = TransformerEncoderLayer(
             d_model=feature_size,
@@ -151,6 +171,9 @@ class PPOModel(nn.Module):
         features = features.view(batch_size, seq_len, -1)
         residual = features
         features = self.layer_norm1(features)
+
+        # Apply positional encoding
+        features = self.pos_encoder(features)
 
         features = self.transformer_encoder(features)
         features = features.clamp(-10, 10)  # Clip values

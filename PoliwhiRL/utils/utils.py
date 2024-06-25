@@ -69,17 +69,17 @@ def document(episode_id, step_id, img, button_press, reward, phase):
 
 def save_results(results_path, episodes, results):
     # Save results
-    if not os.path.isdir(results_path):
-        os.mkdir(results_path)
+    os.makedirs(results_path, exist_ok=True)
     results_path = results_path + f"results_{episodes}.txt"
     with open(results_path, "w") as f:
         f.write(str(results))
 
 
 def plot_best_attempts(results_path, episodes, phase, results):
-    # Ensure the results directory exists
-    if not os.path.isdir(results_path):
-        os.mkdir(results_path)
+
+    # create results path folders if they don't exist
+    os.makedirs(results_path, exist_ok=True)
+
     results_path = os.path.join(results_path, f"best_attempts_{episodes}_{phase}.png")
 
     # Calculate cumulative mean
@@ -101,11 +101,22 @@ def plot_best_attempts(results_path, episodes, phase, results):
     np.savetxt(results_path.replace(".png", ".csv"), results, delimiter=",")
     plt.close(fig)
 
+    # also plot without cumulative
+    fig, ax = plt.subplots(1, figsize=(10, 6), dpi=100)
+    ax.plot(results, label="Rewards", color="blue", linewidth=2)
+    ax.set_title("Performance Over Episodes")
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Average Reward")
+    ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(results_path.replace(".png", "_no_cummean.png"))
+    plt.close(fig)
+
 
 def plot_losses(results_path, episodes, losses):
     # Ensure the results directory exists
-    if not os.path.isdir(results_path):
-        os.mkdir(results_path)
+    os.makedirs(results_path, exist_ok=True)
     results_path = os.path.join(results_path, f"losses_{episodes}.png")
 
     # Calculate cumulative mean

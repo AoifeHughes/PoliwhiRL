@@ -6,11 +6,11 @@ import torch
 import torch.nn.functional as F
 import os
 from torch.optim.lr_scheduler import StepLR
-from tqdm import tqdm
 from .PPO import PPOModel
 from PoliwhiRL.utils.utils import image_to_tensor, plot_best_attempts, plot_losses
 from PoliwhiRL.environment import PyBoyEnvironment as Env
 from .training_memory import EpisodeMemory
+from tqdm import tqdm
 
 
 def compute_returns(next_value, rewards, masks, gamma=0.99):
@@ -26,29 +26,54 @@ def make_new_env(config):
     return Env(config)
 
 
-def setup_environment_and_model(config):
-    env = Env(config)
+def create_environment(config):
+    return Env(config)
+
+
+def get_input_dimensions(env, config):
     if config["vision"]:
         height, width, channels = env.get_screen_size()
         input_dim = (channels, height, width)
     else:
         input_dim = np.prod(env.get_game_area().shape)
+    return input_dim
+
+
+def get_output_dimensions(env):
     output_dim = env.action_space.n
-    config["num_actions"] = output_dim
+    return output_dim
+
+
+def create_model(input_dim, output_dim, config):
     model = PPOModel(input_dim, output_dim, config["vision"]).to(config["device"])
+    return model
+
+
+def setup_optimizer(model, config):
+    return optim.Adam(model.parameters(), lr=config["learning_rate"])
+
+
+def setup_scheduler(optimizer):
+    return StepLR(optimizer, step_size=50, gamma=0.9)
+
+
+def setup_environment_and_model(config):
+    env = create_environment(config)
+    input_dim = get_input_dimensions(env, config)
+    output_dim = get_output_dimensions(env)
+    config["num_actions"] = output_dim
+
+    model = create_model(input_dim, output_dim, config)
     start_episode = load_latest_checkpoint(model, config["checkpoint"])
-    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
-    scheduler = StepLR(optimizer, step_size=50, gamma=0.9)
-    return env, model, optimizer, scheduler, start_episode
+
+    return model, start_episode
 
 
 def train(model, env, optimizer, scheduler, config, start_episode):
     losses = []
     train_rewards = []
     env.episode = -1
-    for episode in tqdm(
-        range(start_episode, start_episode + config["num_episodes"]), desc="Training"
-    ):
+    for episode in tqdm(range(start_episode, start_episode + config["num_episodes"])):
         episode_rewards, episode_loss = run_episode(model, env, optimizer, config)
 
         scheduler.step()
@@ -113,7 +138,7 @@ def run_episode(model, env, optimizer, config):
 
         if episode % config["record_frequency"] == 0:
             env.record(
-                f"PPO_training_{config['episode_length']}_N_goals_{config['N_goals_target']}"
+                f"{config.get('agent', 0)}/{config.get('iteration', 0)}_PPO_training_{config['episode_length']}_N_goals_{config['N_goals_target']}"
             )
 
         if steps_since_update == config["update_timestep"] or done:
@@ -193,7 +218,7 @@ def update_model_from_memory(model, optimizer, memory, config):
             batch_returns,
             batch_states,
             batch_actions,
-            config["epsilon"],
+            0.2,
             config["ppo_epochs"],
         )
         losses.append(loss)
@@ -212,30 +237,37 @@ def update_model(
     epsilon=0.2,
     epochs=5,
 ):
-
     advantages = returns - saved_values.squeeze(-1)
+    # Normalize advantages with increased epsilon
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
-    # Normalize advantages
-    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    # Clip advantages to a reasonable range
+    advantages = torch.clamp(advantages, -10, 10)
 
     # Detach necessary tensors
     old_log_probs = saved_log_probs.detach()
     advantages = advantages.detach()
     returns = returns.detach()
+
     hidden_state = None
     for _ in range(epochs):
         # Recalculate probabilities and values
         action_probs, new_values, _ = model(sequences, hidden_state)
 
         # Adjust shapes
-        action_probs = action_probs.squeeze(0)  # Remove batch dimension if present
-        new_values = new_values.squeeze(0).squeeze(
-            -1
-        )  # Remove batch and last dimensions if present
+        action_probs = action_probs.squeeze(0)
+        new_values = new_values.squeeze(0).squeeze(-1)
+
+        # Clamp action probabilities to avoid log(0) or log(1)
+        action_probs = torch.clamp(action_probs, 1e-7, 1 - 1e-7)
 
         dist = torch.distributions.Categorical(action_probs)
         new_log_probs = dist.log_prob(actions)
-        ratio = (new_log_probs - old_log_probs).exp()
+
+        # Clip the difference in log probs to avoid exp overflow
+        log_ratio = new_log_probs - old_log_probs
+        log_ratio = torch.clamp(log_ratio, -20, 20)
+        ratio = log_ratio.exp()
 
         # Clipped surrogate objective
         surr1 = ratio * advantages
@@ -251,10 +283,17 @@ def update_model(
         # Total loss
         loss = action_loss + 0.5 * value_loss - 0.01 * entropy
 
+        # Check for NaN loss
+        if torch.isnan(loss):
+            print("NaN loss detected!")
+            return float("nan")
+
         # Optimize
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=0.5
+        )  # Reduced max_norm
         optimizer.step()
 
     return loss.item()
@@ -262,11 +301,15 @@ def update_model(
 
 def post_episode_jobs(model, config, episode, train_rewards, losses):
     if episode % config.get("plot_every", 10) == 0:
-        plot_losses("./results/", f"latest_{config['N_goals_target']}_N_goals", losses)
+        plot_losses(
+            f"./results/{config.get('agent', 0)}/{config.get('iteration', 0)}/",
+            f"latest_{config['N_goals_target']}_N_goals",
+            losses,
+        )
         plot_best_attempts(
-            "./results/",
+            f"./results/{config.get('agent', 0)}/{config.get('iteration', 0)}/",
             "latest",
-            f"PPO_training_{config['N_goals_target']}_N_goals",
+            f"_PPO_training_{config['N_goals_target']}_N_goals",
             train_rewards,
         )
     if episode % config.get("checkpoint_interval", 100) == 0:
@@ -305,8 +348,6 @@ def load_latest_checkpoint(model, checkpoint_dir):
 def save_checkpoint(model, checkpoint_dir, episode):
     if not os.path.isdir(checkpoint_dir):
         os.makedirs(checkpoint_dir)
-        print(f"Checkpoint directory {checkpoint_dir} created.")
 
     checkpoint_path = os.path.join(checkpoint_dir, f"ppo_model_ep{episode}.pth")
     torch.save(model.state_dict(), checkpoint_path)
-    print(f"Checkpoint saved at '{checkpoint_path}' for episode {episode}.")
