@@ -88,6 +88,9 @@ class PyBoyEnvironment(gym.Env):
 
         return observation, self._fitness, self.done, False
 
+    def get_reward_progress(self):
+        return self.reward_calculator.get_progress()
+
     def output_shape(self):
         if not self.config["vision"]:
             return self.get_game_area().shape
@@ -107,7 +110,7 @@ class PyBoyEnvironment(gym.Env):
 
     def _calculate_fitness(self):
         self._fitness, reward_done = self.reward_calculator.calculate_reward(
-            self.ram.get_variables(), self.button
+            self.ram.get_variables(), self.button, self.get_game_area()
         )
         if reward_done:
             self.done = True

@@ -26,14 +26,13 @@ class FlexibleInputLayer(nn.Module):
 
 
 class PPOTransformer(nn.Module):
-    def __init__(self, input_shape, action_size, d_model=32, nhead=4, num_layers=2):
+    def __init__(self, input_shape, action_size, d_model=2, nhead=2, num_layers=1):
         super(PPOTransformer, self).__init__()
         self.action_size = action_size
         self.input_shape = input_shape
         self.d_model = d_model
 
         self.flexible_input = FlexibleInputLayer(input_shape, d_model)
-        self.pos_encoder = PositionalEncoding(d_model, max_len=1000)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, batch_first=True
@@ -50,7 +49,6 @@ class PPOTransformer(nn.Module):
         x = x.view(batch_size * seq_len, *self.input_shape)
         x = self.flexible_input(x)
         x = x.view(batch_size, seq_len, self.d_model)
-        x = self.pos_encoder(x)
         x = self.transformer_encoder(x)
 
         # Use the last output of the sequence for both actor and critic

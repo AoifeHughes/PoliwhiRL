@@ -107,9 +107,9 @@ class FlexibleEncoder(nn.Module):
         elif len(input_shape) == 2:  # [X, Y]
             self.encoder = nn.Sequential(
                 nn.Flatten(),
-                nn.Linear(input_shape[0] * input_shape[1], 256),
+                nn.Linear(input_shape[0] * input_shape[1], 32),
                 nn.ReLU(),
-                nn.Linear(256, feature_size),
+                nn.Linear(32, feature_size),
             )
         else:
             raise ValueError("Unsupported input shape")
@@ -121,7 +121,7 @@ class FlexibleEncoder(nn.Module):
 class FlexibleICM(nn.Module):
     def __init__(self, input_shape, action_size):
         super(FlexibleICM, self).__init__()
-        self.feature_size = 256
+        self.feature_size = 32
         self.encoder = FlexibleEncoder(input_shape, self.feature_size)
         self.inverse_model = nn.Linear(self.feature_size * 2, action_size)
         self.forward_model = nn.Sequential(

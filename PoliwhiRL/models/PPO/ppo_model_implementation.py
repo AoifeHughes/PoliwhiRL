@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CyclicLR
 
 from .PPOTransformer import PPOTransformer
+from .ppo_lstm import PPOLSTMPolicy
 from PoliwhiRL.models.ICM import ICMModule
 
 
@@ -15,7 +16,9 @@ class PPOModel:
         self.action_size = action_size
         self.device = torch.device(self.config["device"])
 
-        self.learning_rate = self.config["ppo_learning_rate"]
+        # Base parameters
+        self.base_learning_rate = self.config["ppo_learning_rate"]
+        self.learning_rate = self.base_learning_rate  # Keep for compatibility
         self.gamma = self.config["ppo_gamma"]
         self.epsilon = self.config["ppo_epsilon"]
         self.value_loss_coef = self.config["ppo_value_loss_coef"]
@@ -23,8 +26,25 @@ class PPOModel:
         self.entropy_decay = self.config["ppo_entropy_coef_decay"]
         self.entropy_min = self.config["ppo_entropy_coef_min"]
 
+        # Reference values for adaptation
+        self.reference_episode_length = 1000  # Base episode length
+        self.reference_update_freq = 128      # Base update frequency
+        self._last_episode_length = self.config["episode_length"]
+        self._last_update_freq = self.config["ppo_update_frequency"]
+
         self._initialize_networks()
         self._initialize_optimizers()
+
+    def _calculate_adaptive_learning_rate(self, episode_length, update_frequency):
+        """
+        Adjust learning rate based on episode length and update frequency.
+        """
+        length_factor = (self.reference_episode_length / episode_length) ** 0.5
+        update_factor = (self.reference_update_freq / update_frequency) ** 0.5
+        
+        # Combine factors and clip to reasonable bounds
+        adaptation_factor = min(max(length_factor * update_factor, 0.1), 10.0)
+        return self.base_learning_rate * adaptation_factor
 
     def _initialize_networks(self):
         self.actor_critic = PPOTransformer(self.input_shape, self.action_size).to(
@@ -33,19 +53,56 @@ class PPOModel:
         self.icm = ICMModule(self.input_shape, self.action_size, self.config)
 
     def _initialize_optimizers(self):
+        self.current_lr = self._calculate_adaptive_learning_rate(
+            self.config["episode_length"],
+            self.config["ppo_update_frequency"]
+        )
         self.optimizer = optim.Adam(
-            self.actor_critic.parameters(), lr=self.learning_rate
+            self.actor_critic.parameters(), lr=self.current_lr
         )
         self._setup_lr_scheduler()
 
     def _setup_lr_scheduler(self):
+        """
+        Set up a cyclical learning rate scheduler with adaptive bounds
+        """
+        # Calculate cycle length based on episode length
+        steps_per_episode = self.config["episode_length"] // self.config["ppo_update_frequency"]
+        cycle_length = max(100, steps_per_episode // 2)
+        
         self.scheduler = CyclicLR(
             self.optimizer,
-            base_lr=1e-5,
-            max_lr=self.learning_rate,
-            step_size_up=100,
+            base_lr=self.current_lr * 0.1,  # Lower bound
+            max_lr=self.current_lr,         # Upper bound
+            step_size_up=cycle_length,
             mode="triangular2",
+            cycle_momentum=False
         )
+
+    def adapt_to_new_parameters(self, episode_length=None, update_frequency=None):
+        """
+        Adapt the model's learning parameters to new episode length or update frequency
+        """
+        if episode_length is not None:
+            self.config["episode_length"] = episode_length
+        
+        if update_frequency is not None:
+            self.config["ppo_update_frequency"] = update_frequency
+        
+        # Calculate new learning rate
+        self.current_lr = self._calculate_adaptive_learning_rate(
+            self.config["episode_length"],
+            self.config["ppo_update_frequency"]
+        )
+        
+        # Update optimizer with new learning rate
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.current_lr
+        
+        # Reset scheduler with new parameters
+        self._setup_lr_scheduler()
+        
+        return self.current_lr
 
     def get_action(self, state_sequence):
         state_sequence = torch.FloatTensor(state_sequence).unsqueeze(0).to(self.device)
@@ -72,6 +129,16 @@ class PPOModel:
         return self.icm.compute_intrinsic_reward(state, next_state, action)
 
     def update(self, data, episode):
+        # Check if parameters have changed and adapt if necessary
+        current_episode_length = self.config["episode_length"]
+        current_update_freq = self.config["ppo_update_frequency"]
+        
+        if (current_episode_length != self._last_episode_length or
+            current_update_freq != self._last_update_freq):
+            self.adapt_to_new_parameters(current_episode_length, current_update_freq)
+            self._last_episode_length = current_episode_length
+            self._last_update_freq = current_update_freq
+
         actor_loss, critic_loss, entropy_loss = self._compute_ppo_losses(data, episode)
         icm_loss = self.icm.update(
             data["states"][:, -1], data["next_states"][:, -1], data["actions"]
@@ -81,6 +148,97 @@ class PPOModel:
         self._update_networks(loss)
 
         return loss.item(), icm_loss
+
+    def save(self, path):
+        """
+        Save model state and parameters securely
+        """
+        # Save network states
+        torch.save(self.actor_critic.state_dict(), f"{path}/actor_critic.pth")
+        torch.save(self.optimizer.state_dict(), f"{path}/optimizer.pth", )
+        torch.save(self.scheduler.state_dict(), f"{path}/scheduler.pth",)
+        
+        # Save adaptive parameters separately in a structured format
+        adaptive_params = {
+            'current_lr': self.current_lr,
+            'reference_episode_length': self.reference_episode_length,
+            'reference_update_freq': self.reference_update_freq,
+            'last_episode_length': self._last_episode_length,
+            'last_update_freq': self._last_update_freq
+        }
+        
+        # Convert to tensor for secure saving
+        torch.save({k: torch.tensor(v) if isinstance(v, (int, float)) else v 
+                    for k, v in adaptive_params.items()}, 
+                f"{path}/adaptive_params.pth")
+        
+        self.icm.save(f"{path}/icm")
+
+    def load(self, path):
+        """
+        Load model state and parameters securely
+        """
+        try:
+            # Add safe globals for numpy
+            torch.serialization.add_safe_globals(['numpy', 'np'])
+            
+            # Load network states
+            self.actor_critic.load_state_dict(
+                torch.load(f"{path}/actor_critic.pth", 
+                        map_location=self.device, 
+                        weights_only=True)
+            )
+            
+            self.optimizer.load_state_dict(
+                torch.load(f"{path}/optimizer.pth", 
+                        map_location=self.device, 
+                        weights_only=True)
+            )
+            
+            self.scheduler.load_state_dict(
+                torch.load(f"{path}/scheduler.pth", 
+                        map_location=self.device, 
+                        weights_only=True)
+            )
+            
+            # Load adaptive parameters
+            try:
+                adaptive_params = torch.load(f"{path}/adaptive_params.pth", 
+                                        map_location=self.device,
+                                        weights_only=True)
+                
+                # Convert tensor values back to python types
+                self.current_lr = adaptive_params['current_lr'].item()
+                self.reference_episode_length = adaptive_params['reference_episode_length'].item()
+                self.reference_update_freq = adaptive_params['reference_update_freq'].item()
+                self._last_episode_length = adaptive_params['last_episode_length'].item()
+                self._last_update_freq = adaptive_params['last_update_freq'].item()
+                
+                # Update optimizer with loaded learning rate
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = self.current_lr
+                
+                # Reset scheduler with loaded parameters
+                self._setup_lr_scheduler()
+                
+            except FileNotFoundError:
+                print("No adaptive parameters found, using defaults")
+                self.current_lr = self.base_learning_rate
+                self._last_episode_length = self.config["episode_length"]
+                self._last_update_freq = self.config["ppo_update_frequency"]
+            
+            self.icm.load(f"{path}/icm")
+            
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            print("Starting with initial values")
+            # Reset to initial state
+            self.current_lr = self.base_learning_rate
+            self._last_episode_length = self.config["episode_length"]
+            self._last_update_freq = self.config["ppo_update_frequency"]
+            
+    def step_scheduler(self):
+        self.scheduler.step()
 
     def _get_entropy_coef(self, episode):
         return max(self.entropy_coef * self.entropy_decay**episode, self.entropy_min)
@@ -188,30 +346,3 @@ class PPOModel:
                 advantages = torch.nan_to_num(advantages, nan=0.0)
 
         return advantages
-
-    def save(self, path):
-        torch.save(self.actor_critic.state_dict(), f"{path}/actor_critic.pth")
-        torch.save(self.optimizer.state_dict(), f"{path}/optimizer.pth")
-        torch.save(self.scheduler.state_dict(), f"{path}/scheduler.pth")
-        self.icm.save(f"{path}/icm")
-
-    def load(self, path):
-        self.actor_critic.load_state_dict(
-            torch.load(
-                f"{path}/actor_critic.pth", map_location=self.device, weights_only=True
-            )
-        )
-        self.optimizer.load_state_dict(
-            torch.load(
-                f"{path}/optimizer.pth", map_location=self.device, weights_only=True
-            )
-        )
-        self.scheduler.load_state_dict(
-            torch.load(
-                f"{path}/scheduler.pth", map_location=self.device, weights_only=True
-            )
-        )
-        self.icm.load(f"{path}/icm")
-
-    def step_scheduler(self):
-        self.scheduler.step()

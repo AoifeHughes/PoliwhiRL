@@ -14,7 +14,7 @@ def record_step(episode_id, step_id, img, button_press, reward, phase, out_dir):
     os.makedirs(save_dir, exist_ok=True)
 
     # Construct the filename
-    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward, 4)}.png"
+    filename = f"step_{step_id}_btn_{button_press}_reward_{np.around(reward, 2)}.png"
 
     # Save the image
     img.save(os.path.join(save_dir, filename))

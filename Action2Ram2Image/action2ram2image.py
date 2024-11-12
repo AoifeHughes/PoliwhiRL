@@ -12,6 +12,7 @@ from torchvision import models
 import torch.nn.functional as F
 import os
 import matplotlib.pyplot as plt
+import argparse
 
 
 def save_comparison_image(
@@ -250,7 +251,7 @@ def train_model(model, train_loader, val_loader, optimizer, num_epochs, device):
             total_loss += loss.item()
             progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
-            if i % 20 == 0:
+            if i % 25 == 0:
                 save_comparison_image(
                     next_image[0], predicted_next_image[0], epoch + 1, i=str(i)
                 )
@@ -292,7 +293,11 @@ def train_model(model, train_loader, val_loader, optimizer, num_epochs, device):
 
 # Main execution
 if __name__ == "__main__":
-    db_path = "memory_data.db"
+    parser = argparse.ArgumentParser(description="Train a model to predict GameBoy states and images.")
+    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database file.")
+    args = parser.parse_args()
+
+    db_path = args.db_loc
     dataset = GameBoyDataset(db_path)
 
     # Split dataset
