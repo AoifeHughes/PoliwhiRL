@@ -1,0 +1,15 @@
+{
+    "vision": false,
+    "episode_length": 5000,
+    "num_episodes": 20,
+    "ppo_update_frequency": 32,
+    "N_goals_target": 5,
+    "output_base_dir": "Long Running/",
+    "ppo_num_agents": 6,
+    "ppo_iterations": 10,
+    "punish_steps": true,
+    "report_episode": false,
+    "sequence_length": 8,
+    "ppo_train_from_memory": false,
+    "curriculum_level": 3
+}

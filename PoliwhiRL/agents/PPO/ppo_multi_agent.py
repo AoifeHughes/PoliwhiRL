@@ -202,6 +202,7 @@ class MultiAgentPPO:
             existing_metrics = self.load_agent_metrics(i)
             if existing_metrics:
                 agent.set_episode_data(existing_metrics)
+                agent.episode = len(existing_metrics["episode_rewards"])
             
             agent.load_model(config["checkpoint"])
             
@@ -240,7 +241,6 @@ class MultiAgentPPO:
             self.distribute_averaged_weights(averaged_agent, agent_paths)
             
             self.total_episodes_run += self.config["num_episodes"]
-            self.print_agent_progress(iteration)
 
         return averaged_agent.model
 

@@ -1,7 +1,7 @@
 {
 "model": "PPO",
 "erase": false,
-"device": "mps",
+"device": "cpu",
 "scaling_factor": 0.5,
 "use_grayscale": false,
 "vision": true,

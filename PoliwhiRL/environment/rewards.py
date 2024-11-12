@@ -183,7 +183,7 @@ class Rewards:
         self.last_action = button_press
         self._update_state(env_vars)
         
-        if self.done or self.steps > self.max_steps:
+        if self.done or self.steps >= self.max_steps:
             self.done = True
         
         self.cumulative_reward += total_reward
