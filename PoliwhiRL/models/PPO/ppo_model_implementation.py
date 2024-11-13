@@ -5,7 +5,6 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CyclicLR
 
 from .PPOTransformer import PPOTransformer
-from .ppo_lstm import PPOLSTMPolicy
 from PoliwhiRL.models.ICM import ICMModule
 
 

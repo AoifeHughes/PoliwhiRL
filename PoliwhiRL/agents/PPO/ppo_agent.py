@@ -113,8 +113,8 @@ class PPOAgent:
             if self.episode % self.checkpoint_frequency == 0:
                 self.save_model(self.config["checkpoint"])
 
-            if self._should_stop_early():
-                break
+            # if self._should_stop_early():
+            #     break
 
         self.save_model(self.config["checkpoint"])
         self.run_episode(
@@ -310,12 +310,13 @@ class PPOAgent:
             self.config["start_episode"] = info["episode"]
             self.episode = info["episode"]
             self.episode_data = info.get("episode_data", self.episode_data)
-
+            self.update_parameters_from_config()
         except FileNotFoundError:
             print(f"No checkpoint found at {path}, starting from scratch.")
         except Exception as e:
             print(f"Error loading model: {e}")
             print("Starting from scratch.")
+
 
     def get_episode_data(self):
         return self.episode_data
