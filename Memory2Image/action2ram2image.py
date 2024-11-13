@@ -19,70 +19,79 @@ from pathlib import Path
 import csv
 import time
 
+
 class TrainingLogger:
-    def __init__(self, log_dir='training_logs'):
+    def __init__(self, log_dir="training_logs"):
         # Create log directory if it doesn't exist
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
-        
+
         # Initialize CSV file with headers
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        self.csv_path = self.log_dir / f'training_stats_{timestamp}.csv'
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.csv_path = self.log_dir / f"training_stats_{timestamp}.csv"
         self.stats = []
-        
+
         # Write headers
-        with open(self.csv_path, 'w', newline='') as f:
+        with open(self.csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(['epoch', 'train_loss', 'val_loss', 'learning_rate', 'time_elapsed'])
-        
+            writer.writerow(
+                ["epoch", "train_loss", "val_loss", "learning_rate", "time_elapsed"]
+            )
+
         self.start_time = time.time()
-    
+
     def log_epoch(self, epoch, train_loss, val_loss, learning_rate):
         time_elapsed = time.time() - self.start_time
         stats = {
-            'epoch': epoch,
-            'train_loss': train_loss,
-            'val_loss': val_loss,
-            'learning_rate': learning_rate,
-            'time_elapsed': time_elapsed
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "learning_rate": learning_rate,
+            "time_elapsed": time_elapsed,
         }
         self.stats.append(stats)
-        
+
         # Append to CSV
-        with open(self.csv_path, 'a', newline='') as f:
+        with open(self.csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([epoch, train_loss, val_loss, learning_rate, time_elapsed])
-    
+
     def plot_training_curves(self):
         df = pd.DataFrame(self.stats)
-        
+
         # Create figure with subplots
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
-        
+
         # Plot losses
-        ax1.plot(df['epoch'], df['train_loss'], label='Training Loss', marker='o')
-        ax1.plot(df['epoch'], df['val_loss'], label='Validation Loss', marker='o')
-        ax1.set_xlabel('Epoch')
-        ax1.set_ylabel('Loss')
-        ax1.set_title('Training and Validation Loss Over Time')
+        ax1.plot(df["epoch"], df["train_loss"], label="Training Loss", marker="o")
+        ax1.plot(df["epoch"], df["val_loss"], label="Validation Loss", marker="o")
+        ax1.set_xlabel("Epoch")
+        ax1.set_ylabel("Loss")
+        ax1.set_title("Training and Validation Loss Over Time")
         ax1.legend()
         ax1.grid(True)
-        
+
         # Plot learning rate
-        ax2.plot(df['epoch'], df['learning_rate'], label='Learning Rate', marker='o', color='green')
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('Learning Rate')
-        ax2.set_title('Learning Rate Over Time')
+        ax2.plot(
+            df["epoch"],
+            df["learning_rate"],
+            label="Learning Rate",
+            marker="o",
+            color="green",
+        )
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Learning Rate")
+        ax2.set_title("Learning Rate Over Time")
         ax2.legend()
         ax2.grid(True)
-        
+
         plt.tight_layout()
-        
+
         # Save plot
-        plot_path = self.log_dir / 'training_curves.png'
+        plot_path = self.log_dir / "training_curves.png"
         plt.savefig(plot_path)
         plt.close()
-        
+
         return plot_path
 
 
@@ -114,16 +123,18 @@ class GameBoyNextFrameDataset(Dataset):
     def __init__(self, db_path):
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
-        
+
         # Get all valid samples (excluding last frames of episodes)
-        self.cursor.execute("""
+        self.cursor.execute(
+            """
             WITH next_frames AS (
                 SELECT a.id, a.episode_id, a.wram, a.action, b.image as next_image
                 FROM memory_data a
                 JOIN memory_data b ON a.id + 1 = b.id AND a.episode_id = b.episode_id
             )
             SELECT id FROM next_frames
-        """)
+        """
+        )
         self.valid_ids = [row[0] for row in self.cursor.fetchall()]
         self.length = len(self.valid_ids)
 
@@ -132,15 +143,18 @@ class GameBoyNextFrameDataset(Dataset):
 
     def __getitem__(self, idx):
         current_id = self.valid_ids[idx]
-        
+
         # Get current frame data and next frame image
-        self.cursor.execute("""
-            SELECT a.wram, a.action, b.image 
+        self.cursor.execute(
+            """
+            SELECT a.wram, a.action, b.image
             FROM memory_data a
             JOIN memory_data b ON a.id + 1 = b.id
             WHERE a.id = ?
-        """, (current_id,))
-        
+        """,
+            (current_id,),
+        )
+
         ram_view_binary, action_binary, next_image_binary = self.cursor.fetchone()
 
         # Process ram_view
@@ -149,18 +163,21 @@ class GameBoyNextFrameDataset(Dataset):
         ram_view = (ram_view - ram_view.mean()) / ram_view.std()
         ram_view = torch.from_numpy(ram_view)
 
-        action_int = int.from_bytes(action_binary, byteorder='big')
+        action_int = int.from_bytes(action_binary, byteorder="big")
         action_tensor = torch.tensor(action_int, dtype=torch.long)
 
         # Process next image
         next_image = Image.open(io.BytesIO(next_image_binary))
-        next_image = np.array(next_image)[:, :, :3].transpose(2, 0, 1).astype(np.float32) / 255.0
+        next_image = (
+            np.array(next_image)[:, :, :3].transpose(2, 0, 1).astype(np.float32) / 255.0
+        )
         next_image = torch.from_numpy(next_image)
 
         return ram_view, action_tensor, next_image
 
     def __del__(self):
         self.conn.close()
+
 
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
@@ -171,6 +188,7 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         return self.relu(self.bn(self.conv(x)))
+
 
 class NextFramePredictor(nn.Module):
     def __init__(self, num_actions):
@@ -190,7 +208,7 @@ class NextFramePredictor(nn.Module):
 
         # Action embedding
         self.action_embedding = nn.Embedding(num_actions, 64)
-        
+
         # Combined latent space processing
         self.latent = nn.Sequential(
             nn.Linear(512 * 1024 + 64, 2048),  # Combining WRAM and action features
@@ -224,19 +242,22 @@ class NextFramePredictor(nn.Module):
 
         # Combine features
         combined = torch.cat([x_wram, x_action], dim=1)
-        
+
         # Process through latent space
         x = self.latent(combined)
         x = x.view(x.size(0), 64, 18, 20)
-        
+
         # Decode
         x = self.decoder(x)
         return x
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
+
+def train_model(
+    model, train_loader, val_loader, criterion, optimizer, num_epochs, device
+):
     logger = TrainingLogger()
     best_val_loss = float("inf")
-    
+
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
@@ -257,7 +278,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
             if i % 25 == 0:
-                save_comparison_image(next_image[0], predicted_next_image[0], epoch + 1, i=i)
+                save_comparison_image(
+                    next_image[0], predicted_next_image[0], epoch + 1, i=i
+                )
 
         avg_train_loss = total_loss / len(train_loader)
 
@@ -274,8 +297,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
-        
-        current_lr = optimizer.param_groups[0]['lr']
+
+        current_lr = optimizer.param_groups[0]["lr"]
         logger.log_epoch(epoch + 1, avg_train_loss, avg_val_loss, current_lr)
         logger.plot_training_curves()
 
@@ -290,10 +313,15 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
     return model
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Next Frame Predictor Model")
-    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database file")
-    parser.add_argument("--num_actions", type=int, required=True, help="Number of possible actions")
+    parser.add_argument(
+        "--db_path", type=str, required=True, help="Path to the SQLite database file"
+    )
+    parser.add_argument(
+        "--num_actions", type=int, required=True, help="Number of possible actions"
+    )
     args = parser.parse_args()
 
     dataset = GameBoyNextFrameDataset(args.db_path)

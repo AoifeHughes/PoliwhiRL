@@ -2,6 +2,7 @@
 import numpy as np
 from collections import OrderedDict, deque
 
+
 class Rewards:
     def __init__(self, config):
         # Core configuration
@@ -9,66 +10,66 @@ class Rewards:
         self.N_goals_target = config["N_goals_target"]
         self.break_on_goal = config["break_on_goal"]
         self.punish_steps = config["punish_steps"]
-        
+
         # Curriculum parameters
         self.curriculum_level = config.get("curriculum_level", 0)
         self.curriculum_stages = {
-            0: "navigation",      # Basic movement and map exploration
-            1: "goal_seeking",    # Single goal achievement
-            2: "multi_goal",      # Multiple sequential goals
-            3: "optimization",    # Efficient path finding
-            4: "full_gameplay"    # All mechanics including Pokedex
+            0: "navigation",  # Basic movement and map exploration
+            1: "goal_seeking",  # Single goal achievement
+            2: "multi_goal",  # Multiple sequential goals
+            3: "optimization",  # Efficient path finding
+            4: "full_gameplay",  # All mechanics including Pokedex
         }
-        
+
         # Stage-specific reward scales
         self.reward_scales = {
             "navigation": {
                 "exploration": 1.0,
                 "goal": 0.5,
                 "efficiency": 0.0,
-                "pokedex": 0.0
+                "pokedex": 0.0,
             },
             "goal_seeking": {
                 "exploration": 0.5,
                 "goal": 1.0,
                 "efficiency": 0.2,
-                "pokedex": 0.0
+                "pokedex": 0.0,
             },
             "multi_goal": {
                 "exploration": 0.3,
                 "goal": 1.0,
                 "efficiency": 0.5,
-                "pokedex": 0.3
+                "pokedex": 0.3,
             },
             "optimization": {
                 "exploration": 0.2,
                 "goal": 1.0,
                 "efficiency": 1.0,
-                "pokedex": 0.5
+                "pokedex": 0.5,
             },
             "full_gameplay": {
                 "exploration": 0.2,
                 "goal": 1.0,
                 "efficiency": 1.0,
-                "pokedex": 1.0
-            }
+                "pokedex": 1.0,
+            },
         }
-        
+
         # Base reward values
         self.base_rewards = {
             "small": 0.2,
             "medium": 0.5,
             "large": 1.0,
             "goal_max": 5.0,
-            "goal_min": 1.0
+            "goal_min": 1.0,
         }
-        
+
         # Initialize reward values based on curriculum level
         self._initialize_reward_values()
-        
+
         # Clipping
         self.clip = 10.0
-        
+
         # State variables
         self.pokedex_seen = 0
         self.pokedex_owned = 0
@@ -83,22 +84,22 @@ class Rewards:
         self.consecutive_goals = 0
         self.last_goal_step = 0
         self.allowed_pokedex_goals = ["seen", "owned"]
-        
+
         # Screen state tracking
         self.screen_history = deque(maxlen=5)
         self.static_state_counter = 0
-        
+
         # Path tracking
         self.path_history = deque(maxlen=10)
-        
+
         # Goals setup
         self.location_goals = OrderedDict()
         self.current_goal_index = 0
         self.pokedex_goals = {}
-        
+
         # Set initial goals
         self.set_goals(config["location_goals"], config["pokedex_goals"])
-        
+
         if self.N_goals_target == -1:
             self.N_goals_target = len(self.location_goals) + len(self.pokedex_goals)
 
@@ -106,25 +107,25 @@ class Rewards:
         """Initialize reward values based on current curriculum stage"""
         stage = self.curriculum_stages[self.curriculum_level]
         scales = self.reward_scales[stage]
-        
+
         # Scale basic rewards
         self.small_reward = self.base_rewards["small"] * scales["exploration"]
         self.medium_reward = self.base_rewards["medium"] * scales["exploration"]
         self.large_reward = self.base_rewards["large"] * scales["goal"]
-        
+
         # Scale penalties
         self.small_penalty = -0.1
         self.medium_penalty = -0.5
         self.large_penalty = -1.0
-        
+
         # Scale goal rewards
         self.goal_reward_max = self.base_rewards["goal_max"] * scales["goal"]
         self.goal_reward_min = self.base_rewards["goal_min"] * scales["goal"]
-        
+
         # Efficiency rewards scale with curriculum
         self.goal_streak_multiplier = 1.0 + (0.2 * scales["efficiency"])
         self.efficiency_bonus = 2.0 * scales["efficiency"]
-        
+
         # Other rewards
         self.exploration_reward = self.small_reward
         self.step_penalty = self.small_penalty if self.punish_steps else 0
@@ -147,52 +148,54 @@ class Rewards:
     def calculate_reward(self, env_vars, button_press, screen_arr):
         self.steps += 1
         total_reward = 0
-        
+
         # Update screen history and check for static state
         self._update_screen_history(screen_arr)
         static_penalty = self._check_static_state()
         total_reward += static_penalty
-        
+
         # Core rewards
         goal_reward = self._check_goals(env_vars)
         if goal_reward > 0:
             # Apply streak multiplier for consecutive goals
-            goal_reward *= (self.goal_streak_multiplier ** self.consecutive_goals)
-            
+            goal_reward *= self.goal_streak_multiplier**self.consecutive_goals
+
             # Add efficiency bonus if goal was reached quickly
             steps_since_last_goal = self.steps - self.last_goal_step
             if steps_since_last_goal < self.max_steps / self.N_goals_target:
                 goal_reward += self.efficiency_bonus
-                
+
             total_reward += goal_reward
             self.consecutive_goals += 1
             self.last_goal_step = self.steps
-        
+
         # Additional rewards/penalties
         total_reward += self._exploration_reward(env_vars)
         total_reward += self._movement_penalties(env_vars)
         total_reward += self._step_penalty()
-        
+
         if button_press in ["start", "select"]:
             total_reward += self.button_penalty
-        
+
         # End-of-episode penalty
         if self.steps > self.max_steps:
             total_reward += self.large_penalty * (self.N_goals_target - self.N_goals)
-        
+
         self.last_action = button_press
         self._update_state(env_vars)
-        
+
         if self.done or self.steps >= self.max_steps:
             self.done = True
-        
+
         self.cumulative_reward += total_reward
         clipped_reward = np.clip(total_reward, -self.clip, self.clip).astype(np.float32)
-        
+
         return clipped_reward, self.done
 
     def _update_screen_history(self, screen_arr):
-        if len(self.screen_history) == 0 or not np.array_equal(screen_arr, self.screen_history[-1]):
+        if len(self.screen_history) == 0 or not np.array_equal(
+            screen_arr, self.screen_history[-1]
+        ):
             self.screen_history.append(screen_arr)
             self.static_state_counter = 0
         else:
@@ -205,7 +208,7 @@ class Rewards:
 
     def _check_goals(self, env_vars):
         reward = 0
-        
+
         # Check location goals
         cur_x, cur_y, cur_loc, _ = (
             env_vars["X"],
@@ -215,17 +218,21 @@ class Rewards:
         )
         xyl = [cur_x, cur_y, cur_loc]
         reward += self._check_goal_achievement(xyl)
-        
+
         # Check pokedex goals if curriculum level allows
         if self.curriculum_level >= 2:  # Only check Pokedex in later stages
             for goal_type in ["seen", "owned"]:
-                if env_vars[f"pokedex_{goal_type}"] > getattr(self, f"pokedex_{goal_type}"):
+                if env_vars[f"pokedex_{goal_type}"] > getattr(
+                    self, f"pokedex_{goal_type}"
+                ):
                     reward += (
                         self.pokedex_seen_reward
                         if goal_type == "seen"
                         else self.pokedex_owned_reward
                     )
-                    setattr(self, f"pokedex_{goal_type}", env_vars[f"pokedex_{goal_type}"])
+                    setattr(
+                        self, f"pokedex_{goal_type}", env_vars[f"pokedex_{goal_type}"]
+                    )
                     reward += self._check_pokedex_goal_achievement(
                         env_vars[f"pokedex_{goal_type}"], goal_type
                     )
@@ -269,11 +276,11 @@ class Rewards:
 
     def _exploration_reward(self, env_vars):
         current_location = ((env_vars["X"], env_vars["Y"]), env_vars["map_num"])
-        
+
         if current_location[1] not in self.explored_maps:
             self.explored_maps.add(current_location[1])
             return self.new_map_reward
-        
+
         if current_location not in self.explored_tiles:
             self.explored_tiles.add(current_location)
             dist_reward = self._distance_based_reward(env_vars)
@@ -283,10 +290,10 @@ class Rewards:
     def _movement_penalties(self, env_vars):
         current_loc = (env_vars["X"], env_vars["Y"])
         penalty = 0
-        
+
         if len(self.path_history) >= 2 and current_loc == self.path_history[-2]:
             penalty += self.backtrack_penalty
-        
+
         return penalty
 
     def _step_penalty(self):
@@ -339,7 +346,9 @@ class Rewards:
             "level": self.curriculum_level,
             "stage": stage,
             "reward_scales": scales,
-            "next_stage": self.curriculum_stages.get(self.curriculum_level + 1, "max_level")
+            "next_stage": self.curriculum_stages.get(
+                self.curriculum_level + 1, "max_level"
+            ),
         }
 
     def get_progress(self):
@@ -353,5 +362,5 @@ class Rewards:
             "Explored Maps": len(self.explored_maps),
             "Cumulative Reward": self.cumulative_reward,
             "Curriculum Level": self.curriculum_level,
-            "Curriculum Stage": self.curriculum_stages[self.curriculum_level]
+            "Curriculum Stage": self.curriculum_stages[self.curriculum_level],
         }

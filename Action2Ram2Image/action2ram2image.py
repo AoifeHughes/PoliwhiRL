@@ -293,8 +293,12 @@ def train_model(model, train_loader, val_loader, optimizer, num_epochs, device):
 
 # Main execution
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model to predict GameBoy states and images.")
-    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database file.")
+    parser = argparse.ArgumentParser(
+        description="Train a model to predict GameBoy states and images."
+    )
+    parser.add_argument(
+        "--db_path", type=str, required=True, help="Path to the SQLite database file."
+    )
     args = parser.parse_args()
 
     db_path = args.db_loc

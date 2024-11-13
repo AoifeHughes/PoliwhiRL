@@ -317,7 +317,6 @@ class PPOAgent:
             print(f"Error loading model: {e}")
             print("Starting from scratch.")
 
-
     def get_episode_data(self):
         return self.episode_data
 

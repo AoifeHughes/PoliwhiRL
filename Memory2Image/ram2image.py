@@ -141,76 +141,88 @@ from pathlib import Path
 import csv
 import time
 
+
 class TrainingLogger:
-    def __init__(self, log_dir='training_logs'):
+    def __init__(self, log_dir="training_logs"):
         # Create log directory if it doesn't exist
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
-        
+
         # Initialize CSV file with headers
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        self.csv_path = self.log_dir / f'training_stats_{timestamp}.csv'
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.csv_path = self.log_dir / f"training_stats_{timestamp}.csv"
         self.stats = []
-        
+
         # Write headers
-        with open(self.csv_path, 'w', newline='') as f:
+        with open(self.csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(['epoch', 'train_loss', 'val_loss', 'learning_rate', 'time_elapsed'])
-        
+            writer.writerow(
+                ["epoch", "train_loss", "val_loss", "learning_rate", "time_elapsed"]
+            )
+
         self.start_time = time.time()
-    
+
     def log_epoch(self, epoch, train_loss, val_loss, learning_rate):
         time_elapsed = time.time() - self.start_time
         stats = {
-            'epoch': epoch,
-            'train_loss': train_loss,
-            'val_loss': val_loss,
-            'learning_rate': learning_rate,
-            'time_elapsed': time_elapsed
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "learning_rate": learning_rate,
+            "time_elapsed": time_elapsed,
         }
         self.stats.append(stats)
-        
+
         # Append to CSV
-        with open(self.csv_path, 'a', newline='') as f:
+        with open(self.csv_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([epoch, train_loss, val_loss, learning_rate, time_elapsed])
-    
+
     def plot_training_curves(self):
         df = pd.DataFrame(self.stats)
-        
+
         # Create figure with subplots
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
-        
+
         # Plot losses
-        ax1.plot(df['epoch'], df['train_loss'], label='Training Loss', marker='o')
-        ax1.plot(df['epoch'], df['val_loss'], label='Validation Loss', marker='o')
-        ax1.set_xlabel('Epoch')
-        ax1.set_ylabel('Loss')
-        ax1.set_title('Training and Validation Loss Over Time')
+        ax1.plot(df["epoch"], df["train_loss"], label="Training Loss", marker="o")
+        ax1.plot(df["epoch"], df["val_loss"], label="Validation Loss", marker="o")
+        ax1.set_xlabel("Epoch")
+        ax1.set_ylabel("Loss")
+        ax1.set_title("Training and Validation Loss Over Time")
         ax1.legend()
         ax1.grid(True)
-        
+
         # Plot learning rate
-        ax2.plot(df['epoch'], df['learning_rate'], label='Learning Rate', marker='o', color='green')
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('Learning Rate')
-        ax2.set_title('Learning Rate Over Time')
+        ax2.plot(
+            df["epoch"],
+            df["learning_rate"],
+            label="Learning Rate",
+            marker="o",
+            color="green",
+        )
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Learning Rate")
+        ax2.set_title("Learning Rate Over Time")
         ax2.legend()
         ax2.grid(True)
-        
+
         plt.tight_layout()
-        
+
         # Save plot
-        plot_path = self.log_dir / 'training_curves.png'
+        plot_path = self.log_dir / "training_curves.png"
         plt.savefig(plot_path)
         plt.close()
-        
+
         return plot_path
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
+
+def train_model(
+    model, train_loader, val_loader, criterion, optimizer, num_epochs, device
+):
     logger = TrainingLogger()
     best_val_loss = float("inf")
-    
+
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
@@ -245,11 +257,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 val_loss += loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
-        
+
         # Log training stats
-        current_lr = optimizer.param_groups[0]['lr']
+        current_lr = optimizer.param_groups[0]["lr"]
         logger.log_epoch(epoch + 1, avg_train_loss, avg_val_loss, current_lr)
-        
+
         # Generate and save plots every epoch
         logger.plot_training_curves()
 
@@ -264,10 +276,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
     return model
 
+
 # Main execution
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train WRAM to Image Model")
-    parser.add_argument("--db_path", type=str, required=True, help="Path to the SQLite database file")
+    parser.add_argument(
+        "--db_path", type=str, required=True, help="Path to the SQLite database file"
+    )
     args = parser.parse_args()
 
     db_path = args.db_path

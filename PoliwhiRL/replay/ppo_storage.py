@@ -15,6 +15,9 @@ class PPOMemory:
         self.sequence_length = config["sequence_length"]
         self.input_shape = config["input_shape"]
         self.db_path = config["db_path"]
+        self.curriculum_level = config.get(
+            "curriculum_level", 0
+        )  # Default to 0 if not specified
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.memory_id = 0
         self.episode_length = 0
@@ -34,6 +37,10 @@ class PPOMemory:
         self.log_probs = np.zeros(self.update_frequency, dtype=np.float32)
         self.last_next_state = None
         self.episode_length = 0
+
+    def update_curriculum_level(self, new_level):
+        """Update the curriculum level for this memory buffer."""
+        self.curriculum_level = new_level
 
     def store_transition(self, state, next_state, action, reward, done, log_prob):
         idx = self.episode_length
@@ -108,7 +115,8 @@ class PPOMemory:
                            last_next_state BLOB,
                            episode_length INTEGER,
                            input_shape TEXT,
-                           sequence_length INTEGER)"""
+                           sequence_length INTEGER,
+                           curriculum_level INTEGER)"""
         )
 
         states_binary = self.compress_data(self.states[: self.episode_length])
@@ -124,8 +132,9 @@ class PPOMemory:
 
         cursor.execute(
             """INSERT INTO memory
-                          (states, actions, rewards, dones, log_probs, last_next_state, episode_length, input_shape, sequence_length)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          (states, actions, rewards, dones, log_probs, last_next_state, 
+                           episode_length, input_shape, sequence_length, curriculum_level)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 states_binary,
                 actions_binary,
@@ -136,6 +145,7 @@ class PPOMemory:
                 self.episode_length,
                 json.dumps(self.input_shape),
                 self.sequence_length,
+                self.curriculum_level,
             ),
         )
 
@@ -150,7 +160,10 @@ class PPOMemory:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM memory WHERE id = ?", (memory_id,))
+        cursor.execute(
+            "SELECT * FROM memory WHERE id = ? AND curriculum_level",
+            (memory_id, self.curriculum_level),
+        )
         row = cursor.fetchone()
 
         if row is None:
