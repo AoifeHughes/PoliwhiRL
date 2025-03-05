@@ -187,6 +187,12 @@ class MultiAgentPPO:
             "current_episode": metrics.get("current_episode", 0),
             "total_episodes": len(metrics["episode_rewards"]),
         }
+        for data in all_episode_data:
+            for key in combined_data:
+                if isinstance(data[key], list):
+                    combined_data[key].extend(data[key][len(combined_data[key]) :])
+                else:
+                    combined_data[key] += data[key]
 
         with open(f"{metrics_dir}/metrics.json", "w") as f:
             json.dump(json_metrics, f)
