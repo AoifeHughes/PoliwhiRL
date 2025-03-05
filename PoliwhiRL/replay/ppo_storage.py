@@ -132,7 +132,7 @@ class PPOMemory:
 
         cursor.execute(
             """INSERT INTO memory
-                          (states, actions, rewards, dones, log_probs, last_next_state, 
+                          (states, actions, rewards, dones, log_probs, last_next_state,
                            episode_length, input_shape, sequence_length, curriculum_level)
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
