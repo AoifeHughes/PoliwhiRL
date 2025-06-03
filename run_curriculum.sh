@@ -22,6 +22,7 @@ episode_lengths=(
     5000    # 7 goals - reduced from 1500
 )
 
+
 for goals in $(seq $start_goals $max_goals); do
     echo "Running with $goals goals"
 
@@ -52,7 +53,7 @@ for goals in $(seq $start_goals $max_goals); do
         --N_goals_target $goals \
         --output_base_dir "stage_${goals}/" \
         --ppo_num_agents 20 \
-        --ppo_iterations 11 \
+        --ppo_iterations 25 \
         --punish_steps true \
         --report_episode false \
         --use_curriculum false \

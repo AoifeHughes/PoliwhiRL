@@ -323,7 +323,7 @@ class PPOParallelRunner:
                         futures.append((i, future))
 
                     # Collect results with individual timeouts
-                    timeout_minutes = 8  # Per-agent timeout
+                    timeout_minutes = 15  # Per-agent timeout
                     agent_timeout = timeout_minutes * 60
                     print(
                         f"⏰ Waiting for agents to complete (timeout: {timeout_minutes}min per agent)"
