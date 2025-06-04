@@ -33,6 +33,7 @@ class PPOMemory:
         self.rewards = np.zeros(self.update_frequency, dtype=np.float32)
         self.dones = np.zeros(self.update_frequency, dtype=np.bool_)
         self.log_probs = np.zeros(self.update_frequency, dtype=np.float32)
+        self.values = np.zeros(self.update_frequency, dtype=np.float32)
         self.exploration_tensors = np.zeros(
             (self.update_frequency, 100, 1 + self.ppo_exploration_history_length),
             dtype=np.float32,
@@ -41,7 +42,7 @@ class PPOMemory:
         self.episode_length = 0
 
     def store_transition(
-        self, state, next_state, action, reward, done, log_prob, exploration_tensor=None
+        self, state, next_state, action, reward, done, log_prob, value=None, exploration_tensor=None
     ):
         idx = self.episode_length
         self.states[idx] = state
@@ -49,6 +50,8 @@ class PPOMemory:
         self.rewards[idx] = reward
         self.dones[idx] = done
         self.log_probs[idx] = log_prob
+        if value is not None:
+            self.values[idx] = value
         if exploration_tensor is not None:
             self.exploration_tensors[idx] = exploration_tensor
         self.last_next_state = next_state
@@ -87,6 +90,9 @@ class PPOMemory:
             "old_log_probs": torch.FloatTensor(
                 self.log_probs[self.sequence_length - 1 : self.episode_length]
             ).to(self.device),
+            "values": torch.FloatTensor(
+                self.values[self.sequence_length - 1 : self.episode_length]
+            ).to(self.device),
             "exploration_tensors": torch.FloatTensor(
                 self.exploration_tensors[self.sequence_length - 1 : self.episode_length]
             ).to(self.device),
@@ -117,6 +123,7 @@ class PPOMemory:
                            rewards BLOB,
                            dones BLOB,
                            log_probs BLOB,
+                           state_values BLOB,
                            exploration_tensors BLOB,
                            last_next_state BLOB,
                            episode_length INTEGER,
@@ -129,6 +136,7 @@ class PPOMemory:
         rewards_binary = self.compress_data(self.rewards[: self.episode_length])
         dones_binary = self.compress_data(self.dones[: self.episode_length])
         log_probs_binary = self.compress_data(self.log_probs[: self.episode_length])
+        values_binary = self.compress_data(self.values[: self.episode_length])
         exploration_tensors_binary = self.compress_data(
             self.exploration_tensors[: self.episode_length]
         )
@@ -140,14 +148,15 @@ class PPOMemory:
 
         cursor.execute(
             """INSERT INTO memory
-                          (states, actions, rewards, dones, log_probs, exploration_tensors, last_next_state, episode_length, input_shape, sequence_length)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          (states, actions, rewards, dones, log_probs, state_values, exploration_tensors, last_next_state, episode_length, input_shape, sequence_length)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 states_binary,
                 actions_binary,
                 rewards_binary,
                 dones_binary,
                 log_probs_binary,
+                values_binary,
                 exploration_tensors_binary,
                 last_next_state_binary,
                 self.episode_length,
@@ -189,16 +198,19 @@ class PPOMemory:
         log_probs = PPOMemory.decompress_data(
             row[5], np.float32, (episode_length,)
         ).copy()
+        values = PPOMemory.decompress_data(
+            row[6], np.float32, (episode_length,)
+        ).copy()
         # Get history length from config or use default
         ppo_exploration_history_length = config.get("ppo_exploration_history_length", 5)
         exploration_tensors = PPOMemory.decompress_data(
-            row[6],
+            row[7],
             np.float32,
             (episode_length, 100, 1 + ppo_exploration_history_length),
         ).copy()
         last_next_state = (
-            PPOMemory.decompress_data(row[7], np.uint8, input_shape).copy()
-            if row[7] is not None
+            PPOMemory.decompress_data(row[8], np.uint8, input_shape).copy()
+            if row[8] is not None
             else None
         )
 
@@ -230,6 +242,9 @@ class PPOMemory:
             ),
             "old_log_probs": torch.FloatTensor(
                 log_probs[sequence_length - 1 : episode_length]
+            ).to(device),
+            "values": torch.FloatTensor(
+                values[sequence_length - 1 : episode_length]
             ).to(device),
             "exploration_tensors": torch.FloatTensor(
                 exploration_tensors[sequence_length - 1 : episode_length]

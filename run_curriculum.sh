@@ -17,9 +17,9 @@ episode_lengths=(
     150    # 2 goals - reduced from 200
     600    # 3 goals - reduced from 300
     1000    # 4 goals - reduced from 400
-    2000    # 5 goals - reduced from 600
-    2500    # 6 goals - reduced from 1000
-    5000    # 7 goals - reduced from 1500
+    3000    # 5 goals - reduced from 600
+    5000    # 6 goals - reduced from 1000
+    10000    # 7 goals - reduced from 1500
 )
 
 
@@ -46,7 +46,7 @@ for goals in $(seq $start_goals $max_goals); do
 
     # Run the main.py with the calculated parameters using memory-based multi-agent
     python main.py \
-        --vision false \
+        --vision true \
         --episode_length $episode_length \
         --num_episodes 20 \
         --ppo_update_frequency 256 \
@@ -60,47 +60,3 @@ for goals in $(seq $start_goals $max_goals); do
         --break_on_goal true \
         --load_checkpoint "$load_checkpoint"
 done
-
-# Optional optimization pass: Further reduce episode lengths for already-trained goals
-if [ "$run_optimization_pass" = true ]; then
-    echo -e "\n\n=== STARTING OPTIMIZATION PASS ===\n"
-    echo "Running optimization pass to further minimize steps..."
-
-    for goals in $(seq $start_goals $max_goals); do
-        echo -e "\nOptimizing stage $goals with reduced episode length"
-
-        # Calculate reduced episode length
-        original_length=${episode_lengths[$((goals-1))]}
-        optimized_length=$(echo "$original_length * $optimization_reduction" | bc | cut -d. -f1)
-
-        # Copy checkpoint from regular training to optimized directory
-        echo "Copying checkpoint from stage ${goals} to stage ${goals}_optimized"
-        mkdir -p "./stage_${goals}_optimized"
-        if [ -d "./stage_${goals}/Checkpoints" ]; then
-            cp -r "./stage_${goals}/Checkpoints" "./stage_${goals}_optimized/Checkpoints"
-        fi
-
-        # Load checkpoint from optimized directory
-        load_checkpoint="./stage_${goals}_optimized/Checkpoints"
-
-        # Run optimization with tighter constraints using memory-based multi-agent
-        python main.py \
-            --vision false \
-            --episode_length $optimized_length \
-            --num_episodes 30 \
-            --ppo_update_frequency 256 \
-            --N_goals_target $goals \
-            --output_base_dir "stage_${goals}_optimized/" \
-            --ppo_num_agents 20 \
-            --ppo_iterations 30 \
-            --punish_steps true \
-            --report_episode false \
-            --use_curriculum false \
-            --break_on_goal true \
-            --load_checkpoint "$load_checkpoint"
-
-        echo "Optimization for $goals goals complete (reduced from $original_length to $optimized_length steps)"
-    done
-
-    echo -e "\n=== OPTIMIZATION PASS COMPLETE ===\n"
-fi

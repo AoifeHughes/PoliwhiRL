@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from collections import OrderedDict
+from collections import OrderedDict, deque, defaultdict, Counter
 
 
 class Rewards:
@@ -11,31 +11,33 @@ class Rewards:
         self.break_on_goal = config["break_on_goal"]
         self.punish_steps = config["punish_steps"]
 
-        # Rescaled reward values
+        # Rescaled reward values - simplified and positive-focused
         self.small_reward = 0.1
         self.medium_reward = 0.5
         self.large_reward = 1.0
-        self.small_penalty = -0.1
-        self.medium_penalty = -0.5
-        self.large_penalty = -1.0
+        self.small_penalty = -0.05  # Reduced penalties
+        self.medium_penalty = -0.1
+        self.large_penalty = -0.5
 
-        # Goal achievement rewards - balanced for 10-100 steps between goals
-        self.goal_reward_max = 20.0  # Increased to balance moderate step penalties
-        self.goal_reward_min = 10.0  # Higher minimum to ensure positive reinforcement
+        # Goal achievement rewards - simple flat rewards
+        self.goal_reward = 10.0  # Flat reward for achieving goals
+        self.final_goal_bonus = 5.0  # Extra bonus for completing all goals
 
         # Clipping
-        self.clip = 50.0  # Increased to accommodate larger rewards
+        self.clip = 20.0  # Reasonable clipping range
 
-        # Other rewards and penalties - moderate penalties with higher rewards
-        self.exploration_reward = 0.0  # Removed to discourage wandering
-        self.step_penalty = -0.2 if self.punish_steps else 0  # Moderate penalty
-        self.button_penalty = self.medium_penalty
-        self.pokedex_seen_reward = self.medium_reward
-        self.pokedex_owned_reward = self.large_reward
-
-        # Efficiency bonus parameters - stricter to encourage optimization
-        self.efficiency_bonus_threshold = 0.3  # Complete in less than 30% of max steps
-        self.efficiency_bonus_multiplier = 2.0  # Double reward for high efficiency
+        # Other rewards and penalties - simplified
+        self.exploration_reward = 0.2  # Small exploration bonus
+        self.step_penalty = -0.01 if self.punish_steps else 0  # Very light step penalty
+        self.button_penalty = self.small_penalty  # Reduced menu penalty
+        self.pokedex_seen_reward = self.small_reward
+        self.pokedex_owned_reward = self.medium_reward
+        
+        # Simplified exploration parameters
+        self.novelty_reward = 0.1  # Small fixed reward for new locations
+        self.idle_penalty_threshold = 10  # More lenient idle threshold
+        self.idle_penalty = -0.1  # Small idle penalty
+        self.map_transition_bonus = 0.5  # Small bonus for new maps
 
         # State variables
         self.pokedex_seen = 0
@@ -53,8 +55,13 @@ class Rewards:
         self.location_goals = OrderedDict()
         self.current_goal_index = 0
 
-        # Parameter for distance-based reward
-        self.distance_reward_factor = self.medium_reward
+        # Distance-based guidance reward
+        self.distance_reward_factor = 0.1  # Small reward for moving toward goals
+        
+        # Simplified tracking
+        self.last_position = None
+        self.idle_counter = 0
+        self.discovered_maps = set()
 
         self.set_goals(config["location_goals"], config["pokedex_goals"])
 
@@ -100,23 +107,48 @@ class Rewards:
     def calculate_reward(self, env_vars, button_press):
         self.steps += 1
         total_reward = 0
+        
+        # Check for goal achievements
+        goal_reward = self._check_goals(env_vars)
+        total_reward += goal_reward
+        
+        # Simple exploration reward for new locations
+        current_location = ((env_vars["X"], env_vars["Y"]), env_vars["map_num"])
+        if current_location not in self.explored_tiles:
+            self.explored_tiles.add(current_location)
+            total_reward += self.exploration_reward
+            
+            # Small bonus for new maps
+            if env_vars["map_num"] not in self.discovered_maps:
+                self.discovered_maps.add(env_vars["map_num"])
+                total_reward += self.map_transition_bonus
+        
+        # Distance guidance toward current goal
+        if self.N_goals < self.N_goals_target:
+            total_reward += self._distance_based_reward(env_vars)
+        
+        # Simple movement penalties
+        current_position = (env_vars["X"], env_vars["Y"], env_vars["map_num"])
+        if self.last_position == current_position:
+            self.idle_counter += 1
+            if self.idle_counter > self.idle_penalty_threshold:
+                total_reward += self.idle_penalty
+        else:
+            self.idle_counter = 0
+        self.last_position = current_position
 
-        total_reward += self._check_goals(env_vars)
-        total_reward += self._exploration_reward(env_vars)
-        total_reward += self._step_penalty()
-
+        # Small penalty for menu buttons
         if button_press in ["start", "select"]:
             total_reward += self.button_penalty
 
+        # Light step penalty
+        total_reward += self.step_penalty
+
+        # Check if done
         if self.steps > self.max_steps:
-            # Penalty for not completing all goals within step limit
-            total_reward += self.large_penalty * (self.N_goals_target - self.N_goals)
-
-        self.last_action = button_press
-
-        if self.done or self.steps > self.max_steps:
             self.done = True
 
+        self.last_action = button_press
         self.cumulative_reward += total_reward
         clipped_reward = np.clip(total_reward, -self.clip, self.clip).astype(np.float32)
 
@@ -155,22 +187,16 @@ class Rewards:
             if current_value in goal:
                 self.current_goal_index += 1
                 self.N_goals += 1
-                # Reward decays based on the fraction of steps taken
-                progress = self.steps / self.max_steps
-                reward = self.goal_reward_max * (1 - progress)
-                reward = max(self.goal_reward_min, reward)
-
-                # Efficiency bonus for completing goals quickly
-                if progress < self.efficiency_bonus_threshold:
-                    reward *= self.efficiency_bonus_multiplier
-
+                
+                # Simple flat reward for goal achievement
+                reward = self.goal_reward
+                
+                # Bonus for completing all goals
                 if self.N_goals >= self.N_goals_target:
-                    reward *= 2  # Double reward for reaching all goals
-                    # Extra bonus for completing all goals efficiently
-                    if progress < self.efficiency_bonus_threshold:
-                        reward *= 1.2  # Additional 20% for overall efficiency
+                    reward += self.final_goal_bonus
                     if self.break_on_goal:
                         self.done = True
+                        
                 return reward
         return 0
 
@@ -181,42 +207,21 @@ class Rewards:
         ):
             del self.pokedex_goals[goal_type]
             self.N_goals += 1
-            # Calculate decaying reward
-            progress = self.steps / self.max_steps
-            reward = (
-                self.goal_reward_max
-                - (self.goal_reward_max - self.goal_reward_min) * progress
-            )
-            reward = max(self.goal_reward_min, min(self.goal_reward_max, reward))
-
-            # Efficiency bonus for completing goals quickly
-            if progress < self.efficiency_bonus_threshold:
-                reward *= self.efficiency_bonus_multiplier
-
+            
+            # Simple flat reward
+            reward = self.goal_reward
+            
+            # Bonus for completing all goals
             if self.N_goals >= self.N_goals_target:
-                reward *= 2  # Double reward for reaching all goals
-                # Extra bonus for completing all goals efficiently
-                if progress < self.efficiency_bonus_threshold:
-                    reward *= 1.2  # Additional 20% for overall efficiency
+                reward += self.final_goal_bonus
                 if self.break_on_goal:
                     self.done = True
+                    
             return reward
         return 0
 
-    def _exploration_reward(self, env_vars):
-        current_location = ((env_vars["X"], env_vars["Y"]), env_vars["map_num"])
-        if current_location not in self.explored_tiles:
-            self.explored_tiles.add(current_location)
-            # Only give distance-based reward, no exploration bonus
-            dist_reward = self._distance_based_reward(env_vars)
-            return dist_reward
-        return 0
+    # Remove complex adaptive reward methods - they're no longer needed
 
-    def _step_penalty(self):
-        step_progress = self.steps / self.max_steps
-        # Exponential penalty scaling to heavily punish long episodes
-        dynamic_penalty = self.step_penalty * (1 + step_progress**2)
-        return dynamic_penalty
 
     def _distance_based_reward(self, env_vars):
         if self.current_goal_index >= len(self.location_goals):
@@ -224,11 +229,10 @@ class Rewards:
         current_location = (env_vars["X"], env_vars["Y"])
         goal = list(self.location_goals.values())[self.current_goal_index][0]
         if env_vars["map_num"] == goal[2]:  # Check if on the same map
-            distance = np.sqrt(
-                (current_location[0] - goal[0]) ** 2
-                + (current_location[1] - goal[1]) ** 2
-            )
-            return self.distance_reward_factor * (1 / (distance + 1))
+            # Calculate Manhattan distance for simplicity
+            distance = abs(current_location[0] - goal[0]) + abs(current_location[1] - goal[1])
+            # Small reward that decreases with distance
+            return self.distance_reward_factor * max(0, 1 - distance / 50)
         return 0
 
     def get_progress(self):
@@ -238,5 +242,7 @@ class Rewards:
             "Pokédex Seen": self.pokedex_seen,
             "Pokédex Owned": self.pokedex_owned,
             "Explored Tiles": len(self.explored_tiles),
+            "Discovered Maps": len(self.discovered_maps),
+            "Idle Counter": self.idle_counter,
             "Cumulative Reward": self.cumulative_reward,
         }

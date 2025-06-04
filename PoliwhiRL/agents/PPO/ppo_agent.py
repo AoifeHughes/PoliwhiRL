@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 import numpy as np
 from collections import deque
 from tqdm.auto import tqdm
@@ -23,8 +24,40 @@ class PPOAgent:
         self.config["input_shape"] = input_shape
         self.config["action_size"] = action_size
         self.device = config["device"]
+        
+        # Stage-relative episode tracking for curriculum learning - MUST be before config update
+        self.stage_episode = 0  # Episode number within current stage
+        self.stage_start_episode = 0  # Global episode when stage started
+        self.current_n_goals = config.get("N_goals_target", 1)  # Track current stage
+        
+        # Performance tracking for recovery
+        self.performance_window = deque(maxlen=20)  # Track last 20 episodes
+        self.performance_baseline = None
+        self.degradation_counter = 0
+        self.last_recovery_episode = 0
+        self.best_checkpoint_path = None
+        self.recent_best_reward = float("-inf")  # Best reward in recent window
+        
+        # Failure learning system
+        self.failure_risk_history = deque(maxlen=50)  # Track risk scores
+        self.recovery_attempts = []  # Track all intervention attempts
+        self.failure_archives = []  # Store detailed failure data
+        self.last_checkpoint_restore = -999  # Track when we last restored a checkpoint
+        self.training_stats = {  # Clean stats for model evaluation
+            "episodes_since_reset": 0,
+            "clean_performance": deque(maxlen=100),
+            "recovery_points": []
+        }
+        self.research_stats = {  # Complete session history
+            "raw_performance": [],
+            "failure_episodes": [],
+            "intervention_outcomes": [],
+            "risk_scores": []
+        }
+        
         self.update_parameters_from_config()
         self.best_reward = float("-inf")
+        self.best_episode = 0
         self.model = PPOModel(input_shape, action_size, config)
         self.memory = PPOMemory(config)
         # Use enhanced exploration memory if enabled
@@ -68,6 +101,39 @@ class PPOAgent:
         self.export_state_loc = self.config["export_state_loc"]
         self.extrinsic_reward_weight = self.config["ppo_extrinsic_reward_weight"]
         self.intrinsic_reward_weight = self.config["ppo_intrinsic_reward_weight"]
+        
+        # Check for stage transition (curriculum learning)
+        self._check_stage_transition()
+        
+    def _check_stage_transition(self):
+        """Detect and handle curriculum stage transitions"""
+        new_n_goals = self.config.get("N_goals_target", 1)
+        
+        # Safety check - if current_n_goals not set, this is first initialization
+        if not hasattr(self, 'current_n_goals'):
+            self.current_n_goals = new_n_goals
+            return
+            
+        if new_n_goals != self.current_n_goals:
+            print(f"🎯 Stage transition detected: {self.current_n_goals} → {new_n_goals} goals")
+            print(f"   Resetting stage tracking at global episode {self.episode}")
+            
+            # Reset stage-relative tracking
+            self.stage_episode = 0
+            self.stage_start_episode = self.episode
+            self.current_n_goals = new_n_goals
+            
+            # Reset performance tracking for new stage
+            self.performance_window.clear()
+            self.performance_baseline = None
+            self.degradation_counter = 0
+            self.last_recovery_episode = 0
+            
+            # Don't reset best checkpoint - it might still be useful
+            # But reset recent tracking
+            self.recent_best_reward = float("-inf")
+            
+            print(f"   Stage tracking reset: performance window cleared, counters reset")
         self.checkpoint_frequency = self.config["checkpoint_frequency"]
         self.steps = 0
         self.continue_from_state_loc = self.config["continue_from_state_loc"]
@@ -145,8 +211,11 @@ class PPOAgent:
                 print(
                     f"Agent training in subprocess - {self.num_episodes} episodes, {self.n_goals} goals"
                 )
-        # Check if we should boost entropy at start of training
-        self._update_entropy_boost()
+        # Simple entropy boost for new stages
+        if self.stage_episode < 30:
+            self.model.entropy_boost = 0.02
+        else:
+            self.model.entropy_boost = 0.0
 
         for episode_idx in pbar:
             # Log progress every 5 episodes for hang detection
@@ -155,9 +224,11 @@ class PPOAgent:
                     f"Episode {self.episode}/{self.num_episodes}"
                 )
 
-            # Periodically update entropy boost
-            if self.episode % 10 == 0:
-                self._update_entropy_boost()
+            # Update entropy boost for new stage
+            if self.stage_episode < 30:
+                self.model.entropy_boost = 0.02
+            else:
+                self.model.entropy_boost = 0.0
 
             record_loc = (
                 f"N_goals_{self.n_goals}/{self.episode}"
@@ -170,6 +241,7 @@ class PPOAgent:
 
             self.run_episode(record_loc=record_loc)
             self.episode += 1
+            self.stage_episode += 1
 
             if is_subprocess and episode_idx % 5 == 0:
                 self._log_training_progress(f"Completed episode {self.episode - 1}")
@@ -195,6 +267,12 @@ class PPOAgent:
                 and self.config.get("checkpoint") is not None
             ):
                 self.save_model(self.config["checkpoint"])
+                
+                # Also save periodic safety checkpoints every 50 episodes
+                if self.episode % 50 == 0 and self.episode > 0:
+                    safety_path = f"{self.config['checkpoint']}_episode_{self.episode}"
+                    self.save_model(safety_path)
+                    print(f"📌 Saved periodic safety checkpoint at episode {self.episode}")
 
             # if self._should_stop_early():
             #     break
@@ -318,13 +396,8 @@ class PPOAgent:
                     state, next_state, action
                 )
 
-                # Add exploration bonus if using enhanced memory
-                exploration_bonus = 0.0
-                if hasattr(self.exploration_memory, "get_exploration_bonus"):
-                    state_hash = self.exploration_memory._compute_hash(state)
-                    exploration_bonus = (
-                        self.exploration_memory.get_exploration_bonus(state_hash) * 0.01
-                    )
+                # Enhanced exploration bonus computation
+                exploration_bonus = self._compute_exploration_bonus(state, next_state, extrinsic_reward)
 
                 total_reward = self._compute_total_reward(
                     extrinsic_reward, intrinsic_reward + exploration_bonus
@@ -344,9 +417,13 @@ class PPOAgent:
                 log_prob = self.model.compute_log_prob(
                     state_seq_arr, action, exploration_tensor
                 )
-
-                # Get exploration memory tensor
-                exploration_tensor = self.exploration_memory.get_memory_tensor()
+                
+                # Compute value estimate for GAE
+                with torch.no_grad():
+                    state_tensor = torch.FloatTensor(state_seq_arr).unsqueeze(0).to(self.device)
+                    exp_tensor = torch.FloatTensor(exploration_tensor).unsqueeze(0).to(self.device) if exploration_tensor is not None else None
+                    _, value = self.model.actor_critic(state_tensor, exp_tensor)
+                    value = value.item()
 
                 self.memory.store_transition(
                     state,
@@ -355,6 +432,7 @@ class PPOAgent:
                     total_reward,
                     done,
                     log_prob,
+                    value,
                     exploration_tensor,
                 )
 
@@ -383,16 +461,87 @@ class PPOAgent:
             self.extrinsic_reward_weight * extrinsic_reward
             + self.intrinsic_reward_weight * intrinsic_reward
         )
+    
+    def _compute_exploration_bonus(self, state, next_state, extrinsic_reward):
+        """Enhanced exploration bonus computation"""
+        exploration_bonus = 0.0
+        
+        if hasattr(self.exploration_memory, "get_exploration_bonus"):
+            state_hash = self.exploration_memory._compute_hash(state)
+            
+            # Base exploration bonus (increased from 0.01)
+            exploration_bonus = self.exploration_memory.get_exploration_bonus(state_hash) * 0.1
+            
+            # Waypoint discovery bonus
+            if hasattr(self.exploration_memory, 'waypoints') and state_hash in self.exploration_memory.waypoints:
+                waypoint_info = self.exploration_memory.waypoints[state_hash]
+                if waypoint_info["visits"] == 1:  # First discovery
+                    exploration_bonus += 2.0
+            
+            # Action effectiveness consideration
+            if (hasattr(self.exploration_memory, 'get_action_effectiveness') and 
+                hasattr(self, 'last_action') and self.last_action is not None):
+                action_stats = self.exploration_memory.get_action_effectiveness()
+                if self.last_action in action_stats:
+                    effectiveness = action_stats[self.last_action]["success_rate"]
+                    if effectiveness < 0.3:  # Trying ineffective actions gets penalty
+                        exploration_bonus *= 0.5
+            
+            # Scale based on training phase (if reward calculator available)
+            if (hasattr(self, 'env') and hasattr(self.env, 'reward_calculator') and 
+                self.env.reward_calculator.N_goals >= self.env.reward_calculator.N_goals_target):
+                exploration_bonus *= 2.0  # Double during exploration phase
+        
+        return exploration_bonus
 
     def _update_episode_stats(self, total_reward):
         self.episode_data["episode_rewards"].append(total_reward)
         self.episode_data["episode_lengths"].append(self.steps)
         self.episode_data["moving_avg_reward"].append(total_reward)
         self.episode_data["moving_avg_length"].append(self.steps)
+        
+        # Update performance tracking
+        self.performance_window.append(total_reward)
+        
+        # Check if this is the best reward overall
+        if total_reward > self.best_reward:
+            self.best_reward = total_reward
+            self.best_episode = self.episode
+            # Save best checkpoint
+            self._save_best_checkpoint()
+            
+        # Update recent best
+        if len(self.performance_window) > 0:
+            self.recent_best_reward = max(self.performance_window)
+            
+        # Check for severe performance drop only
+        if len(self.performance_window) >= 20:
+            recent_avg = np.mean(list(self.performance_window)[-10:])
+            older_avg = np.mean(list(self.performance_window)[-20:-10])
+            
+            # Only intervene if performance dropped by more than 50%
+            if recent_avg < older_avg * 0.5 and self.stage_episode > 50:
+                self.degradation_counter += 1
+                if self.degradation_counter > 10:
+                    self._trigger_recovery()
+            else:
+                self.degradation_counter = max(0, self.degradation_counter - 1)
 
         # Track current entropy coefficient
-        current_entropy = self.model._get_entropy_coef(self.episode)
+        current_entropy = self.model._get_entropy_coef(self.stage_episode)
         self.episode_data["episode_entropies"].append(current_entropy)
+        
+        # Update dual statistics tracking
+        self.research_stats["raw_performance"].append(total_reward)
+        self.training_stats["episodes_since_reset"] += 1
+        
+        # Only add to clean performance if we haven't had recent major interventions
+        if len(self.recovery_attempts) == 0 or self.stage_episode - self.recovery_attempts[-1]["stage_episode"] > 10:
+            self.training_stats["clean_performance"].append(total_reward)
+            
+        # Save failure learning stats periodically
+        if self.episode % 50 == 0:
+            self.save_failure_learning_stats()
 
         # Process macro actions at end of episode
         if self.macro_learner:
@@ -542,12 +691,12 @@ class PPOAgent:
             # Save additional information
             info = {
                 "episode": self.episode,
-                "best_reward": (
-                    max(self.episode_data["episode_rewards"])
-                    if self.episode_data["episode_rewards"]
-                    else float("-inf")
-                ),
+                "best_reward": self.best_reward,
+                "best_episode": self.best_episode,
                 "episode_data": self.episode_data,
+                "performance_window": list(self.performance_window),
+                "performance_baseline": self.performance_baseline,
+                "best_checkpoint_path": self.best_checkpoint_path,
             }
             torch.save(info, f"{path}/info.pth")
 
@@ -573,6 +722,18 @@ class PPOAgent:
                 )
                 self.config["start_episode"] = info["episode"]
                 self.episode = info["episode"]
+                
+                # Restore performance tracking attributes if available
+                if "best_reward" in info:
+                    self.best_reward = info["best_reward"]
+                if "best_episode" in info:
+                    self.best_episode = info["best_episode"]
+                if "performance_window" in info:
+                    self.performance_window = deque(info["performance_window"], maxlen=20)
+                if "performance_baseline" in info:
+                    self.performance_baseline = info["performance_baseline"]
+                if "best_checkpoint_path" in info:
+                    self.best_checkpoint_path = info["best_checkpoint_path"]
 
                 # Debug logging
                 worker_id = self.config.get("tqdm_worker_id", "?")
@@ -676,7 +837,7 @@ class PPOAgent:
                     prob_entropy -= prob * np.log2(prob)
 
             # Get current entropy coefficient
-            current_entropy_coef = self.model._get_entropy_coef(self.episode)
+            current_entropy_coef = self.model._get_entropy_coef(self.stage_episode)
 
             # Map actions to button names for readability
             button_names = ["A", "B", "Right", "Left", "Up", "Down", "Start", "Select"]
@@ -772,7 +933,186 @@ class PPOAgent:
     def set_episode_data(self, data):
         self.episode_data = data
 
-    def _update_entropy_boost(self):
+    def _save_best_checkpoint(self):
+        """Save a special checkpoint when achieving best performance"""
+        try:
+            best_path = f"{self.config['checkpoint']}_best"
+            os.makedirs(best_path, exist_ok=True)
+            self.save_model(best_path)
+            self.best_checkpoint_path = best_path
+            print(f"💾 Saved new best checkpoint at episode {self.episode} with reward {self.best_reward:.2f}")
+        except Exception as e:
+            print(f"Warning: Could not save best checkpoint: {e}")
+            
+    def _check_performance_degradation_OLD(self):
+        """Check if performance is degrading and trigger recovery if needed"""
+        if not self.config.get("enable_recovery", True):
+            return  # Recovery disabled
+            
+        if len(self.performance_window) < 10:
+            return  # Need enough data
+            
+        # Calculate failure risk and attempt graduated intervention
+        risk_score = self._calculate_failure_risk()
+        intervention = self._graduated_intervention(risk_score)
+        
+        if intervention:
+            print(f"🔧 Intervention applied: {intervention}")
+            return  # Intervention handled the situation
+        
+        # Continue with legacy recovery logic as fallback
+            
+        # Calculate average of recent performance
+        recent_avg = np.mean(list(self.performance_window)[-5:])
+        window_avg = np.mean(list(self.performance_window))
+        
+        # Set baseline after initial episodes
+        if self.performance_baseline is None and len(self.performance_window) >= 15:
+            self.performance_baseline = np.mean(list(self.performance_window)[:10])
+            
+        if self.performance_baseline is not None:
+            # Check for significant degradation
+            degradation_threshold = self.config.get("recovery_degradation_threshold", 0.7)
+            recovery_threshold = self.config.get("recovery_trigger_threshold", 0.5)
+            
+            if recent_avg < self.performance_baseline * degradation_threshold:
+                self.degradation_counter += 1
+                
+                # Log degradation warning
+                if self.degradation_counter % 5 == 0:
+                    print(f"⚠️  Performance degradation detected at episode {self.episode}: "
+                          f"recent avg: {recent_avg:.2f}, baseline: {self.performance_baseline:.2f}")
+                
+                # Trigger recovery if severe degradation
+                if (recent_avg < self.performance_baseline * recovery_threshold and 
+                    self.stage_episode - self.last_recovery_episode > 20):  # Allow more frequent recovery when failing badly
+                    self._trigger_recovery()
+            else:
+                # Reset degradation counter if performance improves
+                if self.degradation_counter > 0:
+                    self.degradation_counter = 0  # Full reset when performance improves
+                    
+            # Update baseline if we've improved significantly
+            if self.performance_baseline is not None and window_avg > self.performance_baseline * 1.1:  # 10% improvement
+                self.performance_baseline = window_avg
+                
+        # Simple periodic logging every 25 episodes
+        if self.episode % 25 == 0 and self.episode > 0:
+            recent_avg = np.mean(list(self.performance_window)[-10:]) if len(self.performance_window) >= 10 else 0.0
+            current_entropy = self.model._get_entropy_coef(self.stage_episode)
+            lr = self.model.optimizer.param_groups[0]['lr']
+            print(f"Episode {self.episode}: avg_reward={recent_avg:.2f}, entropy={current_entropy:.4f}, lr={lr:.6f}")
+                
+    def _trigger_recovery(self):
+        """Simple recovery - just load best checkpoint if available"""
+        if self.best_checkpoint_path and self.stage_episode - self.last_recovery_episode > 50:
+            print(f"Loading best checkpoint from episode {self.best_episode}")
+            try:
+                # Save current episode tracking
+                current_episode = self.episode
+                current_stage = self.stage_episode
+                
+                # Load checkpoint
+                self.load_model(self.best_checkpoint_path)
+                
+                # Restore episode tracking
+                self.episode = current_episode
+                self.stage_episode = current_stage
+                self.last_recovery_episode = self.stage_episode
+                self.degradation_counter = 0
+                
+                # Small entropy boost after recovery
+                self.model.entropy_boost = 0.03
+            except Exception as e:
+                print(f"Recovery failed: {e}")
+        
+    def _select_recovery_method_OLD(self):
+        """Intelligently select the best recovery method based on current situation"""
+        # Check if manual override is set
+        if "recovery_method" in self.config and self.config["recovery_method"] != "auto":
+            return self.config.get("recovery_method", "best_checkpoint")
+            
+        # Analyze the situation
+        episodes_since_best = self.stage_episode - (self.best_episode - self.stage_start_episode)
+        episodes_since_best = max(0, episodes_since_best)  # Ensure non-negative
+        recent_avg = np.mean(list(self.performance_window)[-5:]) if len(self.performance_window) >= 5 else 0
+        
+        # Calculate entropy trend
+        recent_entropies = self.episode_data.get("episode_entropies", [])[-10:]
+        entropy_declining = False
+        if len(recent_entropies) >= 5:
+            entropy_trend = np.polyfit(range(len(recent_entropies)), recent_entropies, 1)[0]
+            entropy_declining = entropy_trend < -0.001  # Significant decline
+        
+        # Check for exploration deadlock (high entropy but low novelty)
+        novelty_rate = 0.0
+        if hasattr(self.exploration_memory, "hash_visits"):
+            recent_visits = list(self.exploration_memory.hash_visits.values())[-100:]
+            avg_visits = np.mean(recent_visits) if recent_visits else 1.0
+            novelty_rate = 1.0 / avg_visits if avg_visits > 0 else 1.0
+            
+        current_lr = self.model.optimizer.param_groups[0]['lr']
+        initial_lr = self.config.get("ppo_learning_rate", 0.0003)
+        final_entropy = self.model._get_entropy_coef(self.episode) if hasattr(self.model, '_get_entropy_coef') else 0.0
+        
+        # Decision logic
+        if novelty_rate < 0.05 and final_entropy > 0.15 and current_lr < initial_lr * 0.5:
+            # Exploration deadlock: high entropy but stuck in small state space with low LR
+            print(f"   → Selected: lr_adjustment (exploration deadlock: high entropy {final_entropy:.3f}, low novelty {novelty_rate:.3f}, low LR {current_lr:.6f})")
+            return "lr_adjustment"
+            
+        elif episodes_since_best < 30 and self.best_checkpoint_path:
+            # Recent peak performance - load best checkpoint
+            print(f"   → Selected: best_checkpoint (recent peak {episodes_since_best} episodes ago)")
+            return "best_checkpoint"
+            
+        elif entropy_declining and hasattr(self.model.actor_critic, 'reset_actor'):
+            # Policy collapsed (low entropy) - partial reset to explore again
+            print(f"   → Selected: partial_reset (entropy declining, current: {recent_entropies[-1] if recent_entropies else 0:.4f})")
+            return "partial_reset"
+            
+        elif self.degradation_counter > 15:
+            # Long-term struggle - try partial reset to break out of local minima
+            print(f"   → Selected: partial_reset (prolonged degradation, counter: {self.degradation_counter})")
+            return "partial_reset"
+            
+        else:
+            # Default to best checkpoint if available
+            if self.best_checkpoint_path:
+                print(f"   → Selected: best_checkpoint (default)")
+                return "best_checkpoint"
+            else:
+                print(f"   → Selected: partial_reset (no checkpoint available)")
+                return "partial_reset"
+    
+    def _partial_model_reset(self):
+        """Reset only actor network to recover from bad policy"""
+        try:
+            # Check if the model has the reset_actor method
+            if hasattr(self.model.actor_critic, 'reset_actor'):
+                self.model.actor_critic.reset_actor()
+                print("   ✓ Actor network reset while preserving critic")
+                
+                # Also boost entropy after partial reset
+                self.model.entropy_boost = 0.25  # Higher boost for partial reset
+                print("   ✓ Entropy boosted to 0.25 to encourage exploration")
+                
+                # Reset degradation counter
+                self.degradation_counter = 0
+                self.last_recovery_episode = self.stage_episode
+                
+            else:
+                print("   Partial reset not available for this model architecture")
+        except Exception as e:
+            print(f"   Partial reset failed: {e}")
+            
+    def _adjust_learning_rate(self, factor=0.5):
+        """Temporarily adjust learning rate"""
+        for param_group in self.model.optimizer.param_groups:
+            param_group['lr'] *= factor
+        print(f"   Reduced learning rate by factor of {factor}")
+        
+    def _update_entropy_boost_OLD(self):
         """Adaptively adjust entropy based on exploration needs"""
         # Calculate exploration metrics
         if hasattr(self.exploration_memory, "hash_visits"):
@@ -789,27 +1129,41 @@ class PPOAgent:
             # 2. Low novelty rate (stuck in local patterns)
             # 3. Haven't reached goal recently
 
-            is_new_stage = self.episode < 20  # First 20 episodes of new stage
-            is_low_novelty = novelty_rate < 0.3  # Visiting same states > 3 times avg
+            is_new_stage = self.stage_episode < 50  # Extended initial exploration period (was 20)
+            is_low_novelty = novelty_rate < 0.5  # More lenient novelty threshold (was 0.3)
 
-            # Check recent goal progress
+            # Check recent goal progress - more sensitive to struggling
             recent_lengths = list(self.episode_data["moving_avg_length"])[-10:]
             is_struggling = (
                 len(recent_lengths) > 5
-                and np.mean(recent_lengths) > self.episode_length * 0.8
+                and np.mean(recent_lengths) > self.episode_length * 0.6  # Reduced from 0.8
             )
 
-            # Calculate entropy boost
+            # Calculate entropy boost with much stronger values
             boost = 0.0
             if is_new_stage:
-                boost += 0.05  # 5% boost for new curriculum stage
+                boost += 0.15  # 15% boost for new curriculum stage (was 5%)
             if is_low_novelty:
-                boost += 0.03  # 3% boost for low exploration
+                # Check if we're in exploration deadlock (high entropy but low novelty)
+                current_entropy = self.model._get_entropy_coef(self.stage_episode) if hasattr(self.model, '_get_entropy_coef') else 0.0
+                if current_entropy > 0.2 and novelty_rate < 0.05:
+                    # Too much randomness, reduce boost
+                    boost += 0.05  # Reduced boost when already very random
+                    print(f"   Reducing entropy boost due to exploration deadlock (entropy: {current_entropy:.3f}, novelty: {novelty_rate:.3f})")
+                else:
+                    boost += 0.20  # 20% boost for low exploration (was 3%)
             if is_struggling:
-                boost += 0.02  # 2% boost if struggling to reach goals
+                boost += 0.10  # 10% boost if struggling to reach goals (was 2%)
 
-            # Decay boost over time
-            self.model.entropy_boost = boost * (0.95 ** (self.episode // 10))
+            # Much gentler decay - only decay after significant episodes
+            # Keep strong exploration for longer, especially when struggling
+            decay_factor = max(0.5, 0.99 ** (max(0, self.stage_episode - 100) // 30))
+            
+            # Extra boost during critical early learning phase
+            if self.stage_episode < 100:
+                decay_factor = max(decay_factor, 0.8)
+                
+            self.model.entropy_boost = boost * decay_factor
 
             # Log entropy adjustments
             if boost > 0 and self.episode % 10 == 0:
@@ -818,9 +1172,495 @@ class PPOAgent:
                     f"(new_stage={is_new_stage}, low_novelty={is_low_novelty}, struggling={is_struggling}, "
                     f"total_states={total_states})"
                 )
+                
+            # Comprehensive debugging statistics every 15 episodes or during critical moments
+            if (self.episode % 15 == 0 or 
+                self.episode in [25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75] or  # More frequent critical episodes
+                self.degradation_counter > 3):  # Earlier warning threshold
+                self._log_debug_statistics(is_new_stage, is_low_novelty, is_struggling, total_states, boost, decay_factor)
         else:
-            # No exploration memory, use simple new stage detection
-            if self.episode < 20:
-                self.model.entropy_boost = 0.05 * (0.95 ** (self.episode // 10))
+            # No exploration memory, use simple new stage detection with stronger boost
+            if self.stage_episode < 100:
+                decay_factor = max(0.5, 0.99 ** (max(0, self.stage_episode - 50) // 30))
+                self.model.entropy_boost = 0.15 * decay_factor
             else:
-                self.model.entropy_boost = 0.0
+                self.model.entropy_boost = 0.08  # Higher minimum baseline boost
+                
+            # Debug logging for non-exploration memory case
+            if (self.stage_episode % 15 == 0 or 
+                self.stage_episode in [25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75] or 
+                self.degradation_counter > 3):
+                boost = 0.15 if self.stage_episode < 100 else 0.08
+                decay_factor = max(0.5, 0.99 ** (max(0, self.stage_episode - 50) // 30)) if self.stage_episode < 100 else 1.0
+                self._log_debug_statistics(self.stage_episode < 100, False, False, 0, boost, decay_factor)
+                
+    def _log_debug_statistics(self, is_new_stage=False, is_low_novelty=False, is_struggling=False, total_states=0, boost=0.0, decay_factor=1.0):
+        """Log comprehensive debugging statistics for analysis"""
+        try:
+            # Get current entropy components
+            base_entropy = max(
+                self.model.entropy_coef * self.model.entropy_decay**self.stage_episode, 
+                self.model.entropy_min
+            ) if hasattr(self.model, 'entropy_coef') else 0.0
+            
+            entropy_boost = getattr(self.model, "entropy_boost", 0.0)
+            final_entropy = self.model._get_entropy_coef(self.stage_episode) if hasattr(self.model, '_get_entropy_coef') else 0.0
+            
+            # Get recent performance metrics
+            recent_rewards = list(self.performance_window)[-10:] if len(self.performance_window) >= 10 else list(self.performance_window)
+            recent_avg = np.mean(recent_rewards) if recent_rewards else 0.0
+            recent_std = np.std(recent_rewards) if len(recent_rewards) > 1 else 0.0
+            
+            # Get learning rate
+            current_lr = self.model.optimizer.param_groups[0]['lr'] if hasattr(self.model, 'optimizer') else 0.0
+            
+            # Get recent episode lengths
+            recent_lengths = list(self.episode_data.get("moving_avg_length", []))[-10:]
+            avg_length = np.mean(recent_lengths) if recent_lengths else 0.0
+            
+            # Get action diversity if available
+            recent_entropies = self.episode_data.get("episode_entropies", [])[-10:]
+            avg_episode_entropy = np.mean(recent_entropies) if recent_entropies else 0.0
+            
+            # Exploration memory stats
+            novelty_rate = 0.0
+            if hasattr(self.exploration_memory, "hash_visits"):
+                recent_visits = list(self.exploration_memory.hash_visits.values())[-100:]
+                avg_visits = np.mean(recent_visits) if recent_visits else 1.0
+                novelty_rate = 1.0 / avg_visits if avg_visits > 0 else 1.0
+            
+            print(f"\n{'='*80}")
+            print(f"🔍 DEBUG STATS - Episode {self.episode} (Stage {self.current_n_goals}, Stage Episode {self.stage_episode})")
+            print(f"{'='*80}")
+            # Calculate current risk score
+            current_risk = self._calculate_failure_risk()
+            
+            print(f"📊 PERFORMANCE:")
+            print(f"   Recent reward avg:     {recent_avg:8.2f} (std: {recent_std:.2f})")
+            print(f"   Baseline reward:       {self.performance_baseline:8.2f}" if self.performance_baseline else "   Baseline reward:       Not set")
+            print(f"   Recent length avg:     {avg_length:8.1f} / {self.episode_length}")
+            print(f"   Degradation counter:   {self.degradation_counter}")
+            print(f"   Episodes since best:   {self.episode - self.best_episode}")
+            print(f"   Best reward:           {self.best_reward:8.2f}")
+            print(f"   🚨 FAILURE RISK:       {current_risk:8.3f} {'⚠️ HIGH' if current_risk > 0.7 else '✅ OK' if current_risk < 0.4 else '🟡 WATCH'}")
+            print()
+            print(f"🎲 ENTROPY ANALYSIS:")
+            print(f"   Base entropy:          {base_entropy:8.4f}")
+            print(f"   Entropy boost:         {entropy_boost:8.4f}")
+            print(f"   Final entropy coef:    {final_entropy:8.4f}")
+            print(f"   Initial entropy:       {self.model.entropy_coef:8.4f}")
+            print(f"   Entropy floor (30%):   {self.model.entropy_coef * 0.3:8.4f}")
+            print(f"   Boost raw:             {boost:8.4f}")
+            print(f"   Decay factor:          {decay_factor:8.4f}")
+            print(f"   Avg episode entropy:   {avg_episode_entropy:8.4f}")
+            print()
+            print(f"🚩 CONDITIONS:")
+            print(f"   Is new stage:          {is_new_stage}")
+            print(f"   Is low novelty:        {is_low_novelty} (rate: {novelty_rate:.3f})")
+            print(f"   Is struggling:         {is_struggling}")
+            print(f"   Total states visited:  {total_states}")
+            print()
+            print(f"⚙️  OPTIMIZATION:")
+            print(f"   Learning rate:         {current_lr:8.6f}")
+            print(f"   Last recovery episode: {self.last_recovery_episode}")
+            print(f"   Episodes since recovery: {self.stage_episode - self.last_recovery_episode}")
+            print(f"{'='*80}\n")
+            
+        except Exception as e:
+            print(f"Debug statistics error: {e}")
+            # Basic fallback info
+            print(f"🔍 BASIC DEBUG - Episode {self.episode}: entropy_boost={getattr(self.model, 'entropy_boost', 0.0):.4f}, degradation_counter={self.degradation_counter}")
+    
+    def _calculate_failure_risk_OLD(self):
+        """Calculate failure risk score (0.0 = healthy, 1.0 = critical failure)"""
+        if len(self.performance_window) < 10:
+            return 0.0  # Not enough data
+            
+        risk_factors = {}
+        
+        try:
+            # 1. Performance slope (how quickly performance is degrading)
+            recent_rewards = list(self.performance_window)[-10:]
+            if len(recent_rewards) >= 5:
+                x = np.arange(len(recent_rewards))
+                slope = np.polyfit(x, recent_rewards, 1)[0]
+                # Normalize slope - steep negative = high risk
+                risk_factors["performance_slope"] = max(0, -slope / 50.0)  # Adjust scale as needed
+            else:
+                risk_factors["performance_slope"] = 0.0
+                
+            # 2. Performance variance (inconsistent = higher risk)
+            perf_std = np.std(recent_rewards) if len(recent_rewards) > 1 else 0.0
+            # Very low std (like 0.00) indicates complete stagnation
+            if perf_std < 1.0:
+                risk_factors["stagnation"] = 1.0  # Critical stagnation
+            else:
+                risk_factors["stagnation"] = max(0, 1.0 - perf_std / 100.0)
+                
+            # 3. Entropy instability (high entropy but poor performance = deadlock)
+            current_entropy = self.model._get_entropy_coef(self.stage_episode) if hasattr(self.model, '_get_entropy_coef') else 0.0
+            recent_avg = np.mean(recent_rewards)
+            baseline = self.performance_baseline if self.performance_baseline else 0.0
+            
+            if current_entropy > 0.2 and recent_avg < baseline * 0.5:
+                risk_factors["entropy_deadlock"] = min(1.0, current_entropy)  # High entropy + poor performance
+            else:
+                risk_factors["entropy_deadlock"] = 0.0
+                
+            # 4. Exploration stagnation
+            novelty_rate = 0.0
+            if hasattr(self.exploration_memory, "hash_visits"):
+                recent_visits = list(self.exploration_memory.hash_visits.values())[-100:]
+                avg_visits = np.mean(recent_visits) if recent_visits else 1.0
+                novelty_rate = 1.0 / avg_visits if avg_visits > 0 else 1.0
+            risk_factors["exploration_stagnation"] = max(0, 1.0 - novelty_rate * 20)  # Low novelty = high risk
+            
+            # 5. Learning rate collapse
+            current_lr = self.model.optimizer.param_groups[0]['lr'] if hasattr(self.model, 'optimizer') else 0.0
+            initial_lr = self.config.get("ppo_learning_rate", 0.0003)
+            lr_ratio = current_lr / initial_lr if initial_lr > 0 else 1.0
+            risk_factors["lr_collapse"] = max(0, 1.0 - lr_ratio * 5)  # Very low LR = high risk
+            
+            # 6. Episodes since improvement (more sensitive)
+            episodes_since_best = self.stage_episode - (self.best_episode - self.stage_start_episode)
+            episodes_since_best = max(0, episodes_since_best)
+            risk_factors["stagnant_episodes"] = min(1.0, episodes_since_best / 50.0)  # 50+ episodes = max risk (was 100)
+            
+            # 7. Performance drop severity (new factor)
+            if self.performance_baseline:
+                recent_avg = np.mean(recent_rewards)
+                performance_ratio = recent_avg / self.performance_baseline if self.performance_baseline > 0 else 1.0
+                # If performance dropped significantly below baseline
+                if performance_ratio < 0.5:
+                    risk_factors["severe_drop"] = min(1.0, (0.5 - performance_ratio) * 2.0)
+                else:
+                    risk_factors["severe_drop"] = 0.0
+            else:
+                risk_factors["severe_drop"] = 0.0
+            
+            # Weighted combination of risk factors (rebalanced for earlier detection)
+            weights = {
+                "performance_slope": 0.15,
+                "stagnation": 0.20,        # Still critical - complete stagnation
+                "entropy_deadlock": 0.20,   
+                "exploration_stagnation": 0.15,
+                "lr_collapse": 0.10,
+                "stagnant_episodes": 0.15,  # Higher weight for episodes since best
+                "severe_drop": 0.05         # New factor for sudden drops
+            }
+            
+            total_risk = sum(risk_factors[factor] * weights[factor] for factor in weights if factor in risk_factors)
+            total_risk = min(1.0, total_risk)  # Cap at 1.0
+            
+            # Store for analysis
+            self.failure_risk_history.append(total_risk)
+            self.research_stats["risk_scores"].append({
+                "episode": self.episode,
+                "stage_episode": self.stage_episode,
+                "total_risk": total_risk,
+                "factors": risk_factors.copy()
+            })
+            
+            return total_risk
+            
+        except Exception as e:
+            print(f"Error calculating failure risk: {e}")
+            return 0.0
+    
+    def _graduated_intervention_OLD(self, risk_score):
+        """Graduated intervention system based on failure risk"""
+        intervention_taken = None
+        
+        # Get current situation analysis
+        episodes_degrading = self.degradation_counter
+        episodes_since_best = self.stage_episode - (self.best_episode - self.stage_start_episode)
+        episodes_since_best = max(0, episodes_since_best)
+        
+        try:
+            # LEVEL 1: Early Warning (Risk > 0.25) - Much more aggressive!
+            if risk_score > 0.25 and episodes_degrading >= 3:
+                print(f"⚠️  Early warning detected (risk: {risk_score:.3f})")
+                # Preemptive entropy adjustment
+                current_entropy = self.model._get_entropy_coef(self.stage_episode)
+                if current_entropy > 0.20:  # Lower threshold
+                    # Reduce entropy if too high
+                    self.model.entropy_boost = max(0.03, self.model.entropy_boost * 0.6)  # More aggressive reduction
+                    intervention_taken = "preemptive_entropy_reduction"
+                elif current_entropy < 0.08:  # Lower threshold
+                    # Increase entropy if too low
+                    self.model.entropy_boost = min(0.15, self.model.entropy_boost + 0.08)  # Bigger boost
+                    intervention_taken = "preemptive_entropy_increase"
+                    
+            # LEVEL 2: Mild Failure (Risk > 0.35 OR 10+ degrading episodes OR 30+ since best)
+            elif risk_score > 0.35 or episodes_degrading >= 10 or episodes_since_best >= 30:
+                print(f"🟡 Mild failure detected (risk: {risk_score:.3f}, degrading: {episodes_degrading}, since_best: {episodes_since_best})")
+                # Learning rate boost + entropy adjustment
+                current_lr = self.model.optimizer.param_groups[0]['lr']
+                initial_lr = self.config.get("ppo_learning_rate", 0.0003)
+                if current_lr < initial_lr * 0.7:  # Higher threshold
+                    boost_factor = initial_lr * 0.8 / current_lr  # Bigger boost
+                    self._adjust_learning_rate(factor=boost_factor)
+                    intervention_taken = "learning_rate_boost"
+                    print(f"   Boosted learning rate by {boost_factor:.2f}x")
+                else:
+                    # If LR is fine, adjust entropy instead
+                    current_entropy = self.model._get_entropy_coef(self.stage_episode)
+                    if current_entropy > 0.25:
+                        self.model.entropy_boost = max(0.05, self.model.entropy_boost * 0.5)
+                        intervention_taken = "entropy_adjustment"
+                        print(f"   Reduced entropy boost")
+                
+            # LEVEL 3: Moderate Failure (Risk > 0.5 OR 20+ degrading episodes OR 50+ since best)
+            elif risk_score > 0.5 or episodes_degrading >= 20 or episodes_since_best >= 50:
+                print(f"🟠 Moderate failure detected (risk: {risk_score:.3f}, degrading: {episodes_degrading}, since_best: {episodes_since_best})")
+                # Partial reset (actor network) - much earlier!
+                if hasattr(self.model.actor_critic, 'reset_actor'):
+                    self._partial_model_reset()
+                    intervention_taken = "partial_reset"
+                    print(f"   Performed partial network reset")
+                else:
+                    # Fallback to aggressive learning rate adjustment
+                    self._adjust_learning_rate(factor=3.0)  # Bigger boost
+                    intervention_taken = "lr_fallback"
+                    
+            # LEVEL 4: Severe Failure (Risk > 0.65 OR 30+ degrading episodes OR 75+ since best)
+            elif (risk_score > 0.65 or episodes_degrading >= 30 or episodes_since_best >= 75) and self.stage_episode - self.last_checkpoint_restore > 25:
+                print(f"🔴 Severe failure detected (risk: {risk_score:.3f}, degrading: {episodes_degrading}, since_best: {episodes_since_best})")
+                # Archive current state before major intervention
+                self._archive_failure_state("severe_failure", risk_score)
+                
+                # Restore best checkpoint if available
+                if self.best_checkpoint_path and os.path.exists(self.best_checkpoint_path):
+                    print(f"   Restoring best checkpoint from episode {self.best_episode}")
+                    # Save the best episode before loading (will be overwritten)
+                    saved_best_episode = self.best_episode
+                    saved_best_reward = self.best_reward
+                    self.load_model(self.best_checkpoint_path)
+                    
+                    # Restore the best tracking (don't let load_model overwrite)
+                    self.best_episode = saved_best_episode  
+                    self.best_reward = saved_best_reward
+                    self.last_checkpoint_restore = self.stage_episode  # Prevent immediate re-trigger
+                    
+                    # Reset clean training stats
+                    self.training_stats["episodes_since_reset"] = 0
+                    self.training_stats["clean_performance"].clear()
+                    self.training_stats["recovery_points"].append(self.stage_episode)
+                    intervention_taken = "checkpoint_restore"
+                else:
+                    # No checkpoint - perform full reset
+                    self._full_reset()
+                    intervention_taken = "full_reset"
+                    
+            # LEVEL 5: Critical Failure (Risk > 0.80 OR 50+ degrading episodes OR 100+ since best)
+            elif risk_score > 0.80 or episodes_degrading >= 50 or episodes_since_best >= 100:
+                print(f"💀 CRITICAL failure detected (risk: {risk_score:.3f}, degrading: {episodes_degrading}, since_best: {episodes_since_best})")
+                # Archive failure and start fresh
+                self._archive_failure_state("critical_failure", risk_score)
+                
+                # Complete restart
+                print(f"   Performing complete restart - this run is archived")
+                self._fresh_start()
+                intervention_taken = "fresh_start"
+                
+            # Record intervention attempt
+            if intervention_taken:
+                attempt = {
+                    "episode": self.episode,
+                    "stage_episode": self.stage_episode,
+                    "risk_score": risk_score,
+                    "intervention": intervention_taken,
+                    "degrading_episodes": episodes_degrading,
+                    "episodes_since_best": episodes_since_best,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+                self.recovery_attempts.append(attempt)
+                self.research_stats["intervention_outcomes"].append(attempt)
+                
+                # Reset counters after intervention
+                self.degradation_counter = 0
+                self.last_recovery_episode = self.stage_episode
+                
+                return intervention_taken
+                
+        except Exception as e:
+            print(f"Error in graduated intervention: {e}")
+            
+        return None
+    
+    def _archive_failure_state(self, failure_type, risk_score):
+        """Archive detailed failure data before major intervention"""
+        try:
+            failure_data = {
+                "failure_type": failure_type,
+                "episode": self.episode,
+                "stage_episode": self.stage_episode,
+                "risk_score": risk_score,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "performance_window": list(self.performance_window),
+                "degradation_counter": self.degradation_counter,
+                "episodes_since_best": self.stage_episode - (self.best_episode - self.stage_start_episode),
+                "current_entropy": self.model._get_entropy_coef(self.stage_episode) if hasattr(self.model, '_get_entropy_coef') else 0.0,
+                "learning_rate": self.model.optimizer.param_groups[0]['lr'] if hasattr(self.model, 'optimizer') else 0.0,
+                "exploration_states": len(self.exploration_memory.hash_visits) if hasattr(self.exploration_memory, 'hash_visits') else 0,
+                "recent_risk_scores": list(self.failure_risk_history)[-10:],
+                "recovery_attempts": self.recovery_attempts[-5:],  # Last 5 attempts
+            }
+            
+            self.failure_archives.append(failure_data)
+            self.research_stats["failure_episodes"].append(failure_data)
+            
+            # Save to file for persistence
+            archive_file = f"{self.results_dir}/failure_archive_{self.episode}.json"
+            try:
+                import json
+                with open(archive_file, 'w') as f:
+                    json.dump(failure_data, f, indent=2)
+                print(f"   Failure state archived to {archive_file}")
+            except Exception as e:
+                print(f"   Warning: Could not save archive file: {e}")
+                
+        except Exception as e:
+            print(f"Error archiving failure state: {e}")
+    
+    def _full_reset(self):
+        """Perform full model reset while preserving archives"""
+        print(f"   Performing full model reset")
+        # Reset model weights
+        if hasattr(self.model.actor_critic, 'reset_actor'):
+            self.model.actor_critic.reset_actor()
+        if hasattr(self.model.actor_critic, 'reset_critic'):
+            self.model.actor_critic.reset_critic()
+        
+        # Reset optimizer
+        initial_lr = self.config.get("ppo_learning_rate", 0.0003)
+        for param_group in self.model.optimizer.param_groups:
+            param_group['lr'] = initial_lr
+            
+        # Reset entropy
+        self.model.entropy_boost = 0.0
+        
+        # Reset exploration memory
+        self.exploration_memory.reset()
+        
+        # Reset tracking (but keep archives)
+        self.performance_window.clear()
+        self.performance_baseline = None
+        self.degradation_counter = 0
+        
+    def _fresh_start(self):
+        """Complete restart - reset everything except archives"""
+        self._full_reset()
+        
+        # Reset episode tracking within stage
+        # NOTE: Don't reset global episode or stage episode - maintain continuity
+        
+        # Reset best tracking for this "sub-run"
+        self.best_reward = float("-inf")
+        self.recent_best_reward = float("-inf")
+        
+        # Clear training stats but keep research data
+        self.training_stats["episodes_since_reset"] = 0
+        self.training_stats["clean_performance"].clear()
+        self.training_stats["recovery_points"].append(self.stage_episode)
+        
+        print(f"   Fresh start initiated - all archives preserved")
+    
+    def save_failure_learning_stats(self):
+        """Save comprehensive failure learning statistics to disk"""
+        try:
+            import json
+            
+            def convert_to_json_serializable(obj):
+                """Convert numpy types to Python native types for JSON serialization"""
+                import numpy as np
+                
+                if isinstance(obj, (np.integer, np.floating, np.complexfloating)):
+                    return obj.item()  # Convert numpy scalars
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()  # Convert numpy arrays
+                elif hasattr(obj, 'item') and callable(getattr(obj, 'item')):  # Any other numpy-like scalar
+                    return obj.item()
+                elif isinstance(obj, dict):
+                    return {str(k): convert_to_json_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, (list, tuple)):
+                    return [convert_to_json_serializable(item) for item in obj]
+                elif isinstance(obj, deque):
+                    return [convert_to_json_serializable(item) for item in obj]
+                elif isinstance(obj, (np.bool_, bool)):
+                    return bool(obj)
+                elif obj is None or isinstance(obj, (str, int, float)):
+                    return obj
+                else:
+                    # Fallback: try to convert to string for unknown types
+                    try:
+                        return str(obj)
+                    except:
+                        return f"<non-serializable: {type(obj).__name__}>"
+            
+            # Compile complete statistics
+            stats_summary = {
+                "session_summary": {
+                    "total_episodes": self.episode,
+                    "stage_episodes": self.stage_episode,
+                    "current_stage": self.current_n_goals,
+                    "failure_archives_count": len(self.failure_archives),
+                    "recovery_attempts_count": len(self.recovery_attempts),
+                    "training_episodes_since_reset": self.training_stats["episodes_since_reset"],
+                    "session_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                },
+                
+                "failure_learning_data": {
+                    "failure_archives": self.failure_archives,
+                    "recovery_attempts": self.recovery_attempts,
+                    "risk_score_history": list(self.failure_risk_history),
+                    "research_stats": {
+                        "raw_performance": self.research_stats["raw_performance"],
+                        "failure_episodes": self.research_stats["failure_episodes"],
+                        "intervention_outcomes": self.research_stats["intervention_outcomes"],
+                        "risk_scores": self.research_stats["risk_scores"]
+                    }
+                },
+                
+                "training_stats": {
+                    "clean_performance": list(self.training_stats["clean_performance"]),
+                    "recovery_points": self.training_stats["recovery_points"],
+                    "episodes_since_reset": self.training_stats["episodes_since_reset"]
+                }
+            }
+            
+            # Convert all data to JSON-serializable format
+            serializable_stats = convert_to_json_serializable(stats_summary)
+            
+            # Save main statistics file
+            stats_file = f"{self.results_dir}/failure_learning_stats.json"
+            with open(stats_file, 'w') as f:
+                json.dump(serializable_stats, f, indent=2)
+                
+            # Save compact summary for quick analysis
+            summary_file = f"{self.results_dir}/failure_summary.json"
+            compact_summary = {
+                "session_id": f"stage_{self.current_n_goals}_ep_{self.episode}",
+                "failure_count": len(self.failure_archives),
+                "intervention_count": len(self.recovery_attempts),
+                "current_risk": self.failure_risk_history[-1] if self.failure_risk_history else 0.0,
+                "max_risk": max(self.failure_risk_history) if self.failure_risk_history else 0.0,
+                "clean_episodes": len(self.training_stats["clean_performance"]),
+                "raw_episodes": len(self.research_stats["raw_performance"]),
+                "intervention_types": list(set(attempt["intervention"] for attempt in self.recovery_attempts)),
+                "last_update": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            # Convert compact summary as well
+            serializable_summary = convert_to_json_serializable(compact_summary)
+            
+            with open(summary_file, 'w') as f:
+                json.dump(serializable_summary, f, indent=2)
+                
+            print(f"📊 Failure learning stats saved: {stats_file}")
+            return True
+            
+        except Exception as e:
+            print(f"Error saving failure learning stats: {e}")
+            return False
+    

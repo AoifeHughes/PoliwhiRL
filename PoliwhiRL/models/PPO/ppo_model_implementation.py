@@ -2,7 +2,6 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import CyclicLR
 
 from .PPOTransformer import PPOTransformer
 from PoliwhiRL.models.ICM import ICMModule
@@ -17,6 +16,7 @@ class PPOModel:
 
         self.learning_rate = self.config["ppo_learning_rate"]
         self.gamma = self.config["ppo_gamma"]
+        self.lambda_ = self.config.get("ppo_lambda", 0.95)
         self.epsilon = self.config["ppo_epsilon"]
         self.value_loss_coef = self.config["ppo_value_loss_coef"]
         self.entropy_coef = self.config["ppo_entropy_coef"]
@@ -45,12 +45,10 @@ class PPOModel:
         self._setup_lr_scheduler()
 
     def _setup_lr_scheduler(self):
-        self.scheduler = CyclicLR(
+        # Use a simple exponential decay instead of cyclic
+        self.scheduler = optim.lr_scheduler.ExponentialLR(
             self.optimizer,
-            base_lr=1e-5,
-            max_lr=self.learning_rate,
-            step_size_up=100,
-            mode="triangular2",
+            gamma=0.999  # Very gentle decay
         )
 
     def get_action(self, state_sequence, exploration_tensor=None):
@@ -97,23 +95,37 @@ class PPOModel:
         return loss.item(), icm_loss
 
     def _get_entropy_coef(self, episode):
-        # Base entropy decay
+        # Much gentler entropy decay
         base_entropy = max(
             self.entropy_coef * self.entropy_decay**episode, self.entropy_min
         )
 
-        # Adaptive entropy boost based on exploration state
-        # This will be set by the agent when it detects low exploration or new goals
+        # Adaptive entropy boost
         entropy_boost = getattr(self, "entropy_boost", 0.0)
-
-        # Combine base and boost, capped at initial entropy
-        return min(base_entropy + entropy_boost, self.entropy_coef)
+        
+        # Combine base and boost
+        final_entropy = base_entropy + entropy_boost
+        
+        # Higher floor to prevent collapse - never below 50% of initial
+        exploration_floor = max(self.entropy_coef * 0.5, 0.02)
+        final_entropy = max(final_entropy, exploration_floor)
+        
+        # Cap at 2x initial to prevent instability
+        max_entropy = self.entropy_coef * 2.0
+        return min(final_entropy, max_entropy)
 
     def _compute_ppo_losses(self, data, episode):
-        returns = self._compute_returns(data["rewards"], data["dones"])
-        advantages = self._compute_advantages(
-            data["states"], returns, data.get("exploration_tensors")
-        )
+        # Use GAE if we have values, otherwise fall back to simple advantages
+        if "values" in data:
+            returns, advantages = self._compute_gae(
+                data["rewards"], data["values"], data["dones"], data["states"], 
+                data.get("exploration_tensors")
+            )
+        else:
+            returns = self._compute_returns(data["rewards"], data["dones"])
+            advantages = self._compute_advantages(
+                data["states"], returns, data.get("exploration_tensors")
+            )
 
         new_probs, new_values = self.actor_critic(
             data["states"], data.get("exploration_tensors")
@@ -140,14 +152,8 @@ class PPOModel:
 
         entropy = -(new_probs * torch.log(new_probs + 1e-10)).sum(dim=-1).mean()
 
-        # Add entropy floor penalty to prevent complete collapse
-        min_entropy_threshold = 0.8  # Minimum entropy to maintain exploration
-        if entropy < min_entropy_threshold:
-            entropy_penalty = 10.0 * (min_entropy_threshold - entropy)
-        else:
-            entropy_penalty = 0.0
-
-        entropy_loss = -self._get_entropy_coef(episode) * entropy + entropy_penalty
+        # Simpler entropy loss without penalty
+        entropy_loss = -self._get_entropy_coef(episode) * entropy
 
         # Detailed debugging information if nans
         if (
@@ -224,6 +230,50 @@ class PPOModel:
                 advantages = torch.nan_to_num(advantages, nan=0.0)
 
         return advantages
+    
+    def _compute_gae(self, rewards, values, dones, states, exploration_tensors=None):
+        """Compute Generalized Advantage Estimation (GAE)"""
+        with torch.no_grad():
+            # Get next state values
+            # For the last state, we need to compute its value
+            _, last_value = self.actor_critic(
+                states[-1:], exploration_tensors[-1:] if exploration_tensors is not None else None
+            )
+            
+            # Compute returns and advantages using GAE
+            advantages = torch.zeros_like(rewards)
+            returns = torch.zeros_like(rewards)
+            
+            # Initialize GAE
+            gae = 0
+            next_value = last_value.squeeze()
+            
+            # Backward iteration through the trajectory
+            for t in reversed(range(len(rewards))):
+                if t == len(rewards) - 1:
+                    next_non_terminal = 1.0 - dones[t].float()
+                    next_values = next_value
+                else:
+                    next_non_terminal = 1.0 - dones[t].float()
+                    next_values = values[t + 1]
+                
+                # TD residual: r + γV(s') - V(s)
+                delta = rewards[t] + self.gamma * next_values * next_non_terminal - values[t]
+                
+                # GAE: A_t = δ_t + γλA_{t+1}
+                gae = delta + self.gamma * self.lambda_ * next_non_terminal * gae
+                advantages[t] = gae
+                
+                # Returns for value function training
+                returns[t] = advantages[t] + values[t]
+            
+            # Normalize advantages
+            if advantages.shape[0] > 1:
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            else:
+                advantages = advantages - advantages.mean()
+                
+        return returns, advantages
 
     def save(self, path):
         torch.save(self.actor_critic.state_dict(), f"{path}/actor_critic.pth")

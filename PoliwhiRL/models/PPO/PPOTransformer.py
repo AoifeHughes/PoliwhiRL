@@ -79,12 +79,23 @@ class PPOTransformer(nn.Module):
             encoder_layer, num_layers=num_layers
         )
 
-        self.fc_actor = nn.Linear(
-            d_model * 2, action_size
-        )  # *2 for concatenated exploration features
-        self.fc_critic = nn.Linear(
-            d_model * 2, 1
-        )  # *2 for concatenated exploration features
+        # Actor head with more layers for better partial reset
+        self.actor_layers = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, action_size)
+        )
+        
+        # Critic head with more layers
+        self.critic_layers = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 1)
+        )
 
     def forward(self, x, exploration_tensor=None):
         batch_size, seq_len = x.size()[:2]
@@ -114,7 +125,20 @@ class PPOTransformer(nn.Module):
             # If no exploration tensor, just duplicate the transformer output
             combined_features = torch.cat([x, x], dim=1)
 
-        action_probs = torch.softmax(self.fc_actor(combined_features), dim=-1)
-        value = self.fc_critic(combined_features)
+        action_logits = self.actor_layers(combined_features)
+        action_probs = torch.softmax(action_logits, dim=-1)
+        value = self.critic_layers(combined_features)
 
         return action_probs, value
+    
+    def reset_actor(self):
+        """Reset actor layers to random initialization while preserving critic"""
+        for layer in self.actor_layers:
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+            elif hasattr(layer, 'weight'):
+                # For layers without reset_parameters, reinitialize manually
+                nn.init.xavier_uniform_(layer.weight)
+                if hasattr(layer, 'bias') and layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+        print("Actor layers reset to random initialization")
