@@ -4,28 +4,50 @@
 
 # Define the range for N_goals_target
 start_goals=1
-max_goals=7  # 7 total goals
+max_goals=8  # 8 total goals
 
-# Optional: Run optimization passes with progressively tighter constraints
-run_optimization_pass=true
-optimization_reduction=0.8  # Reduce episode length by 20% in optimization pass
+# Find the highest existing stage folder to continue from
+find_latest_stage() {
+    latest_stage=0
+    for i in $(seq 1 $max_goals); do
+        if [ -d "./stage_${i}" ] && [ -d "./stage_${i}/Checkpoints" ]; then
+            latest_stage=$i
+        fi
+    done
+    echo $latest_stage
+}
+
+# Check if we should continue from an existing stage
+latest_existing_stage=$(find_latest_stage)
+if [ $latest_existing_stage -gt 0 ]; then
+    echo "🔍 Found existing stages up to stage $latest_existing_stage"
+    if [ $latest_existing_stage -lt $max_goals ]; then
+        start_goals=$((latest_existing_stage + 1))
+        echo "📍 Continuing from stage $start_goals"
+    else
+        echo "✅ All stages already complete!"
+        exit 0
+    fi
+fi
 
 # Define a list of episode lengths for each goal level (aggressive step minimization)
 # These are much tighter to force the agent to find optimal paths
 episode_lengths=(
-    75    # 1 goal - reduced from 150
-    150    # 2 goals - reduced from 200
-    600    # 3 goals - reduced from 300
-    1000    # 4 goals - reduced from 400
-    3000    # 5 goals - reduced from 600
+    50    # 1 goal - reduced from 150
+    50    # 2 goals - reduced from 200
+    500    # 3 goals - reduced from 300
+    600    # 4 goals - reduced from 400
+    4000    # 5 goals - reduced from 600
     5000    # 6 goals - reduced from 1000
     10000    # 7 goals - reduced from 1500
+    12000    # 8 goals
 )
 
 # Single-agent training parameters
 episodes_per_stage=500  
 update_frequency=256
-ppo_iterations=30       # Reduced from 50 for more stable learning
+# Fixed PPO iterations - too many can cause overfitting
+ppo_iterations=25  # Keep consistent across stages to avoid overfitting
 
 # Device configuration - automatically detect best available
 device="cpu"
@@ -127,89 +149,15 @@ for goals in $(seq $start_goals $max_goals); do
     echo ""
 done
 
-echo "🎉 Base curriculum training complete!"
+echo "🎉 Curriculum training complete!"
 echo "Trained through $max_goals goal stages"
-
-# Optional optimization pass: Further reduce episode lengths for already-trained goals
-if [ "$run_optimization_pass" = true ]; then
-    echo ""
-    echo "🔧 STARTING OPTIMIZATION PASS"
-    echo "================================================"
-    echo "Running optimization pass to further minimize steps..."
-
-    for goals in $(seq $start_goals $max_goals); do
-        echo ""
-        echo "⚡ Optimizing stage $goals with reduced episode length"
-
-        # Calculate reduced episode length
-        original_length=${episode_lengths[$((goals-1))]}
-        optimized_length=$(echo "$original_length * $optimization_reduction" | bc | cut -d. -f1)
-
-        # Copy checkpoint from regular training to optimized directory
-        echo "📋 Copying checkpoint from stage ${goals} to stage ${goals}_optimized"
-        mkdir -p "./stage_${goals}_optimized"
-        if [ -d "./stage_${goals}/Checkpoints" ]; then
-            cp -r "./stage_${goals}/Checkpoints" "./stage_${goals}_optimized/Checkpoints"
-            echo "✅ Checkpoint copied for optimization"
-        fi
-
-        # Load checkpoint from optimized directory
-        load_checkpoint="./stage_${goals}_optimized/Checkpoints"
-
-        echo "📊 Optimization stage $goals configuration:"
-        echo "   • Episodes: $((episodes_per_stage / 2))"  # Fewer episodes for optimization
-        echo "   • Max steps: $optimized_length (reduced from $original_length)"
-        echo "   • Device: $device"
-
-        # Run optimization with tighter constraints
-        echo "🚀 Starting optimization for stage $goals..."
-        python main.py \
-            --model PPO \
-            --device $device \
-            --vision true \
-            --episode_length $optimized_length \
-            --num_episodes $((episodes_per_stage / 2)) \
-            --ppo_update_frequency $update_frequency \
-            --ppo_iterations $((ppo_iterations + 10)) \
-            --N_goals_target $goals \
-            --output_base_dir "stage_${goals}_optimized/" \
-            --ppo_num_agents 1 \
-            --punish_steps true \
-            --report_episode true \
-            --use_curriculum false \
-            --break_on_goal true \
-            --enable_recovery true \
-            --recovery_method auto \
-            --load_checkpoint "$load_checkpoint" \
-            --save_checkpoint true \
-            --checkpoint_frequency 25
-
-        opt_exit_code=$?
-        if [ $opt_exit_code -eq 0 ]; then
-            echo "✅ Optimization for $goals goals complete!"
-            echo "📉 Reduced from $original_length to $optimized_length steps"
-        else
-            echo "⚠️  Optimization for $goals goals failed (exit code: $opt_exit_code)"
-            echo "💡 Original stage $goals checkpoint still available"
-        fi
-    done
-
-    echo ""
-    echo "🔧 OPTIMIZATION PASS COMPLETE"
-    echo "================================================"
-fi
 
 echo ""
 echo "🏆 CURRICULUM TRAINING FINISHED"
 echo "================================================"
 echo "📁 Results saved in stage_X directories"
 echo "📊 Training completed on device: $device"
-echo "🎯 All $max_goals goal stages processed"
-
-if [ "$run_optimization_pass" = true ]; then
-    echo "⚡ Optimization pass included"
-    echo "💾 Both regular and optimized checkpoints available"
-fi
+echo "🎯 Processed stages $start_goals through $max_goals"
 
 echo ""
 echo "🔍 Next steps:"

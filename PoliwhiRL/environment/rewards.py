@@ -19,25 +19,28 @@ class Rewards:
         self.medium_penalty = -0.1
         self.large_penalty = -0.5
 
-        # Goal achievement rewards - simple flat rewards
-        self.goal_reward = 10.0  # Flat reward for achieving goals
-        self.final_goal_bonus = 5.0  # Extra bonus for completing all goals
+        # Goal achievement rewards - scale with episode difficulty
+        episode_scale = max(1.0, self.max_steps / 1000.0)  # Scale based on episode length
+        self.goal_reward = 10.0 * episode_scale  # Scale goal rewards with episode length
+        self.final_goal_bonus = 5.0 * episode_scale  # Extra bonus for completing all goals
 
         # Clipping
         self.clip = 20.0  # Reasonable clipping range
 
-        # Other rewards and penalties - simplified
-        self.exploration_reward = 0.2  # Small exploration bonus
-        self.step_penalty = -0.01 if self.punish_steps else 0  # Very light step penalty
-        self.button_penalty = self.small_penalty  # Reduced menu penalty
-        self.pokedex_seen_reward = self.small_reward
-        self.pokedex_owned_reward = self.medium_reward
+        # Other rewards and penalties - scaled for episode length
+        self.exploration_reward = 0.2 * episode_scale  # Scale exploration bonus
+        # Dramatically reduce step penalty for long episodes
+        step_penalty_scale = min(1.0, 100.0 / self.max_steps)  # Reduce penalty for longer episodes
+        self.step_penalty = -0.01 * step_penalty_scale if self.punish_steps else 0
+        self.button_penalty = self.small_penalty  # Keep menu penalty small
+        self.pokedex_seen_reward = self.small_reward * episode_scale
+        self.pokedex_owned_reward = self.medium_reward * episode_scale
         
-        # Simplified exploration parameters
-        self.novelty_reward = 0.1  # Small fixed reward for new locations
-        self.idle_penalty_threshold = 10  # More lenient idle threshold
-        self.idle_penalty = -0.1  # Small idle penalty
-        self.map_transition_bonus = 0.5  # Small bonus for new maps
+        # Enhanced exploration parameters
+        self.novelty_reward = 0.1 * episode_scale  # Scale novelty reward
+        self.idle_penalty_threshold = min(50, max(10, self.max_steps // 100))  # Scale idle threshold
+        self.idle_penalty = -0.1 * step_penalty_scale  # Scale idle penalty
+        self.map_transition_bonus = 0.5 * episode_scale  # Scale map bonus
 
         # State variables
         self.pokedex_seen = 0
@@ -56,7 +59,12 @@ class Rewards:
         self.current_goal_index = 0
 
         # Distance-based guidance reward
-        self.distance_reward_factor = 0.1  # Small reward for moving toward goals
+        self.distance_reward_factor = 0.1 * episode_scale  # Scale distance reward
+        
+        # Milestone system for long episodes
+        self.milestone_interval = max(100, self.max_steps // 20)  # Milestone every 5% of episode
+        self.milestone_reward = 1.0 * episode_scale  # Reward for reaching milestones
+        self.last_milestone = 0
         
         # Simplified tracking
         self.last_position = None
@@ -124,8 +132,9 @@ class Rewards:
                 total_reward += self.map_transition_bonus
         
         # Distance guidance toward current goal
-        if self.N_goals < self.N_goals_target:
-            total_reward += self._distance_based_reward(env_vars)
+        # Disabling because it can allow for infinite rewards if not managed
+        # if self.N_goals < self.N_goals_target:
+        #     total_reward += self._distance_based_reward(env_vars)
         
         # Simple movement penalties
         current_position = (env_vars["X"], env_vars["Y"], env_vars["map_num"])
@@ -143,6 +152,12 @@ class Rewards:
 
         # Light step penalty
         total_reward += self.step_penalty
+        
+        # Milestone rewards for long episodes
+        current_milestone = self.steps // self.milestone_interval
+        if current_milestone > self.last_milestone:
+            total_reward += self.milestone_reward
+            self.last_milestone = current_milestone
 
         # Check if done
         if self.steps > self.max_steps:

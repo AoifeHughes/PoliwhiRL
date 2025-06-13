@@ -22,6 +22,11 @@ class PPOModel:
         self.entropy_coef = self.config["ppo_entropy_coef"]
         self.entropy_decay = self.config["ppo_entropy_coef_decay"]
         self.entropy_min = self.config["ppo_entropy_coef_min"]
+        self.entropy_decay_mode = self.config.get("ppo_entropy_decay_mode", "episode")
+        
+        # For step-based decay tracking
+        self.total_steps = 0
+        self.step_decay_interval = self.config.get("ppo_step_decay_interval", 1000)
 
         self._initialize_networks()
         self._initialize_optimizers()
@@ -45,10 +50,11 @@ class PPOModel:
         self._setup_lr_scheduler()
 
     def _setup_lr_scheduler(self):
-        # Use a simple exponential decay instead of cyclic
+        # Use an even gentler exponential decay
+        # 0.9997 means LR will be ~97% after 100 episodes, ~91% after 300 episodes
         self.scheduler = optim.lr_scheduler.ExponentialLR(
             self.optimizer,
-            gamma=0.999  # Very gentle decay
+            gamma=0.9997  # Much gentler decay than 0.999
         )
 
     def get_action(self, state_sequence, exploration_tensor=None):
@@ -84,6 +90,10 @@ class PPOModel:
         return self.icm.compute_intrinsic_reward(state, next_state, action)
 
     def update(self, data, episode):
+        # Track total steps for step-based entropy decay
+        if self.entropy_decay_mode == "step":
+            self.total_steps += len(data["states"])
+        
         actor_loss, critic_loss, entropy_loss = self._compute_ppo_losses(data, episode)
         icm_loss = self.icm.update(
             data["states"][:, -1], data["next_states"][:, -1], data["actions"]
@@ -95,19 +105,67 @@ class PPOModel:
         return loss.item(), icm_loss
 
     def _get_entropy_coef(self, episode):
-        # Much gentler entropy decay
-        base_entropy = max(
-            self.entropy_coef * self.entropy_decay**episode, self.entropy_min
-        )
+        # Support both episode-based and step-based entropy decay
+        if self.entropy_decay_mode == "step":
+            return self._get_entropy_coef_step_based()
+        else:
+            return self._get_entropy_coef_episode_based(episode)
+    
+    def _get_entropy_coef_episode_based(self, episode):
+        # CURRICULUM FIX: Use stage-relative episode count for entropy decay
+        # This prevents entropy collapse across curriculum stages
+        stage_episode = getattr(self, "stage_episode", episode)
+        
+        # MUCH gentler entropy decay - only after initial exploration phase
+        if stage_episode < 50:
+            # Keep high entropy for first 50 episodes of each stage
+            base_entropy = self.entropy_coef
+        else:
+            # Very gentle decay after that - use 0.9995 instead of 0.999
+            decay_episodes = stage_episode - 50
+            base_entropy = max(
+                self.entropy_coef * (self.entropy_decay ** decay_episodes), self.entropy_min
+            )
 
-        # Adaptive entropy boost
+        # Adaptive entropy boost for stage transitions
         entropy_boost = getattr(self, "entropy_boost", 0.0)
         
         # Combine base and boost
         final_entropy = base_entropy + entropy_boost
         
-        # Higher floor to prevent collapse - never below 50% of initial
-        exploration_floor = max(self.entropy_coef * 0.5, 0.02)
+        # MUCH higher floor to prevent collapse - never below 60% of initial
+        exploration_floor = max(self.entropy_coef * 0.6, 0.03)
+        final_entropy = max(final_entropy, exploration_floor)
+        
+        # Cap at 2x initial to prevent instability
+        max_entropy = self.entropy_coef * 2.0
+        return min(final_entropy, max_entropy)
+    
+    def _get_entropy_coef_step_based(self):
+        # Step-based entropy decay for long episodes
+        decay_steps = self.total_steps // self.step_decay_interval
+        
+        # Keep high entropy for initial steps
+        if self.total_steps < 5000:  # First 5k steps
+            base_entropy = self.entropy_coef
+        else:
+            # Very gentle step-based decay
+            base_entropy = max(
+                self.entropy_coef * (self.entropy_decay ** decay_steps), self.entropy_min
+            )
+        
+        # Adaptive entropy boost for exploration
+        entropy_boost = getattr(self, "entropy_boost", 0.0)
+        
+        # Add periodic entropy boosts every 10k steps to prevent collapse
+        if self.total_steps > 0 and self.total_steps % 10000 == 0:
+            entropy_boost += 0.02  # Small periodic boost
+        
+        # Combine base and boost
+        final_entropy = base_entropy + entropy_boost
+        
+        # Higher floor for long episodes - never below 70% of initial
+        exploration_floor = max(self.entropy_coef * 0.7, 0.04)
         final_entropy = max(final_entropy, exploration_floor)
         
         # Cap at 2x initial to prevent instability
@@ -279,6 +337,14 @@ class PPOModel:
         torch.save(self.actor_critic.state_dict(), f"{path}/actor_critic.pth")
         torch.save(self.optimizer.state_dict(), f"{path}/optimizer.pth")
         torch.save(self.scheduler.state_dict(), f"{path}/scheduler.pth")
+        
+        # Save step tracking for step-based entropy decay
+        model_info = {
+            "total_steps": self.total_steps,
+            "entropy_decay_mode": self.entropy_decay_mode
+        }
+        torch.save(model_info, f"{path}/model_info.pth")
+        
         self.icm.save(f"{path}/icm")
 
     def load(self, path):
@@ -297,7 +363,36 @@ class PPOModel:
                 f"{path}/scheduler.pth", map_location=self.device, weights_only=True
             )
         )
+        
+        # Load step tracking for step-based entropy decay
+        try:
+            model_info = torch.load(
+                f"{path}/model_info.pth", map_location=self.device, weights_only=True
+            )
+            self.total_steps = model_info.get("total_steps", 0)
+            # Don't override entropy_decay_mode from config, just restore steps
+        except FileNotFoundError:
+            # Backwards compatibility - older checkpoints won't have this
+            self.total_steps = 0
+        
         self.icm.load(f"{path}/icm")
 
     def step_scheduler(self):
         self.scheduler.step()
+    
+    def reset_learning_rate_for_stage(self, stage_difficulty_multiplier=1.0):
+        """Reset and boost learning rate for new curriculum stage"""
+        # Calculate stage-appropriate learning rate
+        base_lr = self.config["ppo_learning_rate"]
+        # Reduce the boost multiplier for later stages
+        boost_factor = max(0.3, 1.0 - stage_difficulty_multiplier * 0.1)
+        boosted_lr = base_lr * boost_factor
+        
+        # Update optimizer learning rate
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = boosted_lr
+        
+        # Reset scheduler to prevent accumulated decay
+        self._setup_lr_scheduler()
+        
+        print(f"🔄 Learning rate reset to {boosted_lr:.6f} for new curriculum stage (stage {stage_difficulty_multiplier + 1})")

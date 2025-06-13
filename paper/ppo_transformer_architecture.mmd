@@ -1,0 +1,164 @@
+graph TB
+    subgraph "PPO-Transformer Architecture"
+        %% Input Processing
+        subgraph "Input Layer"
+            GameScreen[Game Screen<br/>160x144x3 RGB]
+            GoalID[Goal ID<br/>Current Stage]
+            
+            subgraph "Input Processing"
+                Resize[Resize to<br/>80x72 (0.5x)]
+                CHW[Convert to<br/>CHW Format]
+                Norm[Normalize<br/>[0,1]]
+            end
+            
+            GameScreen --> Resize
+            Resize --> CHW
+            CHW --> Norm
+        end
+        
+        %% CNN Feature Extraction
+        subgraph "GameBoy CNN"
+            Conv1[Conv2d(3,32)<br/>8x8, stride=4<br/>→ ReLU]
+            Conv2[Conv2d(32,64)<br/>4x4, stride=2<br/>→ ReLU]
+            Conv3[Conv2d(64,64)<br/>3x3, stride=1<br/>→ ReLU]
+            Flatten[Flatten]
+            Linear1[Linear<br/>→ d_model=256]
+            
+            Norm --> Conv1
+            Conv1 --> Conv2
+            Conv2 --> Conv3
+            Conv3 --> Flatten
+            Flatten --> Linear1
+        end
+        
+        %% Goal Conditioning
+        subgraph "Goal Embeddings"
+            GoalEmbed[Goal Embedding<br/>8 goals → 256d]
+            GoalProj[Linear Projection<br/>→ d_model]
+            
+            GoalID --> GoalEmbed
+            GoalEmbed --> GoalProj
+        end
+        
+        %% Feature Fusion
+        subgraph "Feature Fusion"
+            Add[Element-wise<br/>Addition]
+            PosEnc[Positional<br/>Encoding]
+            
+            Linear1 --> Add
+            GoalProj --> Add
+            Add --> PosEnc
+        end
+        
+        %% Transformer Stack
+        subgraph "Transformer Encoder"
+            subgraph "Layer 1"
+                MHA1[Multi-Head<br/>Attention<br/>8 heads]
+                Norm1[Layer Norm]
+                FFN1[Feed Forward<br/>256→1024→256]
+                Norm2[Layer Norm]
+                
+                MHA1 --> Norm1
+                Norm1 --> FFN1
+                FFN1 --> Norm2
+            end
+            
+            Layers[... 4 more layers<br/>same structure]
+            
+            subgraph "Layer 6"
+                MHA6[Multi-Head<br/>Attention<br/>8 heads]
+                Norm11[Layer Norm]
+                FFN6[Feed Forward<br/>256→1024→256]
+                Norm12[Layer Norm]
+                
+                MHA6 --> Norm11
+                Norm11 --> FFN6
+                FFN6 --> Norm12
+            end
+            
+            Norm2 --> Layers
+            Layers --> MHA6
+        end
+        
+        PosEnc --> MHA1
+        
+        %% Output Processing
+        subgraph "Output Processing"
+            Pool[Global Average<br/>Pooling]
+            Concat[Concatenate<br/>Features]
+            
+            Norm12 --> Pool
+            Linear1 --> Concat
+            Pool --> Concat
+        end
+        
+        %% Actor-Critic Heads
+        subgraph "Actor Network"
+            Actor1[Linear(512,256)<br/>→ ReLU → Dropout(0.1)]
+            Actor2[Linear(256,256)<br/>→ ReLU → Dropout(0.1)]
+            Actor3[Linear(256,128)<br/>→ ReLU]
+            Actor4[Linear(128,9)<br/>→ Softmax]
+            
+            Concat --> Actor1
+            Actor1 --> Actor2
+            Actor2 --> Actor3
+            Actor3 --> Actor4
+        end
+        
+        subgraph "Critic Network"
+            Critic1[Linear(512,256)<br/>→ ReLU → Dropout(0.1)]
+            Critic2[Linear(256,256)<br/>→ ReLU → Dropout(0.1)]
+            Critic3[Linear(256,128)<br/>→ ReLU]
+            Critic4[Linear(128,1)]
+            
+            Concat --> Critic1
+            Critic1 --> Critic2
+            Critic2 --> Critic3
+            Critic3 --> Critic4
+        end
+        
+        %% Outputs
+        ActionProbs[Action Probabilities<br/>π(a|s)]
+        ValueEst[Value Estimate<br/>V(s)]
+        
+        Actor4 --> ActionProbs
+        Critic4 --> ValueEst
+        
+        %% Attention Visualization
+        subgraph "Attention Patterns"
+            Early[Early Layers:<br/>Local spatial features]
+            Middle[Middle Layers:<br/>Player position tracking]
+            Late[Late Layers:<br/>Goal-relevant regions]
+            
+            MHA1 -.-> Early
+            Layers -.-> Middle  
+            MHA6 -.-> Late
+        end
+    end
+    
+    %% Model Statistics
+    subgraph "Model Statistics"
+        Params[6.7M Parameters]
+        Memory[~400MB GPU Memory]
+        Speed[~1000 steps/sec]
+        
+        Params --> Memory
+        Memory --> Speed
+    end
+    
+    %% Styling
+    classDef inputClass fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef cnnClass fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef goalClass fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef transformerClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef headClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef outputClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef statsClass fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    
+    class GameScreen,GoalID,Resize,CHW,Norm inputClass
+    class Conv1,Conv2,Conv3,Flatten,Linear1 cnnClass
+    class GoalEmbed,GoalProj goalClass
+    class Add,PosEnc,MHA1,Norm1,FFN1,Norm2,Layers,MHA6,Norm11,FFN6,Norm12,Pool,Concat transformerClass
+    class Actor1,Actor2,Actor3,Actor4,Critic1,Critic2,Critic3,Critic4 headClass
+    class ActionProbs,ValueEst,Early,Middle,Late outputClass
+    class Params,Memory,Speed statsClass

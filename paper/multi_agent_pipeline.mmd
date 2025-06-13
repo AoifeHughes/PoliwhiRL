@@ -1,0 +1,139 @@
+graph TB
+    subgraph "Multi-Agent Training Pipeline"
+        %% Initialization
+        Start[Start Iteration]
+        LoadCheck[Load Checkpoint<br/>or Initialize]
+        
+        Start --> LoadCheck
+        
+        %% Agent Pool
+        subgraph "Parallel Agent Pool"
+            Agent1[Agent 1<br/>Process]
+            Agent2[Agent 2<br/>Process]
+            Agent3[Agent 3<br/>Process]
+            AgentN[Agent N<br/>Process]
+            
+            subgraph "Per-Agent Execution"
+                LoadParams[Load Shared<br/>Parameters]
+                TempDir[Create Temp<br/>Directory]
+                RunEps[Run N Episodes]
+                CalcMetrics[Calculate<br/>Performance]
+                Return[Return Results]
+                
+                LoadParams --> TempDir
+                TempDir --> RunEps
+                RunEps --> CalcMetrics
+                CalcMetrics --> Return
+            end
+        end
+        
+        LoadCheck -->|Spawn 20 Agents| Agent1
+        LoadCheck -->|with 15min timeout| Agent2
+        LoadCheck --> Agent3
+        LoadCheck --> AgentN
+        
+        %% Result Collection
+        subgraph "Result Collection"
+            Collect[Collect Results]
+            Filter[Filter Successful<br/>Agents]
+            Metrics[Extract Metrics]
+            
+            subgraph "Performance Metrics"
+                Reward[Total Reward]
+                Efficiency[Efficiency Score<br/>1.0 - steps/max]
+                Stability[Stability Score<br/>1.0/(1.0 + var)]
+                Composite[Composite Score<br/>R + 0.5E + 0.3S]
+                
+                Reward --> Composite
+                Efficiency --> Composite
+                Stability --> Composite
+            end
+            
+            Collect --> Filter
+            Filter --> Metrics
+            Metrics --> Reward
+            Metrics --> Efficiency
+            Metrics --> Stability
+        end
+        
+        Agent1 --> Collect
+        Agent2 --> Collect
+        Agent3 --> Collect
+        AgentN --> Collect
+        
+        %% Parameter Aggregation
+        subgraph "Intelligent Aggregation"
+            Variance[Calculate<br/>Variance]
+            
+            subgraph "Strategy Selection"
+                LowVar[Low Variance<br/>σ < 0.3]
+                HighVar[High Variance<br/>range > 1.0]
+                ModVar[Moderate<br/>Variance]
+            end
+            
+            subgraph "Aggregation Methods"
+                TopK[Top-K Average<br/>k = N/3]
+                Weighted[Performance<br/>Weighted]
+                TopHalf[Top-Half<br/>Average]
+            end
+            
+            Variance --> LowVar
+            Variance --> HighVar
+            Variance --> ModVar
+            
+            LowVar --> TopK
+            HighVar --> Weighted
+            ModVar --> TopHalf
+        end
+        
+        Composite --> Variance
+        
+        %% Elite Tracking
+        subgraph "Elite Management"
+            EliteCheck[Check Best<br/>Performance]
+            UpdateElite[Update Elite<br/>Checkpoint]
+            TrackHistory[Track Performance<br/>History]
+            
+            EliteCheck --> UpdateElite
+            EliteCheck --> TrackHistory
+        end
+        
+        TopK --> EliteCheck
+        Weighted --> EliteCheck
+        TopHalf --> EliteCheck
+        
+        %% Save & Continue
+        SaveCheck[Save Aggregated<br/>Checkpoint]
+        NextIter[Next Iteration]
+        
+        UpdateElite --> SaveCheck
+        SaveCheck --> NextIter
+        NextIter -->|Loop| Start
+        
+        %% Fault Tolerance
+        subgraph "Fault Tolerance"
+            Timeout[15min Timeout<br/>per Agent]
+            HangDetect[Hang Detection<br/>Logging]
+            Continue[Continue with<br/>Successful Agents]
+            
+            Timeout --> HangDetect
+            HangDetect --> Continue
+        end
+        
+        Filter -.->|Handle Failures| Continue
+    end
+    
+    %% Styling
+    classDef initClass fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef agentClass fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef metricsClass fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef aggClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef eliteClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef faultClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    
+    class Start,LoadCheck,SaveCheck,NextIter initClass
+    class Agent1,Agent2,Agent3,AgentN,LoadParams,TempDir,RunEps,CalcMetrics,Return agentClass
+    class Collect,Filter,Metrics,Reward,Efficiency,Stability,Composite metricsClass
+    class Variance,LowVar,HighVar,ModVar,TopK,Weighted,TopHalf aggClass
+    class EliteCheck,UpdateElite,TrackHistory eliteClass
+    class Timeout,HangDetect,Continue faultClass

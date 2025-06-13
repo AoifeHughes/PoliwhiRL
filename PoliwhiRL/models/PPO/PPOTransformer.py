@@ -28,25 +28,34 @@ class FlexibleInputLayer(nn.Module):
 class ExplorationEncoder(nn.Module):
     def __init__(self, d_model, history_length=5):
         super(ExplorationEncoder, self).__init__()
-        # Input features: visit count + history indicators
+        # Enhanced exploration understanding
         input_features = 1 + history_length
-        self.fc1 = nn.Linear(input_features, 16)
-        self.fc2 = nn.Linear(16, 32)
-        self.attention = nn.MultiheadAttention(32, 4, batch_first=True)
-        self.fc_out = nn.Linear(32, d_model)
+        self.fc1 = nn.Linear(input_features, 32)
+        self.fc2 = nn.Linear(32, 64)
+        self.fc3 = nn.Linear(64, 128)
+        
+        # Multi-head attention for better spatial understanding
+        self.attention = nn.MultiheadAttention(128, 8, batch_first=True)
+        self.layer_norm = nn.LayerNorm(128)
+        
+        # Output projection to match d_model
+        self.fc_out = nn.Linear(128, d_model)
 
     def forward(self, x):
         # x shape: [batch_size, num_locations, 1+history_length]
-        # where first column is visit count, remaining columns are history indicators
-        _ = x.size(0)
-        x = torch.relu(self.fc1(x))  # [batch_size, num_locations, 16]
-        x = torch.relu(self.fc2(x))  # [batch_size, num_locations, 32]
+        batch_size = x.size(0)
+        
+        # Enhanced feature extraction
+        x = torch.relu(self.fc1(x))     # [batch_size, num_locations, 32]
+        x = torch.relu(self.fc2(x))     # [batch_size, num_locations, 64]  
+        x = torch.relu(self.fc3(x))     # [batch_size, num_locations, 128]
 
-        # Self-attention over locations
+        # Self-attention over locations with normalization
         attn_output, _ = self.attention(x, x, x)
+        x = self.layer_norm(attn_output + x)  # Residual connection
 
         # Global pooling over locations
-        x = attn_output.mean(dim=1)  # [batch_size, 32]
+        x = x.mean(dim=1)  # [batch_size, 128]
 
         # Project to d_model
         x = self.fc_out(x)  # [batch_size, d_model]
@@ -55,7 +64,7 @@ class ExplorationEncoder(nn.Module):
 
 class PPOTransformer(nn.Module):
     def __init__(
-        self, input_shape, action_size, d_model=128, nhead=8, num_layers=4, **kwargs
+        self, input_shape, action_size, d_model=256, nhead=8, num_layers=6, **kwargs
     ):
         super(PPOTransformer, self).__init__()
         self.action_size = action_size
@@ -71,6 +80,10 @@ class PPOTransformer(nn.Module):
         self.exploration_encoder = ExplorationEncoder(
             d_model, history_length=history_length
         )
+        
+        # Goal conditioning system for curriculum learning
+        self.goal_embedding = nn.Embedding(8, d_model // 4)  # Support up to 8 goals
+        self.goal_projection = nn.Linear(d_model // 4, d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, batch_first=True
@@ -79,29 +92,46 @@ class PPOTransformer(nn.Module):
             encoder_layer, num_layers=num_layers
         )
 
-        # Actor head with more layers for better partial reset
+        # Enhanced Actor head with deeper layers for complex decision making
         self.actor_layers = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Linear(d_model // 2, action_size)
         )
         
-        # Critic head with more layers
+        # Enhanced Critic head with separate value estimation pathway
         self.critic_layers = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Linear(d_model // 2, 1)
         )
 
-    def forward(self, x, exploration_tensor=None):
+    def forward(self, x, exploration_tensor=None, goal_stage=None):
         batch_size, seq_len = x.size()[:2]
         x = x.view(batch_size * seq_len, *self.input_shape)
         x = self.flexible_input(x)
         x = x.view(batch_size, seq_len, self.d_model)
+        
+        # Add goal conditioning if provided
+        if goal_stage is not None:
+            goal_embed = self.goal_embedding(goal_stage)
+            goal_features = self.goal_projection(goal_embed)
+            # Add goal information to each timestep
+            goal_features = goal_features.unsqueeze(1).expand(-1, seq_len, -1)
+            x = x + goal_features
+        
         x = self.pos_encoder(x)
         x = self.transformer_encoder(x)
 
@@ -124,6 +154,17 @@ class PPOTransformer(nn.Module):
         else:
             # If no exploration tensor, just duplicate the transformer output
             combined_features = torch.cat([x, x], dim=1)
+        
+        # Add goal conditioning to final features if available
+        if goal_stage is not None:
+            goal_features = self.goal_projection(self.goal_embedding(goal_stage))
+            combined_features = torch.cat([combined_features, goal_features], dim=1)
+            # Add linear layer to handle increased dimensionality
+            if not hasattr(self, 'goal_adaptation_layer'):
+                self.goal_adaptation_layer = nn.Linear(
+                    combined_features.size(-1), self.d_model * 2
+                ).to(combined_features.device)
+            combined_features = self.goal_adaptation_layer(combined_features)
 
         action_logits = self.actor_layers(combined_features)
         action_probs = torch.softmax(action_logits, dim=-1)

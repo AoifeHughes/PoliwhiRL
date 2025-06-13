@@ -1,0 +1,99 @@
+graph LR
+    subgraph "Curriculum Learning Flow"
+        %% Stage Progression
+        subgraph "Stage 1"
+            S1[1 Goal<br/>50 steps<br/>Location: 9,1,6]
+            S1_Train[Train 2000 episodes]
+            S1_Check[Save Checkpoint]
+            
+            S1 --> S1_Train
+            S1_Train --> S1_Check
+        end
+        
+        subgraph "Stage 2"
+            S2[2 Goals<br/>50 steps<br/>+Location: 8,4,6]
+            S2_Load[Load Stage 1<br/>Checkpoint]
+            S2_Train[Train 2000 episodes]
+            S2_Check[Save Checkpoint]
+            
+            S2_Load --> S2
+            S2 --> S2_Train
+            S2_Train --> S2_Check
+        end
+        
+        subgraph "Stage 3"
+            S3[3 Goals<br/>500 steps<br/>+Location: 8,5,6]
+            S3_Load[Load Stage 2<br/>Checkpoint]
+            S3_Train[Train 2000 episodes]
+            S3_Check[Save Checkpoint]
+            
+            S3_Load --> S3
+            S3 --> S3_Train
+            S3_Train --> S3_Check
+        end
+        
+        subgraph "Stage 4-7"
+            S47[4-7 Goals<br/>600-10000 steps<br/>+Multiple Locations]
+            S47_Load[Load Previous<br/>Checkpoint]
+            S47_Train[Train 2000 episodes]
+            S47_Check[Save Checkpoint]
+            
+            S47_Load --> S47
+            S47 --> S47_Train
+            S47_Train --> S47_Check
+        end
+        
+        %% Flow connections
+        S1_Check -->|Transfer Learning| S2_Load
+        S2_Check -->|Transfer Learning| S3_Load
+        S3_Check -->|Transfer Learning| S47_Load
+        
+        %% Key Mechanisms
+        subgraph "Key Mechanisms"
+            subgraph "Goal Tracking"
+                Current[current_goal_index]
+                Target[N_goals_target]
+                Complete[Goals Completed]
+                
+                Current --> Complete
+                Target --> Complete
+            end
+            
+            subgraph "Adaptive Elements"
+                Entropy[Entropy Boost<br/>+0.1 for 50 eps]
+                LR[Learning Rate Reset]
+                Baseline[Performance<br/>Baseline Reset]
+                
+                Entropy -.->|New Stage| LR
+                LR -.->|New Stage| Baseline
+            end
+            
+            subgraph "Constraints"
+                Steps[Max Steps<br/>50→10000]
+                Break[break_on_goal=true]
+                Efficiency[Force Optimal<br/>Path Discovery]
+                
+                Steps --> Efficiency
+                Break --> Efficiency
+            end
+        end
+        
+        %% Parallel vs Single Agent
+        subgraph "Training Modes"
+            Single[Single Agent<br/>2000 eps/stage]
+            Multi[20 Agents<br/>20 eps/stage<br/>Parameter Averaging]
+            
+            Single -.->|3.2x slower| Multi
+        end
+    end
+    
+    %% Styling
+    classDef stageClass fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef mechanismClass fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef trainClass fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef flowClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    
+    class S1,S2,S3,S47 stageClass
+    class Current,Target,Complete,Entropy,LR,Baseline,Steps,Break,Efficiency mechanismClass
+    class S1_Train,S2_Train,S3_Train,S47_Train,Single,Multi trainClass
+    class S1_Check,S2_Check,S3_Check,S47_Check,S1_Load,S2_Load,S3_Load,S47_Load flowClass

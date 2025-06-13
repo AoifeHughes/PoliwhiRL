@@ -34,10 +34,18 @@ class PPOMemory:
         self.dones = np.zeros(self.update_frequency, dtype=np.bool_)
         self.log_probs = np.zeros(self.update_frequency, dtype=np.float32)
         self.values = np.zeros(self.update_frequency, dtype=np.float32)
+        
+        # Adaptive exploration tensor size based on episode length
+        episode_length = self.config.get("episode_length", 500)
+        if episode_length > 10000:  # Long episodes
+            exploration_memory_size = self.config.get("exploration_memory_size", 1000)
+        else:  # Regular episodes
+            exploration_memory_size = self.config.get("exploration_memory_size", 100)
+            
         self.exploration_tensors = np.zeros(
-            (self.update_frequency, 100, 1 + self.ppo_exploration_history_length),
+            (self.update_frequency, exploration_memory_size, 1 + self.ppo_exploration_history_length),
             dtype=np.float32,
-        )  # 100 locations with (1 + history_length) values each: visit count + history indicators
+        )  # Adaptive size based on exploration memory configuration
         self.last_next_state = None
         self.episode_length = 0
 
@@ -53,6 +61,19 @@ class PPOMemory:
         if value is not None:
             self.values[idx] = value
         if exploration_tensor is not None:
+            # Handle size mismatch gracefully - resize storage if needed
+            if exploration_tensor.shape[0] != self.exploration_tensors.shape[1]:
+                # Resize exploration tensors to match the incoming tensor
+                new_size = exploration_tensor.shape[0]
+                old_tensors = self.exploration_tensors
+                self.exploration_tensors = np.zeros(
+                    (self.update_frequency, new_size, 1 + self.ppo_exploration_history_length),
+                    dtype=np.float32,
+                )
+                # Copy existing data up to the minimum size
+                min_size = min(old_tensors.shape[1], new_size)
+                self.exploration_tensors[:idx, :min_size, :] = old_tensors[:idx, :min_size, :]
+            
             self.exploration_tensors[idx] = exploration_tensor
         self.last_next_state = next_state
         self.episode_length += 1

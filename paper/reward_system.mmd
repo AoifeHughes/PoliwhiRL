@@ -1,0 +1,161 @@
+graph TB
+    subgraph "Reward System Components"
+        %% Input Sources
+        subgraph "Input Sources"
+            GameState[Game State<br/>Position, Map]
+            GoalTracker[Goal Tracker<br/>Progress, Targets]
+            ExploreMemory[Exploration Memory<br/>Visit Counts]
+            EpisodeInfo[Episode Info<br/>Steps, Length]
+        end
+        
+        %% Goal-Based Rewards
+        subgraph "Goal Achievement Rewards"
+            GoalCheck[Check Goal<br/>Completion]
+            GoalReward[Goal Reward<br/>10.0 × episode_scale]
+            FinalBonus[Final Goal Bonus<br/>+5.0 × episode_scale]
+            OrderCheck[Sequential Order<br/>Enforcement]
+            
+            GoalTracker --> GoalCheck
+            GoalCheck --> OrderCheck
+            OrderCheck --> GoalReward
+            GoalCheck --> FinalBonus
+        end
+        
+        %% Exploration Rewards
+        subgraph "Exploration Incentives"
+            NoveltyCheck[Check State<br/>Novelty]
+            ExploreReward[Exploration Reward<br/>0.2 × episode_scale]
+            MapTransition[New Map Bonus<br/>0.5 × episode_scale]
+            WaypointBonus[Waypoint Discovery<br/>3.0 × episode_scale]
+            
+            ExploreMemory --> NoveltyCheck
+            NoveltyCheck --> ExploreReward
+            GameState --> MapTransition
+            ExploreMemory --> WaypointBonus
+        end
+        
+        %% Efficiency Penalties
+        subgraph "Efficiency & Behavior"
+            StepPenalty[Step Penalty<br/>-0.01 × step_penalty_scale]
+            IdleDetect[Idle Detection<br/>Same position]
+            IdlePenalty[Idle Penalty<br/>-0.1]
+            ButtonPenalty[Menu Button Penalty<br/>-0.05]
+            LoopDetect[Action Loop<br/>Detection]
+            
+            EpisodeInfo --> StepPenalty
+            GameState --> IdleDetect
+            IdleDetect --> IdlePenalty
+            GameState --> ButtonPenalty
+            GameState --> LoopDetect
+        end
+        
+        %% Adaptive Scaling
+        subgraph "Adaptive Scaling"
+            EpisodeScale[Episode Scale<br/>√(max_steps/10000)]
+            StepScale[Step Penalty Scale<br/>Based on episode length]
+            MilestoneReward[Milestone Rewards<br/>Every 5% progress]
+            
+            EpisodeInfo --> EpisodeScale
+            EpisodeInfo --> StepScale
+            EpisodeInfo --> MilestoneReward
+        end
+        
+        %% Reward Aggregation
+        subgraph "Reward Computation"
+            Aggregator[Reward Aggregator]
+            
+            subgraph "Reward Components"
+                GoalComp[Goal Component<br/>0-15 × scale]
+                ExploreComp[Exploration Component<br/>0-1 × scale]
+                EfficiencyComp[Efficiency Component<br/>Negative penalty]
+                MilestoneComp[Milestone Component<br/>Progress bonus]
+            end
+            
+            TotalReward[Total Reward<br/>Sum of all components]
+            
+            GoalReward --> GoalComp
+            FinalBonus --> GoalComp
+            ExploreReward --> ExploreComp
+            MapTransition --> ExploreComp
+            WaypointBonus --> ExploreComp
+            StepPenalty --> EfficiencyComp
+            IdlePenalty --> EfficiencyComp
+            ButtonPenalty --> EfficiencyComp
+            MilestoneReward --> MilestoneComp
+            
+            GoalComp --> Aggregator
+            ExploreComp --> Aggregator
+            EfficiencyComp --> Aggregator
+            MilestoneComp --> Aggregator
+            
+            Aggregator --> TotalReward
+        end
+        
+        %% Special Features
+        subgraph "Advanced Features"
+            subgraph "Curriculum Awareness"
+                StageDetect[Stage Change<br/>Detection]
+                AdaptiveGoals[Adaptive Goal<br/>Weights]
+                ProgressTrack[Progress Tracking<br/>Per Stage]
+                
+                StageDetect --> AdaptiveGoals
+                StageDetect --> ProgressTrack
+            end
+            
+            subgraph "Long Episode Support"
+                LengthAdapt[Length Adaptation<br/>10k+ steps]
+                ReducedPenalty[Reduced Step<br/>Penalties]
+                FreqMilestone[Frequent<br/>Milestones]
+                
+                EpisodeInfo --> LengthAdapt
+                LengthAdapt --> ReducedPenalty
+                LengthAdapt --> FreqMilestone
+            end
+        end
+        
+        %% Configuration
+        subgraph "Configuration"
+            RewardConfig[reward_settings.json]
+            
+            subgraph "Key Settings"
+                BreakOnGoal[break_on_goal: true]
+                GoalRewardVal[goal_reward: 10.0]
+                ExploreVal[exploration_reward: 0.2]
+                StepPenaltyVal[step_penalty: -0.01]
+                IdlePenaltyVal[idle_penalty: -0.1]
+            end
+            
+            RewardConfig --> BreakOnGoal
+            RewardConfig --> GoalRewardVal
+            RewardConfig --> ExploreVal
+            RewardConfig --> StepPenaltyVal
+            RewardConfig --> IdlePenaltyVal
+        end
+        
+        %% Scale Application
+        EpisodeScale -.-> GoalReward
+        EpisodeScale -.-> FinalBonus
+        EpisodeScale -.-> ExploreReward
+        EpisodeScale -.-> MapTransition
+        EpisodeScale -.-> WaypointBonus
+        StepScale -.-> StepPenalty
+    end
+    
+    %% Styling
+    classDef inputClass fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef goalClass fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef exploreClass fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef penaltyClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef scaleClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef aggregateClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef configClass fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef featureClass fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    
+    class GameState,GoalTracker,ExploreMemory,EpisodeInfo inputClass
+    class GoalCheck,GoalReward,FinalBonus,OrderCheck,GoalComp goalClass
+    class NoveltyCheck,ExploreReward,MapTransition,WaypointBonus,ExploreComp exploreClass
+    class StepPenalty,IdleDetect,IdlePenalty,ButtonPenalty,LoopDetect,EfficiencyComp penaltyClass
+    class EpisodeScale,StepScale,MilestoneReward,MilestoneComp scaleClass
+    class Aggregator,TotalReward aggregateClass
+    class RewardConfig,BreakOnGoal,GoalRewardVal,ExploreVal,StepPenaltyVal,IdlePenaltyVal configClass
+    class StageDetect,AdaptiveGoals,ProgressTrack,LengthAdapt,ReducedPenalty,FreqMilestone featureClass

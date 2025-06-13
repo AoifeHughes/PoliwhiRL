@@ -1,0 +1,111 @@
+graph TB
+    subgraph "PoliwhiRL System Architecture"
+        %% Environment Layer
+        subgraph "Environment Layer"
+            PyBoy[PyBoy Emulator]
+            GymEnv[PyBoy Gym Wrapper]
+            PyBoy --> GymEnv
+        end
+        
+        %% Agent Layer
+        subgraph "Agent Layer"
+            PPOAgent[PPO-Transformer Agent]
+            
+            subgraph "PPO Components"
+                GAE[GAE Advantage Estimation]
+                Clip[Clipped Surrogate Objective]
+                Entropy[Adaptive Entropy Manager]
+            end
+            
+            PPOAgent --> GAE
+            PPOAgent --> Clip
+            PPOAgent --> Entropy
+        end
+        
+        %% Model Layer
+        subgraph "Model Layer"
+            CNN[GameBoy CNN]
+            Transformer[6-Layer Transformer]
+            GoalEmbed[Goal Embeddings]
+            Actor[Actor Head]
+            Critic[Critic Head]
+            
+            CNN --> Transformer
+            GoalEmbed --> Transformer
+            Transformer --> Actor
+            Transformer --> Critic
+        end
+        
+        %% Training Infrastructure
+        subgraph "Training Infrastructure"
+            Curriculum[Curriculum Manager]
+            ParallelRunner[Multi-Agent Runner]
+            Aggregator[Parameter Aggregator]
+            
+            subgraph "Aggregation Strategies"
+                TopK[Top-K Averaging]
+                Weighted[Performance Weighted]
+                Elite[Elite Tracking]
+            end
+            
+            ParallelRunner --> Aggregator
+            Aggregator --> TopK
+            Aggregator --> Weighted
+            Aggregator --> Elite
+        end
+        
+        %% Reward System
+        subgraph "Reward System"
+            RewardCalc[Reward Calculator]
+            Goals[Goal Tracker]
+            Exploration[Exploration Memory]
+            
+            subgraph "Reward Components"
+                GoalReward[Goal Achievement: 10.0]
+                ExploreReward[Exploration: 0.2]
+                MapBonus[Map Transition: 0.5]
+                StepPenalty[Step Penalty: -0.01]
+                IdlePenalty[Idle Penalty: -0.1]
+            end
+            
+            RewardCalc --> GoalReward
+            RewardCalc --> ExploreReward
+            RewardCalc --> MapBonus
+            RewardCalc --> StepPenalty
+            RewardCalc --> IdlePenalty
+        end
+        
+        %% Data Flow
+        GymEnv -.->|Observation| PPOAgent
+        PPOAgent -.->|Action| GymEnv
+        GymEnv -.->|State Info| RewardCalc
+        RewardCalc -.->|Reward| PPOAgent
+        
+        PPOAgent -.->|Features| CNN
+        PPOAgent -.->|Goal ID| GoalEmbed
+        Actor -.->|Action Probs| PPOAgent
+        Critic -.->|Value Estimate| PPOAgent
+        
+        Curriculum -.->|Stage Config| PPOAgent
+        Curriculum -.->|Goals| Goals
+        Goals -.->|Progress| RewardCalc
+        
+        PPOAgent -.->|Model State| ParallelRunner
+        ParallelRunner -.->|Aggregated Params| PPOAgent
+        
+        Exploration -.->|Visit Counts| RewardCalc
+        GymEnv -.->|Location| Exploration
+    end
+    
+    %% Styling
+    classDef envClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef agentClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef modelClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef trainClass fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef rewardClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    
+    class PyBoy,GymEnv envClass
+    class PPOAgent,GAE,Clip,Entropy agentClass
+    class CNN,Transformer,GoalEmbed,Actor,Critic modelClass
+    class Curriculum,ParallelRunner,Aggregator,TopK,Weighted,Elite trainClass
+    class RewardCalc,Goals,Exploration,GoalReward,ExploreReward,MapBonus,StepPenalty,IdlePenalty rewardClass

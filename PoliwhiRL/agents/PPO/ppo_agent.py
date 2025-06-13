@@ -62,16 +62,23 @@ class PPOAgent:
         self.memory = PPOMemory(config)
         # Use enhanced exploration memory if enabled
         use_enhanced = config.get("use_enhanced_exploration_memory", True)
+        # Adaptive memory size based on episode length and training mode
+        episode_length = config.get("episode_length", 500)
+        if episode_length > 10000:  # Long episodes
+            memory_size = config.get("exploration_memory_size", 1000)
+        else:  # Regular episodes
+            memory_size = config.get("exploration_memory_size", 100)
+            
         if use_enhanced:
             self.exploration_memory = EnhancedExplorationMemory(
-                max_size=100,
+                max_size=memory_size,
                 history_length=config.get("ppo_exploration_history_length", 5),
                 use_memory=config.get("use_exploration_memory", True),
                 action_space_size=action_size,
             )
         else:
             self.exploration_memory = ExplorationMemory(
-                max_size=100,
+                max_size=memory_size,
                 history_length=config.get("ppo_exploration_history_length", 5),
                 use_memory=config.get("use_exploration_memory", True),
             )
@@ -133,7 +140,12 @@ class PPOAgent:
             # But reset recent tracking
             self.recent_best_reward = float("-inf")
             
+            # Reset episode data for clean plotting (fresh start for new stage)
+            print(f"📊 Clearing episode data for clean stage plotting")
+            self.reset_tracking()
+            
             print(f"   Stage tracking reset: performance window cleared, counters reset")
+            print(f"📈 Episode data cleared - plotting will start fresh for this stage")
         self.checkpoint_frequency = self.config["checkpoint_frequency"]
         self.steps = 0
         self.continue_from_state_loc = self.config["continue_from_state_loc"]
@@ -211,11 +223,13 @@ class PPOAgent:
                 print(
                     f"Agent training in subprocess - {self.num_episodes} episodes, {self.n_goals} goals"
                 )
-        # Simple entropy boost for new stages
-        if self.stage_episode < 30:
-            self.model.entropy_boost = 0.02
+        # Stronger entropy boost for new stages to prevent early collapse
+        if self.stage_episode < 50:  # Extended from 30 episodes
+            self.model.entropy_boost = 0.1  # Increased from 0.02
         else:
-            self.model.entropy_boost = 0.0
+            # Gradual decay instead of sudden drop
+            decay_factor = max(0, 1.0 - (self.stage_episode - 50) / 100.0)
+            self.model.entropy_boost = 0.1 * decay_factor
 
         for episode_idx in pbar:
             # Log progress every 5 episodes for hang detection
@@ -224,11 +238,12 @@ class PPOAgent:
                     f"Episode {self.episode}/{self.num_episodes}"
                 )
 
-            # Update entropy boost for new stage
-            if self.stage_episode < 30:
-                self.model.entropy_boost = 0.02
+            # Update entropy boost for new stage (same logic as above)
+            if self.stage_episode < 50:
+                self.model.entropy_boost = 0.1
             else:
-                self.model.entropy_boost = 0.0
+                decay_factor = max(0, 1.0 - (self.stage_episode - 50) / 100.0)
+                self.model.entropy_boost = 0.1 * decay_factor
 
             record_loc = (
                 f"N_goals_{self.n_goals}/{self.episode}"
@@ -398,9 +413,24 @@ class PPOAgent:
 
                 # Enhanced exploration bonus computation
                 exploration_bonus = self._compute_exploration_bonus(state, next_state, extrinsic_reward)
+                
+                # Action repetition penalty
+                repetition_penalty = 0.0
+                recent_actions = list(self.episode_data["buttons_pressed"])[-10:]
+                if len(recent_actions) >= 5:
+                    # Check if current action has been repeated too much
+                    action_count = recent_actions.count(action)
+                    if action_count >= 7:  # If 70%+ of recent actions are the same
+                        repetition_penalty = 0.1 * action_count  # Increasing penalty
+                    
+                    # Also check for simple loops (A-B-A-B pattern)
+                    if len(recent_actions) >= 4:
+                        if (recent_actions[-1] == recent_actions[-3] and 
+                            recent_actions[-2] == recent_actions[-4]):
+                            repetition_penalty += 0.2  # Additional penalty for loops
 
                 total_reward = self._compute_total_reward(
-                    extrinsic_reward, intrinsic_reward + exploration_bonus
+                    extrinsic_reward - repetition_penalty, intrinsic_reward + exploration_bonus
                 )
                 reward_sum += extrinsic_reward
 
@@ -469,28 +499,36 @@ class PPOAgent:
         if hasattr(self.exploration_memory, "get_exploration_bonus"):
             state_hash = self.exploration_memory._compute_hash(state)
             
-            # Base exploration bonus (increased from 0.01)
-            exploration_bonus = self.exploration_memory.get_exploration_bonus(state_hash) * 0.1
+            # MUCH stronger base exploration bonus
+            base_bonus = self.exploration_memory.get_exploration_bonus(state_hash)
+            exploration_bonus = base_bonus * 0.5  # Increased from 0.1
             
             # Waypoint discovery bonus
             if hasattr(self.exploration_memory, 'waypoints') and state_hash in self.exploration_memory.waypoints:
                 waypoint_info = self.exploration_memory.waypoints[state_hash]
                 if waypoint_info["visits"] == 1:  # First discovery
-                    exploration_bonus += 2.0
+                    exploration_bonus += 3.0  # Increased from 2.0
             
-            # Action effectiveness consideration
-            if (hasattr(self.exploration_memory, 'get_action_effectiveness') and 
-                hasattr(self, 'last_action') and self.last_action is not None):
-                action_stats = self.exploration_memory.get_action_effectiveness()
-                if self.last_action in action_stats:
-                    effectiveness = action_stats[self.last_action]["success_rate"]
-                    if effectiveness < 0.3:  # Trying ineffective actions gets penalty
-                        exploration_bonus *= 0.5
+            # Repetition penalty - check recent actions
+            recent_actions = list(self.episode_data["buttons_pressed"])[-20:]
+            if len(recent_actions) >= 10:
+                # Count consecutive same actions
+                consecutive_count = 1
+                for i in range(len(recent_actions)-1, 0, -1):
+                    if recent_actions[i] == recent_actions[i-1]:
+                        consecutive_count += 1
+                    else:
+                        break
+                
+                # Apply penalty for repetitive behavior
+                if consecutive_count >= 5:
+                    repetition_penalty = min(0.9, consecutive_count * 0.1)
+                    exploration_bonus *= (1.0 - repetition_penalty)
             
-            # Scale based on training phase (if reward calculator available)
-            if (hasattr(self, 'env') and hasattr(self.env, 'reward_calculator') and 
-                self.env.reward_calculator.N_goals >= self.env.reward_calculator.N_goals_target):
-                exploration_bonus *= 2.0  # Double during exploration phase
+            # Early stage bonus - stronger exploration incentive
+            if self.stage_episode < 100:
+                stage_multiplier = 2.0 - (self.stage_episode / 100.0)  # 2x to 1x over 100 episodes
+                exploration_bonus *= stage_multiplier
         
         return exploration_bonus
 
@@ -519,11 +557,17 @@ class PPOAgent:
             recent_avg = np.mean(list(self.performance_window)[-10:])
             older_avg = np.mean(list(self.performance_window)[-20:-10])
             
-            # Only intervene if performance dropped by more than 50%
+            # Only intervene if performance dropped by more than 50% AND we're stuck
             if recent_avg < older_avg * 0.5 and self.stage_episode > 50:
-                self.degradation_counter += 1
-                if self.degradation_counter > 10:
-                    self._trigger_recovery()
+                # Also check if we're making no progress (rewards too similar)
+                reward_variance = np.var(list(self.performance_window)[-10:])
+                if reward_variance < 0.01:  # Very low variance = stuck
+                    self.degradation_counter += 1
+                    if self.degradation_counter > 15:  # Increased threshold
+                        self._trigger_recovery()
+                else:
+                    # Reset counter if there's still some variance (agent is trying)
+                    self.degradation_counter = 0
             else:
                 self.degradation_counter = max(0, self.degradation_counter - 1)
 
@@ -565,6 +609,8 @@ class PPOAgent:
         total_loss = 0
         total_icm_loss = 0
         was_data_none = data is None
+        # Pass stage_episode to model for curriculum-aware entropy decay
+        self.model.stage_episode = self.stage_episode
         for _ in range(self.epochs):
             data = self.memory.get_all_data() if data is None else data
             if data is None:
@@ -627,15 +673,20 @@ class PPOAgent:
         if "individual_agent_data" in self.episode_data:
             # This is the averaged agent with individual agent data
             # First plot the averaged agent's metrics
+            avg_title_prefix = "Averaged Agent"
+            if hasattr(self, 'current_n_goals') and self.current_n_goals:
+                stage_info = f"Stage {self.current_n_goals} ({self.n_goals} goals)"
+                avg_title_prefix = f"{avg_title_prefix} - {stage_info}"
+            
             plot_metrics(
                 self.episode_data["episode_rewards"],
                 self.episode_data["episode_losses"],
                 self.episode_data["episode_lengths"],
                 self.episode_data["buttons_pressed"],
                 self.n_goals,
-                self.episode,
+                self.stage_episode if hasattr(self, 'stage_episode') else self.episode,  # Use stage episode for x-axis
                 save_loc=self.results_dir,
-                title_prefix="Averaged Agent",
+                title_prefix=avg_title_prefix,
                 entropies=self.episode_data.get("episode_entropies", None),
             )
 
@@ -646,15 +697,20 @@ class PPOAgent:
                     f"{self.config['results_dir'].rstrip('_0123456789')}_{i}"
                 )
 
+                agent_title_prefix = f"Agent {i}"
+                if hasattr(self, 'current_n_goals') and self.current_n_goals:
+                    stage_info = f"Stage {self.current_n_goals} ({self.n_goals} goals)"
+                    agent_title_prefix = f"{agent_title_prefix} - {stage_info}"
+                
                 plot_metrics(
                     agent_data["episode_rewards"],
                     agent_data["episode_losses"],
                     agent_data["episode_lengths"],
                     agent_data["buttons_pressed"],
                     self.n_goals,
-                    self.episode,
+                    self.stage_episode if hasattr(self, 'stage_episode') else self.episode,  # Use stage episode for x-axis
                     save_loc=agent_results_dir,
-                    title_prefix=f"Agent {i}",
+                    title_prefix=agent_title_prefix,
                     entropies=agent_data.get("episode_entropies", None),
                 )
         else:
@@ -666,13 +722,21 @@ class PPOAgent:
             os.makedirs(self.results_dir, exist_ok=True)
 
             # This is a regular agent or an individual agent in a multi-agent setup
+            # Include stage information in title for curriculum learning
+            if hasattr(self, 'current_n_goals') and self.current_n_goals:
+                stage_info = f"Stage {self.current_n_goals} ({self.n_goals} goals)"
+                if title_prefix:
+                    title_prefix = f"{title_prefix} - {stage_info}"
+                else:
+                    title_prefix = stage_info
+            
             plot_metrics(
                 self.episode_data["episode_rewards"],
                 self.episode_data["episode_losses"],
                 self.episode_data["episode_lengths"],
                 self.episode_data["buttons_pressed"],
                 self.n_goals,
-                self.episode,
+                self.stage_episode if hasattr(self, 'stage_episode') else self.episode,  # Use stage episode for x-axis
                 save_loc=self.results_dir,
                 title_prefix=title_prefix,
                 entropies=self.episode_data.get("episode_entropies", None),
@@ -688,7 +752,7 @@ class PPOAgent:
         with resource_pool.file_lock(path):
             self.model.save(path)
 
-            # Save additional information
+            # Save additional information including stage tracking
             info = {
                 "episode": self.episode,
                 "best_reward": self.best_reward,
@@ -697,6 +761,10 @@ class PPOAgent:
                 "performance_window": list(self.performance_window),
                 "performance_baseline": self.performance_baseline,
                 "best_checkpoint_path": self.best_checkpoint_path,
+                # CURRICULUM FIX: Save stage information for proper transition detection
+                "current_n_goals": self.current_n_goals,
+                "stage_episode": self.stage_episode,
+                "stage_start_episode": self.stage_start_episode,
             }
             torch.save(info, f"{path}/info.pth")
 
@@ -734,12 +802,21 @@ class PPOAgent:
                     self.performance_baseline = info["performance_baseline"]
                 if "best_checkpoint_path" in info:
                     self.best_checkpoint_path = info["best_checkpoint_path"]
+                
+                # CURRICULUM FIX: Restore stage tracking for proper transition detection
+                if "current_n_goals" in info:
+                    self.current_n_goals = info["current_n_goals"]
+                if "stage_episode" in info:
+                    self.stage_episode = info["stage_episode"]
+                if "stage_start_episode" in info:
+                    self.stage_start_episode = info["stage_start_episode"]
 
                 # Debug logging
                 worker_id = self.config.get("tqdm_worker_id", "?")
                 print(
                     f"Agent {worker_id} loaded checkpoint from {path}, episode {self.episode}"
                 )
+                print(f"📊 Restored stage info: {self.current_n_goals} goals, stage episode {self.stage_episode}")
 
                 # Load episode data if available, but ensure all required keys exist
                 loaded_episode_data = info.get("episode_data", {})
@@ -783,12 +860,55 @@ class PPOAgent:
                             )
                     except Exception as e:
                         print(f"Warning: Could not load exploration memory: {e}")
+                
+                # CURRICULUM FIX: Detect stage transition and reset learning parameters
+                self._detect_and_handle_stage_transition()
 
         except FileNotFoundError:
             print(f"No checkpoint found at {path}, starting from scratch.")
         except Exception as e:
             print(f"Error loading model: {e}")
             print("Starting from scratch.")
+
+    def _detect_and_handle_stage_transition(self):
+        """Detect if we've transitioned to a new curriculum stage and reset learning parameters"""
+        current_goals = self.config.get("N_goals_target", 1)
+        
+        print(f"🔍 Stage transition check: current_config_goals={current_goals}, saved_goals={self.current_n_goals}")
+        
+        # Check if this is a new stage (goals increased)
+        if current_goals > self.current_n_goals:
+            stage_difficulty = current_goals - 1  # 0-indexed difficulty
+            print(f"🔄 CURRICULUM STAGE TRANSITION DETECTED: {self.current_n_goals} → {current_goals} goals")
+            print(f"📈 Global episode: {self.episode}, Previous stage episodes: {self.stage_episode}")
+            
+            # Reset learning rate with stage-appropriate boost
+            self.model.reset_learning_rate_for_stage(stage_difficulty_multiplier=stage_difficulty)
+            
+            # Reset stage-specific tracking
+            self.stage_episode = 0
+            self.stage_start_episode = self.episode
+            self.current_n_goals = current_goals
+            
+            # Add SIGNIFICANT entropy boost for exploration
+            # Much higher boost to encourage exploration in new stages
+            entropy_boost = 0.1 + (stage_difficulty * 0.05)  # Was 0.02 + 0.01*difficulty
+            self.model.entropy_boost = entropy_boost
+            print(f"🎯 Applied entropy boost: +{entropy_boost:.3f} for initial exploration")
+            
+            # Reset performance tracking for clean transition
+            self.performance_window.clear()
+            self.degradation_counter = 0
+            
+            # Reset episode data for clean plotting (fresh start for new stage)
+            print(f"📊 Clearing episode data for clean stage plotting")
+            self.reset_tracking()
+            
+            print(f"✅ STAGE TRANSITION COMPLETE - ready for {current_goals} goal challenge!")
+            print(f"🏁 Stage episode counter reset to 0, global episode continues at {self.episode}")
+            print(f"📈 Episode data cleared - plotting will start fresh for this stage")
+        else:
+            print(f"ℹ️  No stage transition detected (goals unchanged: {current_goals})")
 
     def _log_action_diversity_to_file(self, action, state_seq_arr, exploration_tensor):
         """Log action diversity metrics to file for debugging agent behavior"""
