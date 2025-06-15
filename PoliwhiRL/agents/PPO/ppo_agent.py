@@ -8,7 +8,7 @@ import torch
 
 from PoliwhiRL.environment import PyBoyEnvironment as Env
 from PoliwhiRL.utils.visuals import plot_metrics
-from PoliwhiRL.replay import PPOMemory
+from PoliwhiRL.replay.ppo_memory_buffer import InMemoryPPOBuffer
 from PoliwhiRL.replay.exploration_memory import ExplorationMemory
 from PoliwhiRL.replay.enhanced_exploration_memory import EnhancedExplorationMemory
 from PoliwhiRL.models.PPO import PPOModel
@@ -59,7 +59,7 @@ class PPOAgent:
         self.best_reward = float("-inf")
         self.best_episode = 0
         self.model = PPOModel(input_shape, action_size, config)
-        self.memory = PPOMemory(config)
+        self.memory = InMemoryPPOBuffer(config)
         # Use enhanced exploration memory if enabled
         use_enhanced = config.get("use_enhanced_exploration_memory", True)
         # Adaptive memory size based on episode length and training mode
@@ -152,7 +152,7 @@ class PPOAgent:
         self.continue_from_state = (
             True if os.path.isfile(self.continue_from_state_loc) else False
         )
-        self.train_from_memory = self.config["ppo_train_from_memory"]
+        # Removed train_from_memory - not needed with in-memory buffer
         self.report_episode = self.config["report_episode"]
         self.update_frequency = self.config["ppo_update_frequency"]
         self.epochs = self.config["ppo_epochs"]
@@ -196,9 +196,7 @@ class PPOAgent:
             self.train_agent()
 
     def train_agent(self):
-        if self.train_from_memory:
-            print("Training from memory. Loading data from database and training.")
-            self.train_from_memories()
+        # Removed train_from_memory functionality - now uses in-memory buffer only
 
         # Check if we're in a subprocess (multiprocessing context)
         import multiprocessing as mp
@@ -305,13 +303,7 @@ class PPOAgent:
         else:
             self.run_episode(save_path=None)
 
-    def train_from_memories(self):
-        memory_ids = self.memory.get_memory_ids(self.config)
-        if len(memory_ids) == 0:
-            return
-        for memory_id in memory_ids:
-            data = self.memory.load_from_database(self.config, memory_id)
-            self.update_model(data)
+    # Removed train_from_memories method - not needed with in-memory buffer
 
     def _should_stop_early(self):
         if (

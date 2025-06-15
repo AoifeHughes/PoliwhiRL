@@ -51,7 +51,7 @@ graph TB
         
         %% Adaptive Scaling
         subgraph "Adaptive Scaling"
-            EpisodeScale[Episode Scale<br/>√(max_steps/10000)]
+            EpisodeScale[Episode Scale<br/>sqrt max_steps over 10000]
             StepScale[Step Penalty Scale<br/>Based on episode length]
             MilestoneReward[Milestone Rewards<br/>Every 5% progress]
             

@@ -14,7 +14,6 @@
     "ppo_step_decay_interval": 1000,
     "ppo_extrinsic_reward_weight": 1,
     "ppo_intrinsic_reward_weight": 0.005,
-    "ppo_train_from_memory": false,
     "ppo_num_agents": 1,
     "ppo_iterations": 10,
     "ppo_exploration_history_length": 10,

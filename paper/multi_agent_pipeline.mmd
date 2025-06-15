@@ -41,7 +41,7 @@ graph TB
             subgraph "Performance Metrics"
                 Reward[Total Reward]
                 Efficiency[Efficiency Score<br/>1.0 - steps/max]
-                Stability[Stability Score<br/>1.0/(1.0 + var)]
+                Stability[Stability Score<br/>1.0 div variance]
                 Composite[Composite Score<br/>R + 0.5E + 0.3S]
                 
                 Reward --> Composite

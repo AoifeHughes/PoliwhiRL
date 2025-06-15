@@ -6,9 +6,9 @@ graph TB
             GoalID[Goal ID<br/>Current Stage]
             
             subgraph "Input Processing"
-                Resize[Resize to<br/>80x72 (0.5x)]
+                Resize[Resize to<br/>80x72 half scale]
                 CHW[Convert to<br/>CHW Format]
-                Norm[Normalize<br/>[0,1]]
+                Norm[Normalize<br/>0 to 1 range]
             end
             
             GameScreen --> Resize
@@ -18,11 +18,11 @@ graph TB
         
         %% CNN Feature Extraction
         subgraph "GameBoy CNN"
-            Conv1[Conv2d(3,32)<br/>8x8, stride=4<br/>→ ReLU]
-            Conv2[Conv2d(32,64)<br/>4x4, stride=2<br/>→ ReLU]
-            Conv3[Conv2d(64,64)<br/>3x3, stride=1<br/>→ ReLU]
+            Conv1[Conv2d 3→32<br/>8x8, stride=4<br/>→ ReLU]
+            Conv2[Conv2d 32→64<br/>4x4, stride=2<br/>→ ReLU]
+            Conv3[Conv2d 64→64<br/>3x3, stride=1<br/>→ ReLU]
             Flatten[Flatten]
-            Linear1[Linear<br/>→ d_model=256]
+            Linear1[Linear<br/>to d_model 256]
             
             Norm --> Conv1
             Conv1 --> Conv2
@@ -33,8 +33,8 @@ graph TB
         
         %% Goal Conditioning
         subgraph "Goal Embeddings"
-            GoalEmbed[Goal Embedding<br/>8 goals → 256d]
-            GoalProj[Linear Projection<br/>→ d_model]
+            GoalEmbed[Goal Embedding<br/>8 goals to 256d]
+            GoalProj[Linear Projection<br/>to d_model]
             
             GoalID --> GoalEmbed
             GoalEmbed --> GoalProj
@@ -55,7 +55,7 @@ graph TB
             subgraph "Layer 1"
                 MHA1[Multi-Head<br/>Attention<br/>8 heads]
                 Norm1[Layer Norm]
-                FFN1[Feed Forward<br/>256→1024→256]
+                FFN1[Feed Forward<br/>256-1024-256]
                 Norm2[Layer Norm]
                 
                 MHA1 --> Norm1
@@ -68,7 +68,7 @@ graph TB
             subgraph "Layer 6"
                 MHA6[Multi-Head<br/>Attention<br/>8 heads]
                 Norm11[Layer Norm]
-                FFN6[Feed Forward<br/>256→1024→256]
+                FFN6[Feed Forward<br/>256-1024-256]
                 Norm12[Layer Norm]
                 
                 MHA6 --> Norm11
@@ -94,10 +94,10 @@ graph TB
         
         %% Actor-Critic Heads
         subgraph "Actor Network"
-            Actor1[Linear(512,256)<br/>→ ReLU → Dropout(0.1)]
-            Actor2[Linear(256,256)<br/>→ ReLU → Dropout(0.1)]
-            Actor3[Linear(256,128)<br/>→ ReLU]
-            Actor4[Linear(128,9)<br/>→ Softmax]
+            Actor1[Linear 512-256<br/>ReLU Dropout 0.1]
+            Actor2[Linear 256-256<br/>ReLU Dropout 0.1]
+            Actor3[Linear 256-128<br/>ReLU]
+            Actor4[Linear 128-9<br/>Softmax]
             
             Concat --> Actor1
             Actor1 --> Actor2
@@ -106,10 +106,10 @@ graph TB
         end
         
         subgraph "Critic Network"
-            Critic1[Linear(512,256)<br/>→ ReLU → Dropout(0.1)]
-            Critic2[Linear(256,256)<br/>→ ReLU → Dropout(0.1)]
-            Critic3[Linear(256,128)<br/>→ ReLU]
-            Critic4[Linear(128,1)]
+            Critic1[Linear 512-256<br/>ReLU Dropout 0.1]
+            Critic2[Linear 256-256<br/>ReLU Dropout 0.1]
+            Critic3[Linear 256-128<br/>ReLU]
+            Critic4[Linear 128-1]
             
             Concat --> Critic1
             Critic1 --> Critic2
@@ -118,8 +118,8 @@ graph TB
         end
         
         %% Outputs
-        ActionProbs[Action Probabilities<br/>π(a|s)]
-        ValueEst[Value Estimate<br/>V(s)]
+        ActionProbs[Action Probabilities<br/>pi of a given s]
+        ValueEst[Value Estimate<br/>V of s]
         
         Actor4 --> ActionProbs
         Critic4 --> ValueEst
