@@ -15,6 +15,7 @@ from PoliwhiRL.replay.hierarchical_exploration_memory import HierarchicalExplora
 from PoliwhiRL.models.PPO import PPOModel
 from PoliwhiRL.utils.resource_manager import get_resource_pool
 from PoliwhiRL.utils.macro_actions import MacroActionLearner
+from PoliwhiRL.curriculum.state_manager import CurriculumStateManager
 
 
 class PPOAgent:
@@ -98,6 +99,9 @@ class PPOAgent:
             )
         self.reset_tracking()
 
+        # Initialize state curriculum manager if enabled
+        self.state_manager = CurriculumStateManager(config)
+        
         # Initialize macro action learning if enabled
         self.use_macro_actions = config.get("use_macro_actions", False)
         if self.use_macro_actions:
@@ -159,6 +163,10 @@ class PPOAgent:
         
         # Check for stage transition (curriculum learning)
         self._check_stage_transition()
+        
+        # Update state manager curriculum stage if it exists
+        if hasattr(self, 'state_manager'):
+            self.state_manager.update_curriculum_stage(self.current_n_goals)
         
     def _check_stage_transition(self):
         """Detect and handle curriculum stage transitions"""
@@ -375,22 +383,61 @@ class PPOAgent:
 
         try:
             self.steps = 0
-            if self.continue_from_state and (np.random.rand() < 0.9):
+            self.checkpoint_steps = 0  # Track steps from checkpoint start
+            episode_start_type = 'scratch'  # Track starting type for state manager
+            
+            # State curriculum logic - sample starting state
+            curriculum_state_path, start_type = self.state_manager.sample_starting_state()
+            
+            if curriculum_state_path is not None and start_type != 'scratch':
+                # Load from curriculum state
+                try:
+                    state = env.load_gym_state(
+                        curriculum_state_path, self.episode_length, self.n_goals
+                    )
+                    self.checkpoint_steps = env.steps  # Steps already taken in the saved state
+                    self.steps = env.steps  # Current step counter (continues from checkpoint)
+                    episode_start_type = start_type
+                    print(f"Episode {self.episode}: Starting from {start_type} state (step {self.steps}, total will include checkpoint steps)")
+                except Exception as e:
+                    print(f"Failed to load curriculum state {curriculum_state_path}: {e}")
+                    # Fallback to normal logic
+                    state = env.reset()
+                    self.memory.reset()
+                    self.checkpoint_steps = 0
+                    episode_start_type = 'scratch'
+            elif self.continue_from_state and (np.random.rand() < 0.9):
+                # Original continue from state logic
                 state = env.load_gym_state(
                     self.continue_from_state_loc, self.episode_length, self.n_goals
                 )
+                self.checkpoint_steps = env.steps  # Steps from saved state
                 self.steps = env.steps
+                episode_start_type = 'continue_from_state'
             else:
+                # Start from scratch
                 state = env.reset()
                 self.memory.reset()
-                reward_sum = 0
-                state_sequence = deque(
-                    [state] * self.sequence_length, maxlen=self.sequence_length
-                )
+                self.checkpoint_steps = 0
+                episode_start_type = 'scratch'
+                
+            # Initialize episode tracking variables
+            reward_sum = 0
+            goals_achieved = 0
+            new_locations = 0
+            initial_location_count = 0
+            
+            # Track exploration if available
+            if hasattr(self.exploration_memory, 'hash_visits'):
+                initial_location_count = len(self.exploration_memory.hash_visits)
+                
+            state_sequence = deque(
+                [state] * self.sequence_length, maxlen=self.sequence_length
+            )
 
-                # Update exploration memory with initial screen
-                screen = env.get_observation()
-                self.exploration_memory.add_screen(screen)
+            # Update exploration memory with initial screen
+            screen = env.get_observation()
+            self.exploration_memory.add_screen(screen)
             if record_loc is not None:
                 env.enable_record(record_loc, False)
 
@@ -521,7 +568,36 @@ class PPOAgent:
                 ):
                     self.update_model()
 
-            self._update_episode_stats(reward_sum)
+            # Calculate episode metrics for state curriculum
+            if hasattr(self.exploration_memory, 'hash_visits'):
+                final_location_count = len(self.exploration_memory.hash_visits)
+                new_locations = max(0, final_location_count - initial_location_count)
+            
+            # Extract goals achieved from environment or reward system
+            goals_achieved = self._extract_goals_achieved(env, reward_sum)
+            
+            # Create episode data for state curriculum
+            episode_data = {
+                'episode': self.episode,
+                'total_reward': reward_sum,
+                'steps': self.steps,  # Total steps including checkpoint
+                'checkpoint_steps': getattr(self, 'checkpoint_steps', 0),  # Steps from checkpoint
+                'additional_steps': self.steps - getattr(self, 'checkpoint_steps', 0),  # Steps taken this episode
+                'goals_achieved': goals_achieved,
+                'new_locations': new_locations,
+                'total_locations': final_location_count if hasattr(self.exploration_memory, 'hash_visits') else 0,
+                'start_type': episode_start_type
+            }
+            
+            # Save checkpoint state if conditions are met
+            checkpoint = self.state_manager.save_state_checkpoint(env, episode_data)
+            
+            # Update performance for previously used curriculum state
+            if curriculum_state_path is not None and start_type != 'scratch':
+                success = self._determine_episode_success(reward_sum, goals_achieved)
+                self.state_manager.update_checkpoint_performance(curriculum_state_path, success, reward_sum)
+            
+            self._update_episode_stats(reward_sum, episode_start_type)
 
             if save_path is not None:
                 env.save_gym_state(save_path)
@@ -575,11 +651,56 @@ class PPOAgent:
         
         return exploration_bonus
 
-    def _update_episode_stats(self, total_reward):
+    def _update_episode_stats(self, total_reward, start_type='scratch'):
+        # Calculate total episode length including checkpoint steps
+        total_episode_length = self.steps  # This already includes checkpoint steps since we load env.steps
+        
         self.episode_data["episode_rewards"].append(total_reward)
-        self.episode_data["episode_lengths"].append(self.steps)
+        self.episode_data["episode_lengths"].append(total_episode_length)
         self.episode_data["moving_avg_reward"].append(total_reward)
-        self.episode_data["moving_avg_length"].append(self.steps)
+        self.episode_data["moving_avg_length"].append(total_episode_length)
+        
+        # Enhanced statistics tracking for state curriculum
+        if 'state_curriculum_stats' not in self.episode_data:
+            self.episode_data['state_curriculum_stats'] = {
+                'start_types': [],
+                'scratch_rewards': [],
+                'curriculum_rewards': [],
+                'scratch_lengths': [],  # Total episode length from game start
+                'curriculum_lengths': [],  # Total episode length from game start
+                'checkpoint_steps': [],  # Steps taken before loading checkpoint
+                'additional_steps': [],  # Steps taken after loading checkpoint
+                'episode_efficiency': [],  # reward per total step
+                'start_type_distribution': {'scratch': 0, 'foundation': 0, 'progression': 0, 'frontier': 0, 'goal': 0, 'continue_from_state': 0}
+            }
+        
+        # Track episode start type
+        self.episode_data['state_curriculum_stats']['start_types'].append(start_type)
+        self.episode_data['state_curriculum_stats']['start_type_distribution'][start_type] = \
+            self.episode_data['state_curriculum_stats']['start_type_distribution'].get(start_type, 0) + 1
+        
+        # Track efficiency (reward per total step from game beginning)
+        efficiency = total_reward / max(total_episode_length, 1)
+        self.episode_data['state_curriculum_stats']['episode_efficiency'].append(efficiency)
+        
+        # Track checkpoint breakdown
+        if hasattr(self, 'checkpoint_steps'):
+            checkpoint_steps = self.checkpoint_steps
+            additional_steps = total_episode_length - checkpoint_steps
+        else:
+            checkpoint_steps = 0
+            additional_steps = total_episode_length
+            
+        self.episode_data['state_curriculum_stats']['checkpoint_steps'].append(checkpoint_steps)
+        self.episode_data['state_curriculum_stats']['additional_steps'].append(additional_steps)
+        
+        # Separate tracking by start type for analysis (using total lengths)
+        if start_type == 'scratch':
+            self.episode_data['state_curriculum_stats']['scratch_rewards'].append(total_reward)
+            self.episode_data['state_curriculum_stats']['scratch_lengths'].append(total_episode_length)
+        else:
+            self.episode_data['state_curriculum_stats']['curriculum_rewards'].append(total_reward)
+            self.episode_data['state_curriculum_stats']['curriculum_lengths'].append(total_episode_length)
         
         # Update performance tracking
         self.performance_window.append(total_reward)
@@ -629,6 +750,10 @@ class PPOAgent:
         # Save failure learning stats periodically
         if self.episode % 50 == 0:
             self.save_failure_learning_stats()
+            
+        # Enhanced state curriculum reporting every 25 episodes
+        if self.episode % 25 == 0 and hasattr(self, 'state_manager') and self.state_manager.use_state_curriculum:
+            self._log_state_curriculum_stats()
 
         # Process macro actions at end of episode
         if self.macro_learner:
@@ -1729,6 +1854,225 @@ class PPOAgent:
         
         print(f"   Fresh start initiated - all archives preserved")
     
+    def _extract_goals_achieved(self, env, reward_sum):
+        """Extract number of goals achieved from environment or reward."""
+        try:
+            # Try to get goals from environment if available
+            if hasattr(env, 'rewards') and hasattr(env.rewards, 'goals_achieved'):
+                return env.rewards.goals_achieved
+            elif hasattr(env, 'goals_achieved'):
+                return env.goals_achieved
+            # Estimate from reward - typically each goal gives substantial reward
+            elif reward_sum > 1.0:
+                return min(int(reward_sum), self.n_goals)  # Cap at max goals
+            else:
+                return 0
+        except Exception:
+            # Fallback estimation based on reward
+            return min(int(max(0, reward_sum)), self.n_goals)
+            
+    def _determine_episode_success(self, reward_sum, goals_achieved):
+        """Determine if an episode was successful."""
+        # Success criteria:
+        # 1. Achieved at least one goal, OR
+        # 2. Got significant reward (> 0.5), OR  
+        # 3. Made good exploration progress
+        return (
+            goals_achieved > 0 or 
+            reward_sum > 0.5 or
+            (reward_sum > 0.2 and self.steps > self.episode_length * 0.7)
+        )
+
+    def _log_state_curriculum_stats(self):
+        """Log comprehensive state curriculum statistics for analysis."""
+        try:
+            stats = self.episode_data.get('state_curriculum_stats', {})
+            if not stats or not stats.get('start_types'):
+                return
+                
+            # Calculate statistics for recent episodes (last 25)
+            recent_start_types = stats['start_types'][-25:]
+            recent_rewards = self.episode_data['episode_rewards'][-25:]
+            recent_lengths = self.episode_data['episode_lengths'][-25:]
+            recent_efficiency = stats['episode_efficiency'][-25:]
+            
+            # Distribution analysis
+            total_episodes = len(stats['start_types'])
+            distribution = stats['start_type_distribution']
+            
+            # Performance comparison
+            scratch_rewards = stats['scratch_rewards']
+            curriculum_rewards = stats['curriculum_rewards']
+            scratch_lengths = stats['scratch_lengths']
+            curriculum_lengths = stats['curriculum_lengths']
+            
+            print(f"\n📊 STATE CURRICULUM STATISTICS - Episode {self.episode}")
+            print(f"{'='*60}")
+            
+            # Overall distribution
+            print(f"📈 EPISODE START DISTRIBUTION (Total: {total_episodes}):")
+            for start_type, count in distribution.items():
+                if count > 0:
+                    percentage = (count / total_episodes) * 100
+                    print(f"   {start_type:>15}: {count:>3} episodes ({percentage:>5.1f}%)")
+            
+            # Recent performance
+            if len(recent_start_types) > 0:
+                recent_scratch = sum(1 for t in recent_start_types if t == 'scratch')
+                recent_curriculum = len(recent_start_types) - recent_scratch
+                print(f"\n📊 RECENT 25 EPISODES:")
+                print(f"   Scratch starts:     {recent_scratch:>3} ({recent_scratch/len(recent_start_types)*100:>5.1f}%)")
+                print(f"   Curriculum starts:  {recent_curriculum:>3} ({recent_curriculum/len(recent_start_types)*100:>5.1f}%)")
+                print(f"   Avg reward:         {np.mean(recent_rewards):>8.3f}")
+                print(f"   Avg length:         {np.mean(recent_lengths):>8.1f}")
+                print(f"   Avg efficiency:     {np.mean(recent_efficiency):>8.4f} (reward/step)")
+            
+            # Comparative analysis
+            if len(scratch_rewards) > 0 and len(curriculum_rewards) > 0:
+                print(f"\n🔍 PERFORMANCE COMPARISON:")
+                print(f"   Scratch episodes:")
+                print(f"      Avg reward:      {np.mean(scratch_rewards):>8.3f} (n={len(scratch_rewards)})")
+                print(f"      Avg total length: {np.mean(scratch_lengths):>8.1f} (full episodes)")
+                print(f"      Efficiency:      {np.mean(scratch_rewards)/max(np.mean(scratch_lengths), 1):>8.4f}")
+                print(f"   Curriculum episodes:")
+                print(f"      Avg reward:      {np.mean(curriculum_rewards):>8.3f} (n={len(curriculum_rewards)})")
+                print(f"      Avg total length: {np.mean(curriculum_lengths):>8.1f} (including checkpoint)")
+                
+                # Show checkpoint breakdown for curriculum episodes
+                curr_indices = [i for i, t in enumerate(stats['start_types']) if t != 'scratch']
+                if curr_indices and 'checkpoint_steps' in stats:
+                    curr_checkpoint_steps = [stats['checkpoint_steps'][i] for i in curr_indices]
+                    curr_additional_steps = [stats['additional_steps'][i] for i in curr_indices]
+                    print(f"         Checkpoint:   {np.mean(curr_checkpoint_steps):>8.1f} (avg steps from saved state)")
+                    print(f"         Additional:   {np.mean(curr_additional_steps):>8.1f} (avg steps taken this episode)")
+                
+                print(f"      Efficiency:      {np.mean(curriculum_rewards)/max(np.mean(curriculum_lengths), 1):>8.4f}")
+                
+                # Efficiency comparison
+                scratch_eff = np.mean(scratch_rewards) / max(np.mean(scratch_lengths), 1)
+                curriculum_eff = np.mean(curriculum_rewards) / max(np.mean(curriculum_lengths), 1)
+                improvement = ((curriculum_eff - scratch_eff) / max(scratch_eff, 0.001)) * 100
+                print(f"      Efficiency gain:   {improvement:>8.1f}% vs scratch")
+            
+            # State manager statistics
+            if hasattr(self, 'state_manager'):
+                manager_stats = self.state_manager.get_statistics()
+                safety_status = manager_stats.get('safety_status', {})
+                
+                print(f"\n🏛️ STATE BUFFER STATUS:")
+                print(f"   Total saved states: {manager_stats.get('total_states', 0)}")
+                for category, count in manager_stats.get('states_by_category', {}).items():
+                    if count > 0:
+                        print(f"   {category:>15}: {count:>3} states")
+                
+                if safety_status.get('performance_history_length', 0) > 0:
+                    print(f"\n🛡️ SAFETY MONITORING:")
+                    print(f"   Baseline perf:      {safety_status.get('baseline_performance', 0):>8.3f}")
+                    print(f"   Recent perf:        {safety_status.get('recent_performance', 0):>8.3f}")
+                    print(f"   Performance ratio:  {safety_status.get('performance_ratio', 1):>8.3f}")
+                    print(f"   Forgetting detected: {safety_status.get('forgetting_detected', False)}")
+                    print(f"   Safety override:    {safety_status.get('safety_override_active', False)}")
+            
+            print(f"{'='*60}\n")
+            
+            # Save detailed stats to file
+            self._save_state_curriculum_report()
+            
+        except Exception as e:
+            print(f"Warning: Could not log state curriculum statistics: {e}")
+            
+    def _save_state_curriculum_report(self):
+        """Save detailed state curriculum report to file."""
+        try:
+            import json
+            
+            stats = self.episode_data.get('state_curriculum_stats', {})
+            if not stats:
+                return
+                
+            # Prepare comprehensive report
+            report = {
+                'episode': self.episode,
+                'stage': self.current_n_goals,
+                'stage_episode': self.stage_episode,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                
+                'distribution': stats['start_type_distribution'].copy(),
+                'total_episodes': len(stats['start_types']),
+                
+                'performance_comparison': {},
+                'recent_performance': {},
+                'efficiency_metrics': {},
+                
+                'state_manager_stats': {}
+            }
+            
+            # Performance comparison
+            if stats['scratch_rewards'] and stats['curriculum_rewards']:
+                # Calculate checkpoint breakdown for curriculum episodes
+                curr_indices = [i for i, t in enumerate(stats['start_types']) if t != 'scratch']
+                curriculum_checkpoint_steps = [stats['checkpoint_steps'][i] for i in curr_indices] if curr_indices and 'checkpoint_steps' in stats else []
+                curriculum_additional_steps = [stats['additional_steps'][i] for i in curr_indices] if curr_indices and 'additional_steps' in stats else []
+                
+                report['performance_comparison'] = {
+                    'scratch': {
+                        'avg_reward': float(np.mean(stats['scratch_rewards'])),
+                        'avg_total_length': float(np.mean(stats['scratch_lengths'])),
+                        'episode_count': len(stats['scratch_rewards'])
+                    },
+                    'curriculum': {
+                        'avg_reward': float(np.mean(stats['curriculum_rewards'])),
+                        'avg_total_length': float(np.mean(stats['curriculum_lengths'])),
+                        'avg_checkpoint_steps': float(np.mean(curriculum_checkpoint_steps)) if curriculum_checkpoint_steps else 0.0,
+                        'avg_additional_steps': float(np.mean(curriculum_additional_steps)) if curriculum_additional_steps else 0.0,
+                        'episode_count': len(stats['curriculum_rewards'])
+                    }
+                }
+                
+                # Calculate efficiency metrics
+                scratch_eff = np.mean(stats['scratch_rewards']) / max(np.mean(stats['scratch_lengths']), 1)
+                curriculum_eff = np.mean(stats['curriculum_rewards']) / max(np.mean(stats['curriculum_lengths']), 1)
+                
+                report['efficiency_metrics'] = {
+                    'scratch_efficiency': float(scratch_eff),
+                    'curriculum_efficiency': float(curriculum_eff),
+                    'efficiency_improvement_percent': float(((curriculum_eff - scratch_eff) / max(scratch_eff, 0.001)) * 100)
+                }
+            
+            # Recent performance (last 25 episodes)
+            if len(stats['episode_efficiency']) >= 25:
+                recent_efficiency = stats['episode_efficiency'][-25:]
+                recent_types = stats['start_types'][-25:]
+                
+                report['recent_performance'] = {
+                    'avg_efficiency': float(np.mean(recent_efficiency)),
+                    'scratch_episodes': sum(1 for t in recent_types if t == 'scratch'),
+                    'curriculum_episodes': sum(1 for t in recent_types if t != 'scratch'),
+                    'efficiency_trend': float(np.polyfit(range(len(recent_efficiency)), recent_efficiency, 1)[0])
+                }
+            
+            # State manager statistics
+            if hasattr(self, 'state_manager'):
+                manager_stats = self.state_manager.get_statistics()
+                report['state_manager_stats'] = {
+                    'total_states': manager_stats.get('total_states', 0),
+                    'states_by_category': manager_stats.get('states_by_category', {}),
+                    'safety_status': manager_stats.get('safety_status', {})
+                }
+            
+            # Save to file
+            report_file = f"{self.results_dir}/state_curriculum_report_ep{self.episode}.json"
+            with open(report_file, 'w') as f:
+                json.dump(report, f, indent=2)
+                
+            # Also maintain a latest report
+            latest_file = f"{self.results_dir}/state_curriculum_latest.json"
+            with open(latest_file, 'w') as f:
+                json.dump(report, f, indent=2)
+                
+        except Exception as e:
+            print(f"Warning: Could not save state curriculum report: {e}")
+
     def save_failure_learning_stats(self):
         """Save comprehensive failure learning statistics to disk"""
         try:

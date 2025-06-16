@@ -37,5 +37,11 @@
     "exploration_reward_weight": 0.3,
     "story_progress_reward_weight": 0.4,
     "battle_effectiveness_reward_weight": 0.2,
-    "efficiency_reward_weight": 0.1
+    "efficiency_reward_weight": 0.1,
+    "_comment_state_curriculum": "State Curriculum Learning Features",
+    "use_state_curriculum": false,
+    "state_buffer_size": 100,
+    "state_save_directory": "./curriculum_states",
+    "catastrophic_forgetting_threshold": 0.8,
+    "validation_frequency": 50
    }

@@ -123,10 +123,6 @@ class MacroActionLearner:
                         }
                         self.macro_action_ids[sequence] = macro_id
 
-                        print(
-                            f"Discovered macro action {macro_id}: {sequence} "
-                            f"(reward: {avg_reward:.3f}, success: {success_rate:.3f})"
-                        )
 
     def get_available_actions(self, include_macros=True):
         """Get list of available actions (primitive + macro)"""
