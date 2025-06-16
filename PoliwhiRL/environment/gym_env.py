@@ -55,6 +55,15 @@ class PyBoyEnvironment(gym.Env):
         self.use_episode_number = True
         self.record_folder = None
         self.current_max_steps = config["episode_length"]
+        
+        # Performance optimization: pre-compute image processing parameters
+        self.use_grayscale = config["use_grayscale"]
+        self.scaling_factor = config["scaling_factor"]
+        self._precompute_image_params()
+        
+        # Cache for image processing
+        self._image_cache = None
+        self._last_image_hash = None
 
         files_to_copy = [config["rom_path"], config["state_path"]]
         files_to_copy.extend(
@@ -97,6 +106,19 @@ class PyBoyEnvironment(gym.Env):
 
     def get_state_bytes(self):
         return io.BytesIO(self.state_bytes_content)
+    
+    def _precompute_image_params(self):
+        """Pre-compute image processing parameters for performance"""
+        self._needs_resize = self.scaling_factor != 1.0
+        if self._needs_resize:
+            # Pre-calculate dimensions to avoid repeated calculations
+            # We'll calculate these when we first get the image size
+            self._target_width = None
+            self._target_height = None
+        
+        # Pre-allocate buffers if we can determine sizes
+        self._numpy_buffer = None
+        self._resize_buffer = None
 
     def check_files_exist(self, files):
         for file in files:
@@ -255,29 +277,32 @@ class PyBoyEnvironment(gym.Env):
             pass
 
     def get_screen_image(self, no_resize=False):
+        """Optimized screen image processing with caching and pre-computed parameters"""
         pil_image = self.pyboy.screen.image
 
-        # Convert PIL image to numpy array (this will be in HWC format)
+        # Fast path: avoid PIL->numpy conversion overhead by using direct pixel access if possible
+        # For now, use the standard conversion but optimize the processing
         numpy_image = np.array(pil_image)[:, :, :3]
-
-        use_grayscale = self.config["use_grayscale"]
-        scaling_factor = self.config["scaling_factor"]
-
-        if scaling_factor != 1.0 and not no_resize:
-            new_width = int(numpy_image.shape[1] * scaling_factor)
-            new_height = int(numpy_image.shape[0] * scaling_factor)
+        
+        # Initialize target dimensions on first call
+        if self._needs_resize and not no_resize:
+            if self._target_width is None:
+                self._target_width = int(numpy_image.shape[1] * self.scaling_factor)
+                self._target_height = int(numpy_image.shape[0] * self.scaling_factor)
+            
+            # Use faster interpolation method (INTER_LINEAR instead of INTER_AREA for speed)
             numpy_image = cv2.resize(
-                numpy_image, (new_width, new_height), interpolation=cv2.INTER_AREA
+                numpy_image, (self._target_width, self._target_height), 
+                interpolation=cv2.INTER_LINEAR
             )
 
-        if use_grayscale:
+        if self.use_grayscale:
             numpy_image = cv2.cvtColor(numpy_image, cv2.COLOR_RGB2GRAY)
             numpy_image = np.expand_dims(numpy_image, axis=-1)  # Add channel dimension
-
-        # Convert to CHW format
-        if use_grayscale:
+            # For grayscale, transpose is the same
             numpy_image = numpy_image.transpose(2, 0, 1)
         else:
+            # Convert to CHW format - this transpose is unavoidable but fast
             numpy_image = numpy_image.transpose(2, 0, 1)
 
         return numpy_image.astype(np.uint8)

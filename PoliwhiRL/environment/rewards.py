@@ -11,6 +11,15 @@ class Rewards:
         self.break_on_goal = config["break_on_goal"]
         self.punish_steps = config["punish_steps"]
 
+        # Multi-objective reward system
+        self.use_multi_objective = config.get("use_multi_objective_rewards", True)
+        self.reward_weights = {
+            'exploration': config.get("exploration_reward_weight", 0.3),
+            'story_progress': config.get("story_progress_reward_weight", 0.4),
+            'battle_effectiveness': config.get("battle_effectiveness_reward_weight", 0.2),
+            'efficiency': config.get("efficiency_reward_weight", 0.1)
+        }
+
         # Rescaled reward values - simplified and positive-focused
         self.small_reward = 0.1
         self.medium_reward = 0.5
@@ -41,6 +50,31 @@ class Rewards:
         self.idle_penalty_threshold = min(50, max(10, self.max_steps // 100))  # Scale idle threshold
         self.idle_penalty = -0.1 * step_penalty_scale  # Scale idle penalty
         self.map_transition_bonus = 0.5 * episode_scale  # Scale map bonus
+
+        # Multi-objective tracking
+        self.objective_scores = {
+            'exploration': 0.0,
+            'story_progress': 0.0,
+            'battle_effectiveness': 0.0,
+            'efficiency': 0.0
+        }
+        self.objective_history = defaultdict(list)
+        
+        # Battle effectiveness tracking
+        self.last_pokemon_hp = {}
+        self.battle_encounters = 0
+        self.successful_battles = 0
+        self.exp_gained = 0
+        self.last_exp = 0
+        
+        # Story progression tracking
+        self.story_milestones = set()
+        self.significant_items = set()
+        self.badge_count = 0
+        
+        # Efficiency tracking
+        self.actions_per_goal = []
+        self.current_goal_actions = 0
 
         # State variables
         self.pokedex_seen = 0
@@ -114,6 +148,61 @@ class Rewards:
 
     def calculate_reward(self, env_vars, button_press):
         self.steps += 1
+        self.current_goal_actions += 1
+        
+        if self.use_multi_objective:
+            reward, done = self._calculate_multi_objective_reward(env_vars, button_press)
+        else:
+            reward, done = self._calculate_single_objective_reward(env_vars, button_press)
+        
+        self.last_action = button_press
+        return reward, done
+    
+    def _calculate_multi_objective_reward(self, env_vars, button_press):
+        """Calculate reward using multi-objective approach."""
+        objective_rewards = {}
+        
+        # 1. Exploration Objective
+        exploration_reward = self._calculate_exploration_reward(env_vars)
+        objective_rewards['exploration'] = exploration_reward
+        
+        # 2. Story Progress Objective  
+        story_reward = self._calculate_story_progress_reward(env_vars)
+        objective_rewards['story_progress'] = story_reward
+        
+        # 3. Battle Effectiveness Objective
+        battle_reward = self._calculate_battle_effectiveness_reward(env_vars)
+        objective_rewards['battle_effectiveness'] = battle_reward
+        
+        # 4. Efficiency Objective
+        efficiency_reward = self._calculate_efficiency_reward(env_vars, button_press)
+        objective_rewards['efficiency'] = efficiency_reward
+        
+        # Update objective scores
+        for objective, reward in objective_rewards.items():
+            self.objective_scores[objective] += reward
+            self.objective_history[objective].append(reward)
+        
+        # Weighted combination of objectives
+        total_reward = sum(
+            self.reward_weights[obj] * reward 
+            for obj, reward in objective_rewards.items()
+        )
+        
+        # Apply curriculum-based objective reweighting
+        total_reward = self._apply_curriculum_weighting(total_reward, objective_rewards)
+        
+        # Check if done
+        if self.steps > self.max_steps:
+            self.done = True
+
+        # Apply limits and update cumulative
+        self.cumulative_reward += total_reward
+        clipped_reward = np.clip(total_reward, -self.clip, self.clip).astype(np.float32)
+        return clipped_reward, self.done
+    
+    def _calculate_single_objective_reward(self, env_vars, button_press):
+        """Original single-objective reward calculation."""
         total_reward = 0
         
         # Check for goal achievements
@@ -130,11 +219,6 @@ class Rewards:
             if env_vars["map_num"] not in self.discovered_maps:
                 self.discovered_maps.add(env_vars["map_num"])
                 total_reward += self.map_transition_bonus
-        
-        # Distance guidance toward current goal
-        # Disabling because it can allow for infinite rewards if not managed
-        # if self.N_goals < self.N_goals_target:
-        #     total_reward += self._distance_based_reward(env_vars)
         
         # Simple movement penalties
         current_position = (env_vars["X"], env_vars["Y"], env_vars["map_num"])
@@ -163,10 +247,8 @@ class Rewards:
         if self.steps > self.max_steps:
             self.done = True
 
-        self.last_action = button_press
         self.cumulative_reward += total_reward
         clipped_reward = np.clip(total_reward, -self.clip, self.clip).astype(np.float32)
-
         return clipped_reward, self.done
 
     def _check_goals(self, env_vars):
@@ -250,8 +332,124 @@ class Rewards:
             return self.distance_reward_factor * max(0, 1 - distance / 50)
         return 0
 
+    def _calculate_exploration_reward(self, env_vars):
+        """Calculate exploration-focused reward."""
+        reward = 0
+        
+        # New location discovery
+        current_location = ((env_vars["X"], env_vars["Y"]), env_vars["map_num"])
+        if current_location not in self.explored_tiles:
+            self.explored_tiles.add(current_location)
+            reward += self.exploration_reward
+            
+            # Bonus for new maps
+            if env_vars["map_num"] not in self.discovered_maps:
+                self.discovered_maps.add(env_vars["map_num"])
+                reward += self.map_transition_bonus
+        
+        # Novelty reward based on area coverage
+        exploration_density = len(self.explored_tiles) / max(self.steps, 1)
+        if exploration_density > 0.01:  # High exploration rate
+            reward += self.novelty_reward * exploration_density
+            
+        return reward
+    
+    def _calculate_story_progress_reward(self, env_vars):
+        """Calculate story progression reward."""
+        reward = 0
+        
+        # Goal achievements (main story progress)
+        goal_reward = self._check_goals(env_vars)
+        reward += goal_reward * 2.0  # Higher weight for story goals
+        
+        # Pokedex progress (secondary story element)
+        new_pokedex_seen = env_vars.get("pokedex_seen", 0)
+        new_pokedex_owned = env_vars.get("pokedex_owned", 0)
+        
+        if new_pokedex_seen > self.pokedex_seen:
+            reward += self.pokedex_seen_reward * (new_pokedex_seen - self.pokedex_seen)
+            self.pokedex_seen = new_pokedex_seen
+            
+        if new_pokedex_owned > self.pokedex_owned:
+            reward += self.pokedex_owned_reward * (new_pokedex_owned - self.pokedex_owned)
+            self.pokedex_owned = new_pokedex_owned
+        
+        return reward
+    
+    def _calculate_battle_effectiveness_reward(self, env_vars):
+        """Calculate battle performance reward."""
+        reward = 0
+        
+        # Track party HP and exp changes for battle effectiveness
+        party_info = env_vars.get("party_info", (0, 0, 0))
+        current_total_level, current_total_hp, current_total_exp = party_info
+        
+        # Experience gain reward
+        if current_total_exp > self.last_exp:
+            exp_gain = current_total_exp - self.last_exp
+            reward += min(exp_gain / 1000.0, 1.0)  # Scaled exp reward
+            self.exp_gained += exp_gain
+            
+        self.last_exp = current_total_exp
+        
+        # HP management (penalty for letting Pokemon faint)
+        if current_total_hp == 0 and self.last_pokemon_hp.get('total', 1) > 0:
+            reward -= 0.5  # Penalty for party wipeout
+        
+        self.last_pokemon_hp['total'] = current_total_hp
+        
+        return reward
+    
+    def _calculate_efficiency_reward(self, env_vars, button_press):
+        """Calculate efficiency-based reward."""
+        reward = 0
+        
+        # Movement efficiency
+        current_position = (env_vars["X"], env_vars["Y"], env_vars["map_num"])
+        if self.last_position == current_position:
+            self.idle_counter += 1
+            if self.idle_counter > self.idle_penalty_threshold:
+                reward += self.idle_penalty * 2  # Stronger idle penalty for efficiency
+        else:
+            self.idle_counter = 0
+            reward += 0.01  # Small reward for movement
+        self.last_position = current_position
+        
+        # Action efficiency penalties
+        if button_press in ["start", "select"]:
+            reward += self.button_penalty * 1.5  # Stronger menu penalty
+            
+        # Step efficiency
+        reward += self.step_penalty
+        
+        return reward
+    
+    def _apply_curriculum_weighting(self, total_reward, objective_rewards):
+        """Apply curriculum-based reweighting of objectives."""
+        # Adjust weights based on current stage of curriculum
+        stage_progress = self.N_goals / max(self.N_goals_target, 1)
+        
+        # Early stage: focus more on exploration
+        if stage_progress < 0.3:
+            exploration_boost = 0.2 * objective_rewards['exploration']
+            total_reward += exploration_boost
+            
+        # Mid stage: balance story and efficiency
+        elif stage_progress < 0.7:
+            story_boost = 0.1 * objective_rewards['story_progress']
+            efficiency_boost = 0.1 * objective_rewards['efficiency']
+            total_reward += story_boost + efficiency_boost
+            
+        # Late stage: prioritize completion and efficiency
+        else:
+            completion_boost = 0.3 * objective_rewards['story_progress']
+            efficiency_boost = 0.2 * objective_rewards['efficiency']
+            total_reward += completion_boost + efficiency_boost
+            
+        return total_reward
+
     def get_progress(self):
-        return {
+        progress = {
             "Steps": self.steps,
             "Goals Reached": self.N_goals,
             "Pokédex Seen": self.pokedex_seen,
@@ -261,3 +459,14 @@ class Rewards:
             "Idle Counter": self.idle_counter,
             "Cumulative Reward": self.cumulative_reward,
         }
+        
+        # Add multi-objective scores if enabled
+        if self.use_multi_objective:
+            progress.update({
+                "Objective Scores": self.objective_scores.copy(),
+                "Exp Gained": self.exp_gained,
+                "Battle Encounters": self.battle_encounters,
+                "Current Goal Actions": self.current_goal_actions
+            })
+            
+        return progress

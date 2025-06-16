@@ -56,11 +56,15 @@ class InMemoryPPOBuffer:
             (self.update_frequency, exploration_memory_size, 1 + self.ppo_exploration_history_length),
             dtype=np.float32,
         )
+        
+        # Storage for game state variables - store as list since they're dictionaries
+        self.game_states = [None] * self.update_frequency
+        
         self.last_next_state = None
         self.episode_length = 0
 
     def store_transition(
-        self, state, next_state, action, reward, done, log_prob, value=None, exploration_tensor=None
+        self, state, next_state, action, reward, done, log_prob, value=None, exploration_tensor=None, game_state=None
     ):
         """Store a single transition in the buffer."""
         idx = self.episode_length
@@ -80,20 +84,29 @@ class InMemoryPPOBuffer:
             self.values[idx] = value
             
         if exploration_tensor is not None:
-            # Handle size mismatch gracefully - resize storage if needed
-            if exploration_tensor.shape[0] != self.exploration_tensors.shape[1]:
+            # Handle size mismatch gracefully - resize storage if needed for both dimensions
+            expected_shape = self.exploration_tensors.shape[1:]  # (locations, features)
+            actual_shape = exploration_tensor.shape
+            
+            if actual_shape != expected_shape:
                 # Resize exploration tensors to match the incoming tensor
-                new_size = exploration_tensor.shape[0]
+                new_locations, new_features = actual_shape
                 old_tensors = self.exploration_tensors
                 self.exploration_tensors = np.zeros(
-                    (self.update_frequency, new_size, 1 + self.ppo_exploration_history_length),
+                    (self.update_frequency, new_locations, new_features),
                     dtype=np.float32,
                 )
-                # Copy existing data up to the minimum size
-                min_size = min(old_tensors.shape[1], new_size)
-                self.exploration_tensors[:idx, :min_size, :] = old_tensors[:idx, :min_size, :]
+                # Copy existing data up to the minimum size if we have any
+                if idx > 0:
+                    min_locations = min(old_tensors.shape[1], new_locations)
+                    min_features = min(old_tensors.shape[2], new_features)
+                    self.exploration_tensors[:idx, :min_locations, :min_features] = old_tensors[:idx, :min_locations, :min_features]
             
             self.exploration_tensors[idx] = exploration_tensor
+        
+        # Store game state
+        if game_state is not None:
+            self.game_states[idx] = game_state.copy() if isinstance(game_state, dict) else game_state
             
         self.last_next_state = next_state
         self.episode_length += 1
@@ -147,6 +160,7 @@ class InMemoryPPOBuffer:
             "exploration_tensors": torch.FloatTensor(
                 self.exploration_tensors[self.sequence_length - 1 : self.episode_length]
             ).to(self.device),
+            "game_states": self.game_states[self.sequence_length - 1 : self.episode_length],
         }
 
     def __len__(self):

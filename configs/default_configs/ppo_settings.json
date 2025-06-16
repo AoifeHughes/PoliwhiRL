@@ -24,5 +24,18 @@
     "recovery_method": "auto",
     "enable_recovery": true,
     "recovery_degradation_threshold": 0.7,
-    "recovery_trigger_threshold": 0.5
+    "recovery_trigger_threshold": 0.5,
+    "_comment_new_features": "Enhanced PPO Architecture Features",
+    "use_game_state_features": true,
+    "game_state_feature_dim": 64,
+    "use_hierarchical_memory": true,
+    "memory_importance_threshold": 0.1,
+    "exploration_memory_size": 100,
+    "max_macro_action_length": 5,
+    "macro_action_vocab_size": 50,
+    "use_multi_objective_rewards": true,
+    "exploration_reward_weight": 0.3,
+    "story_progress_reward_weight": 0.4,
+    "battle_effectiveness_reward_weight": 0.2,
+    "efficiency_reward_weight": 0.1
    }

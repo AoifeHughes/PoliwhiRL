@@ -57,14 +57,14 @@ class PPOModel:
             gamma=0.9997  # Much gentler decay than 0.999
         )
 
-    def get_action(self, state_sequence, exploration_tensor=None):
+    def get_action(self, state_sequence, exploration_tensor=None, game_state=None):
         state_sequence = torch.FloatTensor(state_sequence).unsqueeze(0).to(self.device)
         if exploration_tensor is not None:
             exploration_tensor = (
                 torch.FloatTensor(exploration_tensor).unsqueeze(0).to(self.device)
             )
         with torch.no_grad():
-            action_probs, _ = self.actor_critic(state_sequence, exploration_tensor)
+            action_probs, _ = self.actor_critic(state_sequence, exploration_tensor, game_state=game_state)
         action = torch.multinomial(action_probs, 1).item()
         return action
 
@@ -77,13 +77,13 @@ class PPOModel:
         action = torch.multinomial(action_probs.float(), 1).item()
         return action
 
-    def compute_log_prob(self, state_sequence, action, exploration_tensor=None):
+    def compute_log_prob(self, state_sequence, action, exploration_tensor=None, game_state=None):
         state_tensor = torch.FloatTensor(state_sequence).unsqueeze(0).to(self.device)
         if exploration_tensor is not None:
             exploration_tensor = (
                 torch.FloatTensor(exploration_tensor).unsqueeze(0).to(self.device)
             )
-        action_probs, _ = self.actor_critic(state_tensor, exploration_tensor)
+        action_probs, _ = self.actor_critic(state_tensor, exploration_tensor, game_state=game_state)
         return torch.log(action_probs[0, action]).item()
 
     def compute_intrinsic_reward(self, state, next_state, action):
@@ -177,16 +177,16 @@ class PPOModel:
         if "values" in data:
             returns, advantages = self._compute_gae(
                 data["rewards"], data["values"], data["dones"], data["states"], 
-                data.get("exploration_tensors")
+                data.get("exploration_tensors"), data.get("game_states")
             )
         else:
             returns = self._compute_returns(data["rewards"], data["dones"])
             advantages = self._compute_advantages(
-                data["states"], returns, data.get("exploration_tensors")
+                data["states"], returns, data.get("exploration_tensors"), data.get("game_states")
             )
 
         new_probs, new_values = self.actor_critic(
-            data["states"], data.get("exploration_tensors")
+            data["states"], data.get("exploration_tensors"), game_state=data.get("game_states")
         )
         new_probs = torch.clamp(new_probs, 1e-10, 1.0)
         new_log_probs = torch.log(
@@ -258,9 +258,9 @@ class PPOModel:
             returns[t] = running_return
         return returns
 
-    def _compute_advantages(self, states, returns, exploration_tensors=None):
+    def _compute_advantages(self, states, returns, exploration_tensors=None, game_states=None):
         with torch.no_grad():
-            _, state_values = self.actor_critic(states, exploration_tensors)
+            _, state_values = self.actor_critic(states, exploration_tensors, game_state=game_states)
             advantages = returns - state_values.squeeze()
 
             # Check for NaN values
@@ -289,13 +289,15 @@ class PPOModel:
 
         return advantages
     
-    def _compute_gae(self, rewards, values, dones, states, exploration_tensors=None):
+    def _compute_gae(self, rewards, values, dones, states, exploration_tensors=None, game_states=None):
         """Compute Generalized Advantage Estimation (GAE)"""
         with torch.no_grad():
             # Get next state values
             # For the last state, we need to compute its value
+            last_game_state = game_states[-1:] if game_states is not None else None
             _, last_value = self.actor_critic(
-                states[-1:], exploration_tensors[-1:] if exploration_tensors is not None else None
+                states[-1:], exploration_tensors[-1:] if exploration_tensors is not None else None,
+                game_state=last_game_state
             )
             
             # Compute returns and advantages using GAE

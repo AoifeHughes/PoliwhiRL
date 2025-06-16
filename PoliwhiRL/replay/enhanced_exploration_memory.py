@@ -54,6 +54,12 @@ class EnhancedExplorationMemory:
         # Statistics
         self.total_transitions = 0
         self.total_episodes = 0
+        
+        # Performance optimization: tensor caching
+        self._cached_tensor = None
+        self._cached_tensor_enhanced = None
+        self._tensor_dirty = True
+        self._last_memory_size = 0
 
     def add_screen(self, screen_array):
         """Add a screen to the memory (backward compatibility)"""
@@ -118,6 +124,7 @@ class EnhancedExplorationMemory:
         # Record transition
         self.state_transitions[state_hash][action] = next_state_hash
         self.total_transitions += 1
+        self._invalidate_tensor_cache()
 
         # Record action outcome
         self.action_outcomes[action].append(reward)
@@ -279,15 +286,30 @@ class EnhancedExplorationMemory:
                     queue.append((next_state, path + [action]))
 
         return None  # No path found
+    
+    def _invalidate_tensor_cache(self):
+        """Invalidate cached tensors when memory changes"""
+        self._tensor_dirty = True
+        self._cached_tensor = None
+        self._cached_tensor_enhanced = None
 
     def get_memory_tensor(self, enhanced_features=False):
-        """Enhanced memory tensor with optional additional features"""
+        """Enhanced memory tensor with optional additional features (optimized with caching)"""
+        # Check if we can use cached version
+        if not self._tensor_dirty and len(self.memory) == self._last_memory_size:
+            if enhanced_features and self._cached_tensor_enhanced is not None:
+                return self._cached_tensor_enhanced
+            elif not enhanced_features and self._cached_tensor is not None:
+                return self._cached_tensor
+        
         if enhanced_features:
             # Enhanced tensor: [visits, history..., avg_reward, connectivity, is_waypoint]
             if not self.use_memory or not self.memory:
-                return np.zeros(
+                tensor = np.zeros(
                     (self.max_size, 1 + self.history_length + 3), dtype=np.float32
                 )
+                self._cached_tensor_enhanced = tensor
+                return tensor
 
             tensor = np.zeros(
                 (self.max_size, 1 + self.history_length + 3), dtype=np.float32
@@ -316,13 +338,19 @@ class EnhancedExplorationMemory:
                 tensor[i, 1 + self.history_length + 1] = connectivity
                 tensor[i, 1 + self.history_length + 2] = is_waypoint
 
+            # Cache the result
+            self._cached_tensor_enhanced = tensor
+            self._tensor_dirty = False
+            self._last_memory_size = len(self.memory)
             return tensor
         else:
             # Backward compatible: original format [visits, history...]
             if not self.use_memory or not self.memory:
-                return np.zeros(
+                tensor = np.zeros(
                     (self.max_size, 1 + self.history_length), dtype=np.float32
                 )
+                self._cached_tensor = tensor
+                return tensor
 
             tensor = np.zeros(
                 (self.max_size, 1 + self.history_length), dtype=np.float32
@@ -338,6 +366,10 @@ class EnhancedExplorationMemory:
                     if j < self.history_length:
                         tensor[i, j + 1] = 1.0
 
+            # Cache the result
+            self._cached_tensor = tensor
+            self._tensor_dirty = False
+            self._last_memory_size = len(self.memory)
             return tensor
 
     def get_exploration_bonus(self, state_hash):

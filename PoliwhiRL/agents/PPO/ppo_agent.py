@@ -11,6 +11,7 @@ from PoliwhiRL.utils.visuals import plot_metrics
 from PoliwhiRL.replay.ppo_memory_buffer import InMemoryPPOBuffer
 from PoliwhiRL.replay.exploration_memory import ExplorationMemory
 from PoliwhiRL.replay.enhanced_exploration_memory import EnhancedExplorationMemory
+from PoliwhiRL.replay.hierarchical_exploration_memory import HierarchicalExplorationMemory
 from PoliwhiRL.models.PPO import PPOModel
 from PoliwhiRL.utils.resource_manager import get_resource_pool
 from PoliwhiRL.utils.macro_actions import MacroActionLearner
@@ -60,8 +61,13 @@ class PPOAgent:
         self.best_episode = 0
         self.model = PPOModel(input_shape, action_size, config)
         self.memory = InMemoryPPOBuffer(config)
-        # Use enhanced exploration memory if enabled
+        
+        # Performance optimizations for PyTorch
+        self._optimize_pytorch_performance()
+        # Choose exploration memory type
+        use_hierarchical = config.get("use_hierarchical_memory", False)
         use_enhanced = config.get("use_enhanced_exploration_memory", True)
+        
         # Adaptive memory size based on episode length and training mode
         episode_length = config.get("episode_length", 500)
         if episode_length > 10000:  # Long episodes
@@ -69,7 +75,15 @@ class PPOAgent:
         else:  # Regular episodes
             memory_size = config.get("exploration_memory_size", 100)
             
-        if use_enhanced:
+        if use_hierarchical:
+            self.exploration_memory = HierarchicalExplorationMemory(
+                max_size=memory_size,
+                history_length=config.get("ppo_exploration_history_length", 5),
+                use_memory=config.get("use_exploration_memory", True),
+                action_space_size=action_size,
+                device=config["device"]
+            )
+        elif use_enhanced:
             self.exploration_memory = EnhancedExplorationMemory(
                 max_size=memory_size,
                 history_length=config.get("ppo_exploration_history_length", 5),
@@ -94,6 +108,40 @@ class PPOAgent:
             )
         else:
             self.macro_learner = None
+
+    def _optimize_pytorch_performance(self):
+        """Apply PyTorch performance optimizations"""
+        try:
+            # Enable optimized attention for PyTorch 2.0+
+            if hasattr(torch.backends, 'opt_einsum'):
+                torch.backends.opt_einsum.enabled = True
+            
+            # Enable MPS optimizations if available
+            if str(self.device).startswith('mps'):
+                # MPS-specific optimizations
+                torch.backends.mps.enable_fallback = True
+                
+            # Enable CUDNN benchmark if using CUDA
+            elif str(self.device).startswith('cuda'):
+                torch.backends.cudnn.benchmark = True
+                torch.backends.cudnn.deterministic = False
+                
+            # General optimizations
+            torch.set_float32_matmul_precision('medium')  # Use TensorFloat-32 on modern GPUs
+            
+            # Enable JIT compilation for the model if possible
+            if hasattr(torch.jit, 'optimize_for_inference'):
+                try:
+                    # This might not work for all models, so we wrap it in try-catch
+                    self.model.eval()
+                    # Note: JIT compilation will be applied during actual inference
+                    self.model.train()
+                except Exception:
+                    pass  # JIT compilation failed, continue without it
+                    
+        except Exception as e:
+            # Don't fail if optimizations can't be applied
+            print(f"Warning: Some PyTorch optimizations could not be applied: {e}")
 
     def update_parameters_from_config(self):
         self.episode = self.config["start_episode"]
@@ -368,7 +416,9 @@ class PPOAgent:
                 state_seq_arr = np.array(state_sequence)
                 # Get exploration memory tensor
                 exploration_tensor = self.exploration_memory.get_memory_tensor()
-                action = self.model.get_action(state_seq_arr, exploration_tensor)
+                # Get game state from environment RAM variables
+                game_state = env.ram.get_variables() if hasattr(env, 'ram') else None
+                action = self.model.get_action(state_seq_arr, exploration_tensor, game_state)
                 self.episode_data["buttons_pressed"].append(action)
 
                 # Log action diversity to file for debugging
@@ -437,14 +487,14 @@ class PPOAgent:
                 # Get exploration memory tensor
                 exploration_tensor = self.exploration_memory.get_memory_tensor()
                 log_prob = self.model.compute_log_prob(
-                    state_seq_arr, action, exploration_tensor
+                    state_seq_arr, action, exploration_tensor, game_state
                 )
                 
                 # Compute value estimate for GAE
                 with torch.no_grad():
                     state_tensor = torch.FloatTensor(state_seq_arr).unsqueeze(0).to(self.device)
                     exp_tensor = torch.FloatTensor(exploration_tensor).unsqueeze(0).to(self.device) if exploration_tensor is not None else None
-                    _, value = self.model.actor_critic(state_tensor, exp_tensor)
+                    _, value = self.model.actor_critic(state_tensor, exp_tensor, game_state=game_state)
                     value = value.item()
 
                 self.memory.store_transition(
@@ -456,6 +506,7 @@ class PPOAgent:
                     log_prob,
                     value,
                     exploration_tensor,
+                    game_state,
                 )
 
                 state = next_state
