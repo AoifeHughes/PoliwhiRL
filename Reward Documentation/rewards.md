@@ -32,7 +32,7 @@ area
 |----------|-------|
 | x: 9, y: 1, location: 6, map_num_loc: 6 | ![Image](./Image%20Examples/x_9_y_1_location_6_map_num_loc_6.png) |
 
-Next we give two options, both trigger talking to the mother
+Next we give two options, both trigger talking to the mother, we consider these the same goal
 
  Location | Image |
 |----------|-------|
@@ -40,7 +40,7 @@ Next we give two options, both trigger talking to the mother
 | x: 9, y: 4, location: 6, map_num_loc: 6 | ![Image](./Image%20Examples/x_9_y_4_location_6_map_num_loc_6.png) |
 
 
-Finally in this room we reward for progressing past this point
+Finally in this room we reward for progressing past this point, again two points for the same goal
 
 | Location | Image |
 |----------|-------|
@@ -68,7 +68,7 @@ And then the next is for reaching the door of the professor's lab
 
 This is the first route out of town so we reward for reaching it, it means the
 player also has a pokemon and is first off on their adventure to see Mr. Pokemon
-/ Oak
+/ Oak, another two points for the same goal
 
 | Location | Image |
 |----------|-------|

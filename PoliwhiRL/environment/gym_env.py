@@ -134,7 +134,14 @@ class PyBoyEnvironment(gym.Env):
         if self.button not in self.ignored_buttons:
             self.pyboy.button(self.button, delay=self.button_hold_frames)
             frames -= self.button_hold_frames
-        self.pyboy.tick(frames, self.render)
+        
+        # Frame skipping optimization: skip all frames except the last when rendering
+        if self.render and frames > 1:
+            self.pyboy.tick(frames - 1, render=False)  # Skip frames without rendering
+            self.pyboy.tick(1, render=True)  # Render only the final frame
+        else:
+            self.pyboy.tick(frames, render=self.render)  # Original behavior for no-render or single frame
+        
         self.steps += 1
 
     def step(self, action):
