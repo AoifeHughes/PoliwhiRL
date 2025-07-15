@@ -29,7 +29,16 @@ class PPOModel:
         self.step_decay_interval = self.config.get("ppo_step_decay_interval", 1000)
 
         self._initialize_networks()
+        
+        # Initialize regularization for catastrophic forgetting prevention
+        self.regularization_weight = self.config.get("regularization_weight", 0.01)
+        self.reference_params = None  # Will store reference parameters
+        self.update_reference_frequency = self.config.get("update_reference_frequency", 50)
+        self.update_count = 0
         self._initialize_optimizers()
+        
+        # Set initial reference parameters
+        self._update_reference_params()
 
     def _initialize_networks(self):
         # Pass ppo_exploration_history_length from config if available
@@ -99,7 +108,10 @@ class PPOModel:
             data["states"][:, -1], data["next_states"][:, -1], data["actions"]
         )
 
-        loss = actor_loss + critic_loss + entropy_loss
+        # Add regularization to prevent catastrophic forgetting
+        regularization_loss = self._compute_regularization_loss()
+        
+        loss = actor_loss + critic_loss + entropy_loss + regularization_loss
         self._update_networks(loss)
 
         return loss.item(), icm_loss
@@ -398,3 +410,30 @@ class PPOModel:
         self._setup_lr_scheduler()
         
         print(f"🔄 Learning rate reset to {boosted_lr:.6f} for new curriculum stage (stage {stage_difficulty_multiplier + 1})")
+    
+    def _compute_regularization_loss(self):
+        """Compute regularization loss to prevent catastrophic forgetting."""
+        if self.reference_params is None:
+            return 0.0
+        
+        reg_loss = 0.0
+        current_params = list(self.actor_critic.parameters())
+        
+        for current_param, reference_param in zip(current_params, self.reference_params):
+            reg_loss += torch.sum((current_param - reference_param) ** 2)
+        
+        # Update reference parameters periodically
+        self.update_count += 1
+        if self.update_count % self.update_reference_frequency == 0:
+            self._update_reference_params()
+        
+        return self.regularization_weight * reg_loss
+    
+    def _update_reference_params(self):
+        """Update reference parameters for regularization."""
+        self.reference_params = []
+        for param in self.actor_critic.parameters():
+            self.reference_params.append(param.clone().detach())
+        
+        if hasattr(self, 'update_count'):
+            print(f"📌 Updated reference parameters at update {self.update_count}")

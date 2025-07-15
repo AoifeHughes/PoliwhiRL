@@ -9,9 +9,9 @@ import torch
 
 class InMemoryPPOBuffer:
     """
-    Simple in-memory buffer for PPO training data.
+    Enhanced in-memory buffer for PPO training data with experience replay.
     Stores states, actions, rewards, values, etc. in numpy arrays.
-    No persistence - data is discarded after each update cycle.
+    Includes replay buffer to retain successful trajectories and prevent catastrophic forgetting.
     """
     
     def __init__(self, config):
@@ -22,6 +22,16 @@ class InMemoryPPOBuffer:
         self.input_shape = config["input_shape"]
         self.ppo_exploration_history_length = config["ppo_exploration_history_length"]
         self.episode_length = 0
+        
+        # Experience replay buffer configuration
+        self.replay_buffer_size = config.get("replay_buffer_size", 5000)
+        self.replay_ratio = config.get("replay_ratio", 0.2)  # 20% of training data from replay
+        self.min_replay_reward = config.get("min_replay_reward", 5.0)  # Minimum reward to store
+        
+        # Initialize replay buffer
+        from collections import deque
+        self.replay_buffer = deque(maxlen=self.replay_buffer_size)
+        
         self.reset()
 
     def reset(self, config=None):

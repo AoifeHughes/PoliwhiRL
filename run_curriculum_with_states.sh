@@ -10,6 +10,14 @@ max_goals=8  # 8 total goals
 use_state_curriculum=true
 state_buffer_size=50  # Smaller buffer for demonstration
 
+# Enhanced state transfer configuration
+state_transfer_enabled=true
+state_transfer_scratch_probability=0.1  # 10% chance to start from scratch
+state_transfer_policy="performance_weighted"
+state_transfer_categories="foundation,progression,frontier,goal"
+state_transfer_ratios="foundation=0.3,progression=0.4,frontier=0.2,goal=0.1"
+state_transfer_filtering="min_success_rate=0.6,min_usage_count=3,max_age_episodes=1000"
+
 # Find the highest existing stage folder to continue from
 find_latest_stage() {
     latest_stage=0
@@ -38,6 +46,11 @@ echo ""
 echo "🧠 State Curriculum Learning Configuration:"
 echo "   • State curriculum enabled: $use_state_curriculum"
 echo "   • State buffer size: $state_buffer_size"
+echo "   • State transfer enabled: $state_transfer_enabled"
+echo "   • Scratch probability: $state_transfer_scratch_probability"
+echo "   • Transfer policy: $state_transfer_policy"
+echo "   • Transfer categories: $state_transfer_categories"
+echo "   • Transfer ratios: $state_transfer_ratios"
 echo "   • States will be saved per stage in curriculum_states/ directories"
 echo ""
 
@@ -108,10 +121,17 @@ for goals in $(seq $start_goals $max_goals); do
     echo "   • Device: $device"
     echo "   • Target goals: $goals"
     echo "   • State curriculum: enabled"
+    echo "   • State transfer: $state_transfer_enabled"
+    if [ $goals -eq 1 ]; then
+        echo "   • Stage 1: Starting from scratch only (no state transfer)"
+    else
+        echo "   • State transfer from stage $((goals-1)): enabled"
+        echo "   • Scratch probability: $state_transfer_scratch_probability"
+    fi
     echo "   • State save location: ./stage_${goals}/curriculum_states/"
 
-    # Run the training with state curriculum enabled
-    echo "🚀 Starting training for stage $goals with state curriculum..."
+    # Run the training with enhanced state curriculum and transfer
+    echo "🚀 Starting training for stage $goals with enhanced state curriculum..."
     python main.py \
         --model PPO \
         --device $device \
@@ -126,10 +146,19 @@ for goals in $(seq $start_goals $max_goals); do
         --punish_steps true \
         --report_episode true \
         --use_curriculum false \
-        --break_on_goal true \
+        --break_on_goal false \
         --load_checkpoint "$load_checkpoint" \
         --use_state_curriculum $use_state_curriculum \
-        --state_buffer_size $state_buffer_size
+        --state_buffer_size $state_buffer_size \
+        --state_transfer_enabled $state_transfer_enabled \
+        --state_transfer_scratch_probability $state_transfer_scratch_probability \
+        --state_transfer_policy $state_transfer_policy \
+        --state_transfer_categories $state_transfer_categories \
+        --state_transfer_ratios $state_transfer_ratios \
+        --state_transfer_filtering $state_transfer_filtering \
+        --use_phased_rewards true \
+        --tutorial_goals_required 3 \
+        --use_experience_replay true
 
     exit_code=$?
     if [ $exit_code -eq 0 ]; then

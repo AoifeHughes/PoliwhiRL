@@ -45,13 +45,25 @@ class CurriculumStateManager:
         output_base_dir = config.get("output_base_dir", "")
         self.current_stage = config.get("N_goals_target", 1)
         
+        # State transfer configuration
+        self.state_transfer_enabled = config.get("state_transfer_enabled", True)
+        self.state_transfer_scratch_probability = config.get("state_transfer_scratch_probability", 0.1)
+        self.state_transfer_policy = config.get("state_transfer_policy", "performance_weighted")
+        self.state_transfer_categories = config.get("state_transfer_categories", ["foundation", "progression", "frontier", "goal"])
+        self.state_transfer_ratios = config.get("state_transfer_ratios", {"foundation": 0.3, "progression": 0.4, "frontier": 0.2, "goal": 0.1})
+        self.state_transfer_filtering = config.get("state_transfer_filtering", {"min_success_rate": 0.6, "min_usage_count": 3, "max_age_episodes": 1000})
+        self.stage_1_behavior = config.get("stage_1_behavior", "scratch_only")
+        self.state_transfer_cross_stage_enabled = config.get("state_transfer_cross_stage_enabled", True)
+        
         if output_base_dir:
             # If we have a stage-specific output directory, use it
             self.save_directory = os.path.join(output_base_dir, "curriculum_states")
+            self.base_save_directory = os.path.join(output_base_dir, "curriculum_states")
         else:
             # Use stage-specific subdirectory
             stage_suffix = f"_stage_{self.current_stage}"
             self.save_directory = f"{base_save_dir}{stage_suffix}"
+            self.base_save_directory = base_save_dir
         
         # State buffer organized by category
         self.state_buffer: Dict[str, List[StateCheckpoint]] = {
@@ -92,6 +104,10 @@ class CurriculumStateManager:
         # Create save directory
         os.makedirs(self.save_directory, exist_ok=True)
         self.load_state_buffer()
+        
+        # Load states from previous stage if state transfer is enabled
+        if self.state_transfer_enabled and self.state_transfer_cross_stage_enabled and self.current_stage > 1:
+            self._load_states_from_previous_stage()
         
     def save_state_checkpoint(self, env, episode_data: Dict[str, Any]) -> Optional[StateCheckpoint]:
         """
@@ -153,14 +169,30 @@ class CurriculumStateManager:
         Returns:
             Tuple of (state_path, state_type) where state_path is None for scratch start
         """
-        if not self.use_state_curriculum or not any(self.state_buffer.values()):
+        # Handle stage 1 special case - always start from scratch
+        if self.current_stage == 1 and self.stage_1_behavior == "scratch_only":
+            return None, 'scratch'
+            
+        if not self.use_state_curriculum:
+            return None, 'scratch'
+            
+        # If state transfer is enabled, consider scratch probability override
+        if self.state_transfer_enabled:
+            if random.random() < self.state_transfer_scratch_probability:
+                return None, 'scratch'
+                
+        # Check if we have any states to sample from
+        if not any(self.state_buffer.values()):
             return None, 'scratch'
             
         # Update distribution based on performance
         self._update_sampling_distribution()
         
-        # Sample state type
-        state_type = self._sample_state_type()
+        # Sample state type (use transfer distribution if enabled)
+        if self.state_transfer_enabled and self.state_transfer_categories:
+            state_type = self._sample_state_type_with_transfer()
+        else:
+            state_type = self._sample_state_type()
         
         if state_type == 'scratch':
             return None, 'scratch'
@@ -283,6 +315,124 @@ class CurriculumStateManager:
         stats['safety_status'] = self.get_safety_status()
                 
         return stats
+        
+    def _load_states_from_previous_stage(self):
+        """Load and filter states from the previous curriculum stage."""
+        previous_stage = self.current_stage - 1
+        if previous_stage < 1:
+            return
+            
+        # Construct path to previous stage's state buffer
+        if hasattr(self, 'base_save_directory'):
+            previous_stage_dir = f"{self.base_save_directory}_stage_{previous_stage}"
+        else:
+            previous_stage_dir = f"./curriculum_states_stage_{previous_stage}"
+            
+        previous_buffer_path = os.path.join(previous_stage_dir, "state_buffer.pkl")
+        
+        if not os.path.exists(previous_buffer_path):
+            print(f"📁 No previous stage buffer found at {previous_buffer_path}")
+            return
+            
+        try:
+            with open(previous_buffer_path, 'rb') as f:
+                previous_data = pickle.load(f)
+                
+            loaded_count = 0
+            total_count = 0
+            
+            # Process states from previous stage
+            for category, states_data in previous_data.get('state_buffer', {}).items():
+                if category not in self.state_transfer_categories:
+                    continue
+                    
+                for state_data in states_data:
+                    total_count += 1
+                    if self._validate_state_for_transfer(state_data):
+                        # Convert to StateCheckpoint and add to current buffer
+                        checkpoint = StateCheckpoint(**state_data)
+                        self.state_buffer[category].append(checkpoint)
+                        loaded_count += 1
+                        
+            print(f"🔄 State Transfer: Loaded {loaded_count}/{total_count} states from stage {previous_stage}")
+            
+            # Manage buffer sizes after loading
+            self._manage_buffer_sizes()
+            
+        except Exception as e:
+            print(f"❌ Failed to load states from previous stage: {e}")
+            
+    def _validate_state_for_transfer(self, state_data: Dict[str, Any]) -> bool:
+        """Validate if a state meets criteria for transfer to current stage."""
+        # Check if state file still exists
+        if not os.path.exists(state_data.get('state_path', '')):
+            return False
+            
+        # Apply filtering criteria
+        success_rate = state_data.get('success_rate', 0.0)
+        usage_count = state_data.get('usage_count', 0)
+        timestamp = state_data.get('timestamp', 0)
+        
+        # Check minimum success rate
+        min_success_rate = self.state_transfer_filtering.get('min_success_rate', 0.6)
+        if success_rate < min_success_rate:
+            return False
+            
+        # Check minimum usage count
+        min_usage_count = self.state_transfer_filtering.get('min_usage_count', 3)
+        if usage_count < min_usage_count:
+            return False
+            
+        # Check age (convert episodes to time-based check)
+        max_age_episodes = self.state_transfer_filtering.get('max_age_episodes', 1000)
+        current_time = time.time()
+        age_hours = (current_time - timestamp) / 3600
+        # Rough approximation: 1 episode ≈ 5 minutes
+        max_age_hours = max_age_episodes * 5 / 60
+        if age_hours > max_age_hours:
+            return False
+            
+        return True
+        
+    def _manage_buffer_sizes(self):
+        """Manage buffer sizes across all categories after state loading."""
+        total_states = sum(len(states) for states in self.state_buffer.values())
+        
+        if total_states > self.state_buffer_size:
+            # Proportionally reduce each category
+            reduction_factor = self.state_buffer_size / total_states
+            
+            for category in self.state_buffer:
+                target_size = int(len(self.state_buffer[category]) * reduction_factor)
+                if len(self.state_buffer[category]) > target_size:
+                    # Keep best performing states
+                    self.state_buffer[category].sort(key=lambda x: (x.success_rate, x.usage_count, x.timestamp), reverse=True)
+                    self.state_buffer[category] = self.state_buffer[category][:target_size]
+                    
+    def _sample_state_type_with_transfer(self) -> str:
+        """Sample state type using transfer-specific distribution."""
+        # Build distribution based on transfer ratios
+        available_categories = []
+        probabilities = []
+        
+        # Check which categories have states
+        for category in self.state_transfer_categories:
+            if category in self.state_buffer and self.state_buffer[category]:
+                available_categories.append(category)
+                probabilities.append(self.state_transfer_ratios.get(category, 0.0))
+                
+        # If no categories available, return scratch
+        if not available_categories:
+            return 'scratch'
+            
+        # Normalize probabilities
+        total_prob = sum(probabilities)
+        if total_prob > 0:
+            probabilities = [p / total_prob for p in probabilities]
+        else:
+            probabilities = [1.0 / len(available_categories)] * len(available_categories)
+            
+        return np.random.choice(available_categories, p=probabilities)
         
     def _should_save_state(self, episode_data: Dict[str, Any]) -> bool:
         """Determine if a state is worth saving."""

@@ -17,6 +17,36 @@ class StoreBooleanAction(argparse.Action):
         setattr(namespace, self.dest, values.lower() in ("yes", "true", "t", "1"))
 
 
+class StoreListAction(argparse.Action):
+    # Custom action to store comma-separated lists from command line arguments
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values:
+            setattr(namespace, self.dest, [item.strip() for item in values.split(',')])
+        else:
+            setattr(namespace, self.dest, [])
+
+
+class StoreDictAction(argparse.Action):
+    # Custom action to store key=value pairs as dictionary from command line arguments
+    def __call__(self, parser, namespace, values, option_string=None):
+        result = {}
+        if values:
+            for item in values.split(','):
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    # Try to convert to float if possible, otherwise keep as string
+                    try:
+                        result[key] = float(value)
+                    except ValueError:
+                        try:
+                            result[key] = int(value)
+                        except ValueError:
+                            result[key] = value
+        setattr(namespace, self.dest, result)
+
+
 def load_default_config():
     default_config_path = "./configs/default_configs"
     jsons = glob(default_config_path + "/*.json")
@@ -90,6 +120,22 @@ def parse_args():
                 f"--{key}",
                 type=str,
                 action=StoreBooleanAction,
+                # Don't set defaults here - we'll handle priority manually
+                default=argparse.SUPPRESS,
+            )
+        elif isinstance(value, list):
+            cmd_parser.add_argument(
+                f"--{key}",
+                type=str,
+                action=StoreListAction,
+                # Don't set defaults here - we'll handle priority manually
+                default=argparse.SUPPRESS,
+            )
+        elif isinstance(value, dict):
+            cmd_parser.add_argument(
+                f"--{key}",
+                type=str,
+                action=StoreDictAction,
                 # Don't set defaults here - we'll handle priority manually
                 default=argparse.SUPPRESS,
             )

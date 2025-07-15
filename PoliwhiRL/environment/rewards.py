@@ -11,13 +11,19 @@ class Rewards:
         self.break_on_goal = config["break_on_goal"]
         self.punish_steps = config["punish_steps"]
 
-        # Multi-objective reward system
-        self.use_multi_objective = config.get("use_multi_objective_rewards", True)
+        # Phased reward system for tutorial → exploration transition
+        self.use_phased_rewards = config.get("use_phased_rewards", True)
+        self.tutorial_phase = True  # Start in tutorial mode
+        self.tutorial_goals_completed = 0
+        self.tutorial_goals_required = config.get("tutorial_goals_required", 3)
+        self.phase_transition_bonus = config.get("phase_transition_bonus", 5.0)
+        
+        # Multi-objective reward system (simplified)
+        self.use_multi_objective = config.get("use_multi_objective_rewards", False)  # Disabled by default
         self.reward_weights = {
-            'exploration': config.get("exploration_reward_weight", 0.3),
-            'story_progress': config.get("story_progress_reward_weight", 0.4),
-            'battle_effectiveness': config.get("battle_effectiveness_reward_weight", 0.2),
-            'efficiency': config.get("efficiency_reward_weight", 0.1)
+            'exploration': config.get("exploration_reward_weight", 0.4),
+            'story_progress': config.get("story_progress_reward_weight", 0.3),
+            'efficiency': config.get("efficiency_reward_weight", 0.3)
         }
 
         # Rescaled reward values - simplified and positive-focused
@@ -28,28 +34,25 @@ class Rewards:
         self.medium_penalty = -0.1
         self.large_penalty = -0.5
 
-        # Goal achievement rewards - scale with episode difficulty
-        episode_scale = max(1.0, self.max_steps / 1000.0)  # Scale based on episode length
-        self.goal_reward = 10.0 * episode_scale  # Scale goal rewards with episode length
-        self.final_goal_bonus = 5.0 * episode_scale  # Extra bonus for completing all goals
+        # Fixed reward values - no episode length scaling to prevent non-stationary learning
+        self.goal_reward = 5.0  # Reduced tutorial goal reward
+        self.final_goal_bonus = 2.0  # Reduced final bonus
 
         # Clipping
-        self.clip = 20.0  # Reasonable clipping range
+        self.clip = 15.0  # Reduced clipping range
 
-        # Other rewards and penalties - scaled for episode length
-        self.exploration_reward = 0.2 * episode_scale  # Scale exploration bonus
-        # Dramatically reduce step penalty for long episodes
-        step_penalty_scale = min(1.0, 100.0 / self.max_steps)  # Reduce penalty for longer episodes
-        self.step_penalty = -0.01 * step_penalty_scale if self.punish_steps else 0
+        # Fixed rewards independent of episode length
+        self.exploration_reward = 1.0  # Increased exploration reward
+        self.step_penalty = -0.001 if self.punish_steps else 0  # Small constant penalty
         self.button_penalty = self.small_penalty  # Keep menu penalty small
-        self.pokedex_seen_reward = self.small_reward * episode_scale
-        self.pokedex_owned_reward = self.medium_reward * episode_scale
+        self.pokedex_seen_reward = 1.5  # Increased pokedex rewards
+        self.pokedex_owned_reward = 3.0  # Increased pokedex rewards
         
-        # Enhanced exploration parameters
-        self.novelty_reward = 0.1 * episode_scale  # Scale novelty reward
-        self.idle_penalty_threshold = min(50, max(10, self.max_steps // 100))  # Scale idle threshold
-        self.idle_penalty = -0.1 * step_penalty_scale  # Scale idle penalty
-        self.map_transition_bonus = 0.5 * episode_scale  # Scale map bonus
+        # Fixed exploration parameters
+        self.novelty_reward = 0.5  # Increased novelty reward
+        self.idle_penalty_threshold = 30  # Fixed idle threshold
+        self.idle_penalty = -0.05  # Fixed idle penalty
+        self.map_transition_bonus = 2.0  # Increased map bonus
 
         # Multi-objective tracking
         self.objective_scores = {
@@ -93,11 +96,11 @@ class Rewards:
         self.current_goal_index = 0
 
         # Distance-based guidance reward
-        self.distance_reward_factor = 0.1 * episode_scale  # Scale distance reward
+        self.distance_reward_factor = 0.1  # Fixed distance reward
         
         # Milestone system for long episodes
         self.milestone_interval = max(100, self.max_steps // 20)  # Milestone every 5% of episode
-        self.milestone_reward = 1.0 * episode_scale  # Reward for reaching milestones
+        self.milestone_reward = 1.0  # Fixed milestone reward
         self.last_milestone = 0
         
         # Simplified tracking
@@ -150,7 +153,9 @@ class Rewards:
         self.steps += 1
         self.current_goal_actions += 1
         
-        if self.use_multi_objective:
+        if self.use_phased_rewards:
+            reward, done = self._calculate_phased_reward(env_vars, button_press)
+        elif self.use_multi_objective:
             reward, done = self._calculate_multi_objective_reward(env_vars, button_press)
         else:
             reward, done = self._calculate_single_objective_reward(env_vars, button_press)
@@ -288,11 +293,10 @@ class Rewards:
                 # Simple flat reward for goal achievement
                 reward = self.goal_reward
                 
-                # Bonus for completing all goals
+                # Bonus for completing all goals - but never terminate episode
                 if self.N_goals >= self.N_goals_target:
                     reward += self.final_goal_bonus
-                    if self.break_on_goal:
-                        self.done = True
+                    # Note: Tutorial phase complete, but episode continues for exploration
                         
                 return reward
         return 0
@@ -308,11 +312,10 @@ class Rewards:
             # Simple flat reward
             reward = self.goal_reward
             
-            # Bonus for completing all goals
+            # Bonus for completing all goals - but never terminate episode
             if self.N_goals >= self.N_goals_target:
                 reward += self.final_goal_bonus
-                if self.break_on_goal:
-                    self.done = True
+                # Note: Tutorial phase complete, but episode continues for exploration
                     
             return reward
         return 0
@@ -447,6 +450,100 @@ class Rewards:
             total_reward += completion_boost + efficiency_boost
             
         return total_reward
+
+    def _calculate_phased_reward(self, env_vars, button_press):
+        """Calculate reward using phased system: tutorial → exploration transition."""
+        reward = 0
+        done = False
+        
+        if self.tutorial_phase:
+            # Tutorial phase: focus on goal completion
+            reward += self._tutorial_phase_reward(env_vars, button_press)
+            
+            # Check if we should transition to exploration phase
+            if self.tutorial_goals_completed >= self.tutorial_goals_required:
+                self._transition_to_exploration_phase()
+                reward += self.phase_transition_bonus
+        else:
+            # Exploration phase: focus on pokedex and exploration
+            reward += self._exploration_phase_reward(env_vars, button_press)
+        
+        # Always add step penalty for efficiency
+        reward += self.step_penalty
+        
+        return np.clip(reward, -self.clip, self.clip), done
+
+    def _tutorial_phase_reward(self, env_vars, button_press):
+        """Reward calculation during tutorial phase."""
+        reward = 0
+        
+        # High rewards for tutorial goal completion
+        goal_reward = self._check_goals(env_vars)
+        if goal_reward > 0:
+            self.tutorial_goals_completed += 1
+            reward += goal_reward
+        
+        # Small exploration bonus even during tutorial
+        if self._new_location_discovered(env_vars):
+            reward += 0.3
+            
+        return reward
+
+    def _exploration_phase_reward(self, env_vars, button_press):
+        """Reward calculation during exploration phase."""
+        reward = 0
+        
+        # Pokedex rewards become primary
+        pokedex_reward = self._check_pokedex_progress(env_vars)
+        reward += pokedex_reward
+        
+        # Exploration rewards
+        if self._new_location_discovered(env_vars):
+            reward += self.exploration_reward
+            
+        # Map transition bonus
+        if self._new_map_discovered(env_vars):
+            reward += self.map_transition_bonus
+            
+        return reward
+
+    def _transition_to_exploration_phase(self):
+        """Handle transition from tutorial to exploration phase."""
+        self.tutorial_phase = False
+        print(f"🎯 Tutorial complete! Transitioning to exploration phase after {self.tutorial_goals_completed} goals")
+
+    def _new_location_discovered(self, env_vars):
+        """Check if agent discovered a new location."""
+        current_location = ((env_vars["X"], env_vars["Y"]), env_vars["map_num"])
+        if current_location not in self.explored_tiles:
+            self.explored_tiles.add(current_location)
+            return True
+        return False
+
+    def _new_map_discovered(self, env_vars):
+        """Check if agent discovered a new map."""
+        if env_vars["map_num"] not in self.discovered_maps:
+            self.discovered_maps.add(env_vars["map_num"])
+            return True
+        return False
+
+    def _check_pokedex_progress(self, env_vars):
+        """Check for pokedex progress and return reward."""
+        reward = 0
+        
+        # Check seen pokedex progress
+        if env_vars["pokedex_seen"] > self.pokedex_seen:
+            new_seen = env_vars["pokedex_seen"] - self.pokedex_seen
+            reward += new_seen * self.pokedex_seen_reward
+            self.pokedex_seen = env_vars["pokedex_seen"]
+        
+        # Check owned pokedex progress
+        if env_vars["pokedex_owned"] > self.pokedex_owned:
+            new_owned = env_vars["pokedex_owned"] - self.pokedex_owned
+            reward += new_owned * self.pokedex_owned_reward
+            self.pokedex_owned = env_vars["pokedex_owned"]
+            
+        return reward
 
     def get_progress(self):
         progress = {
