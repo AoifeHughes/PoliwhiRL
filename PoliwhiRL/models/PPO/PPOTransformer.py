@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 from PoliwhiRL.models.CNN.GameBoy import GameBoyOptimizedCNN
 from PoliwhiRL.models.transformers.positional_encoding import PositionalEncoding
 from .game_state_encoder import GameStateEncoder
@@ -39,49 +40,41 @@ class ExplorationEncoder(nn.Module):
         self.old_input_features = 1 + history_length  # Original format
         self.new_input_features = 8  # Hierarchical format
         
-        # Feature embedding layers for old format
+        # Feature embedding layers for old format (simplified)
         self.old_feature_embedding = nn.Sequential(
             nn.Linear(self.old_input_features, 64),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(64, 128),
+            nn.Linear(64, 96),
             nn.ReLU(),
-            nn.Dropout(0.1),
         )
         
-        # Feature embedding layers for new hierarchical format
+        # Feature embedding layers for new hierarchical format (simplified)
         self.new_feature_embedding = nn.Sequential(
             nn.Linear(self.new_input_features, 64),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(64, 128),
+            nn.Linear(64, 96),
             nn.ReLU(),
-            nn.Dropout(0.1),
         )
         
-        # Positional encoding for location sequences
-        self.positional_encoding = nn.Parameter(torch.randn(1000, 128) * 0.1)
+        # Positional encoding for location sequences (smaller)
+        self.positional_encoding = nn.Parameter(torch.randn(1000, 96) * 0.1)
         
-        # Multi-head attention with importance-weighted attention
-        self.importance_attention = nn.MultiheadAttention(128, 8, batch_first=True)
-        self.spatial_attention = nn.MultiheadAttention(128, 4, batch_first=True)
+        # Simplified attention (only one layer)
+        self.attention = nn.MultiheadAttention(96, 4, batch_first=True)
         
         # Layer normalization
-        self.layer_norm1 = nn.LayerNorm(128)
-        self.layer_norm2 = nn.LayerNorm(128)
+        self.layer_norm = nn.LayerNorm(96)
         
-        # Importance-based weighting
+        # Simplified importance weighting
         self.importance_gate = nn.Sequential(
-            nn.Linear(128, 64),
+            nn.Linear(96, 32),
             nn.ReLU(),
-            nn.Linear(64, 1),
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
         
         # Memory compression for variable-length sequences
         self.memory_compressor = nn.Sequential(
-            nn.Linear(128, 96),
-            nn.ReLU(),
             nn.Linear(96, d_model)
         )
         
@@ -95,11 +88,11 @@ class ExplorationEncoder(nn.Module):
         # Auto-detect input format and use appropriate embedding
         if num_features == self.new_input_features:
             # New hierarchical format
-            embedded = self.new_feature_embedding(x)  # [batch_size, num_locations, 128]
+            embedded = self.new_feature_embedding(x)  # [batch_size, num_locations, 96]
             use_advanced_features = True
         elif num_features == self.old_input_features:
             # Old format - fallback to simpler processing
-            embedded = self.old_feature_embedding(x)  # [batch_size, num_locations, 128]
+            embedded = self.old_feature_embedding(x)  # [batch_size, num_locations, 96]
             use_advanced_features = False
         else:
             raise ValueError(f"Unexpected input feature size: {num_features}. Expected {self.old_input_features} or {self.new_input_features}")
@@ -108,24 +101,20 @@ class ExplorationEncoder(nn.Module):
         if not use_advanced_features:
             # Simple processing for old format
             # Just use mean pooling like the original
-            pooled_features = embedded.mean(dim=1)  # [batch_size, 128]
+            pooled_features = embedded.mean(dim=1)  # [batch_size, 96]
             output = self.memory_compressor(pooled_features)  # [batch_size, d_model]
             return self.output_projection(output)
             
-        # Advanced processing for hierarchical format continues below...
+        # Simplified processing for hierarchical format
         
         # Add positional encoding based on sequence order
         if num_locations <= self.positional_encoding.size(0):
             pos_enc = self.positional_encoding[:num_locations].unsqueeze(0).expand(batch_size, -1, -1)
             embedded = embedded + pos_enc
         
-        # Importance-weighted attention
-        importance_weighted, importance_weights = self.importance_attention(embedded, embedded, embedded)
-        embedded = self.layer_norm1(importance_weighted + embedded)
-        
-        # Spatial relationship attention
-        spatial_attended, spatial_weights = self.spatial_attention(embedded, embedded, embedded)
-        embedded = self.layer_norm2(spatial_attended + embedded)
+        # Single attention layer (simplified)
+        attended, attention_weights = self.attention(embedded, embedded, embedded)
+        embedded = self.layer_norm(attended + embedded)
         
         # Compute importance gates for each location
         importance_gates = self.importance_gate(embedded)  # [batch_size, num_locations, 1]
@@ -135,7 +124,7 @@ class ExplorationEncoder(nn.Module):
         
         # Adaptive pooling based on importance
         importance_sum = importance_gates.sum(dim=1, keepdim=True) + 1e-8
-        pooled_features = weighted_features.sum(dim=1) / importance_sum.squeeze(-1)  # [batch_size, 128]
+        pooled_features = weighted_features.sum(dim=1) / importance_sum.squeeze(-1)  # [batch_size, 96]
         
         # Memory compression
         compressed = self.memory_compressor(pooled_features)  # [batch_size, d_model]
@@ -160,25 +149,99 @@ class ExplorationEncoder(nn.Module):
                 pos_enc = self.positional_encoding[:num_locations].unsqueeze(0).expand(batch_size, -1, -1)
                 embedded = embedded + pos_enc
             
-            _, importance_weights = self.importance_attention(embedded, embedded, embedded)
-            _, spatial_weights = self.spatial_attention(embedded, embedded, embedded)
+            _, attention_weights = self.attention(embedded, embedded, embedded)
             importance_gates = self.importance_gate(embedded)
             
             return {
-                'importance_attention': importance_weights,
-                'spatial_attention': spatial_weights, 
+                'attention_weights': attention_weights,
                 'importance_gates': importance_gates
             }
 
 
+class SparseTransformerEncoderLayer(nn.Module):
+    """Transformer encoder layer with sparse attention patterns for long sequences"""
+    
+    def __init__(self, d_model, nhead, batch_first=True, window_size=32):
+        super(SparseTransformerEncoderLayer, self).__init__()
+        self.d_model = d_model
+        self.nhead = nhead
+        self.batch_first = batch_first
+        self.window_size = window_size
+        
+        # Multi-head attention
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, batch_first=batch_first)
+        
+        # Feed forward network
+        self.linear1 = nn.Linear(d_model, d_model * 4)
+        self.linear2 = nn.Linear(d_model * 4, d_model)
+        self.dropout = nn.Dropout(0.1)
+        
+        # Layer normalization
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        
+        # Activation
+        self.activation = nn.ReLU()
+        
+    def create_sparse_mask(self, seq_len, device):
+        """Create a sparse attention mask for long sequences"""
+        mask = torch.full((seq_len, seq_len), float('-inf'), device=device)
+        
+        # Local attention window
+        for i in range(seq_len):
+            # Allow attention to local window
+            start = max(0, i - self.window_size // 2)
+            end = min(seq_len, i + self.window_size // 2 + 1)
+            mask[i, start:end] = 0.0
+            
+            # Global attention to every 4th position
+            global_positions = list(range(0, seq_len, 4))
+            for pos in global_positions:
+                mask[i, pos] = 0.0
+                
+            # Always attend to the last position (most recent)
+            mask[i, -1] = 0.0
+            
+        return mask
+    
+    def forward(self, src, src_mask=None, src_key_padding_mask=None):
+        # src shape: [batch_size, seq_len, d_model]
+        batch_size, seq_len, d_model = src.size()
+        
+        # Create sparse attention mask for long sequences
+        if seq_len > self.window_size:
+            sparse_mask = self.create_sparse_mask(seq_len, src.device)
+        else:
+            sparse_mask = None
+            
+        # Self-attention with sparse mask
+        src2, attention_weights = self.self_attn(
+            src, src, src, 
+            attn_mask=sparse_mask,
+            key_padding_mask=src_key_padding_mask
+        )
+        
+        # Add & norm
+        src = self.norm1(src + self.dropout(src2))
+        
+        # Feed forward
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
+        
+        # Add & norm
+        src = self.norm2(src + self.dropout(src2))
+        
+        return src
+
+
 class PPOTransformer(nn.Module):
     def __init__(
-        self, input_shape, action_size, d_model=256, nhead=8, num_layers=6, **kwargs
+        self, input_shape, action_size, d_model=192, nhead=6, num_layers=4, **kwargs
     ):
         super(PPOTransformer, self).__init__()
         self.action_size = action_size
         self.input_shape = input_shape
         self.d_model = d_model
+        self.use_gradient_checkpointing = kwargs.get("use_gradient_checkpointing", True)
 
         self.flexible_input = FlexibleInputLayer(input_shape, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len=1000)
@@ -215,12 +278,30 @@ class PPOTransformer(nn.Module):
         self.goal_embedding = nn.Embedding(8, d_model // 4)  # Support up to 8 goals
         self.goal_projection = nn.Linear(d_model // 4, d_model)
 
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, batch_first=True
-        )
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layer, num_layers=num_layers
-        )
+        # Sparse attention configuration
+        self.use_sparse_attention = kwargs.get("use_sparse_attention", False)
+        
+        if self.use_sparse_attention:
+            # Create custom transformer layers with sparse attention
+            self.encoder_layers = nn.ModuleList([
+                SparseTransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+                for _ in range(num_layers)
+            ])
+            self.transformer_encoder = None  # We'll use custom layers
+        else:
+            # Standard transformer layers
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=d_model, nhead=nhead, batch_first=True
+            )
+            self.transformer_encoder = nn.TransformerEncoder(
+                encoder_layer, num_layers=num_layers
+            )
+            
+            # Store individual encoder layers for gradient checkpointing
+            self.encoder_layers = nn.ModuleList([
+                nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+                for _ in range(num_layers)
+            ])
 
         # Calculate input dimension for actor/critic heads
         # Base: d_model * 2 (visual + exploration)
@@ -229,26 +310,20 @@ class PPOTransformer(nn.Module):
         if self.use_game_state:
             actor_critic_input_dim += game_state_feature_dim
         
-        # Enhanced Actor head with deeper layers for complex decision making
-        # Support both primitive and macro actions
+        # Simplified Actor head for better performance
         self.primitive_actor = nn.Sequential(
             nn.Linear(actor_critic_input_dim, d_model),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Dropout(0.1),
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Linear(d_model // 2, action_size)
         )
         
-        # Macro action head (only if macro actions are enabled)
+        # Simplified Macro action head (only if macro actions are enabled)
         if self.use_macro_actions:
             self.macro_actor = nn.Sequential(
                 nn.Linear(actor_critic_input_dim, d_model),
                 nn.ReLU(),
-                nn.Dropout(0.1),
                 nn.Linear(d_model, d_model // 2),
                 nn.ReLU(),
                 nn.Linear(d_model // 2, 1000)  # Max macro actions
@@ -262,14 +337,10 @@ class PPOTransformer(nn.Module):
                 nn.Softmax(dim=-1)
             )
         
-        # Enhanced Critic head with separate value estimation pathway
+        # Simplified Critic head for better performance
         self.critic_layers = nn.Sequential(
             nn.Linear(actor_critic_input_dim, d_model),
             nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Dropout(0.1),
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Linear(d_model // 2, 1)
@@ -290,7 +361,27 @@ class PPOTransformer(nn.Module):
             x = x + goal_features
         
         x = self.pos_encoder(x)
-        x = self.transformer_encoder(x)
+        
+        # Apply transformer layers with optional gradient checkpointing and sparse attention
+        if self.use_sparse_attention:
+            # Use sparse attention layers
+            if self.use_gradient_checkpointing and self.training:
+                # Use gradient checkpointing for memory efficiency
+                for layer in self.encoder_layers:
+                    x = checkpoint(layer, x, use_reentrant=False)
+            else:
+                # Use sparse attention without checkpointing
+                for layer in self.encoder_layers:
+                    x = layer(x)
+        else:
+            # Use standard transformer encoder
+            if self.use_gradient_checkpointing and self.training:
+                # Use gradient checkpointing for memory efficiency
+                for layer in self.encoder_layers:
+                    x = checkpoint(layer, x, use_reentrant=False)
+            else:
+                # Use standard transformer encoder
+                x = self.transformer_encoder(x)
 
         # Use the last output of the sequence
         x = x[:, -1, :]

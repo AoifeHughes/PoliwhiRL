@@ -54,16 +54,16 @@ echo "   • Transfer ratios: $state_transfer_ratios"
 echo "   • States will be saved per stage in curriculum_states/ directories"
 echo ""
 
-# Define episode lengths for each goal level
+# Define episode lengths for each goal level - more gradual progression
 episode_lengths=(
     200    # 1 goal - allow more exploration for state collection
-    250    # 2 goals
-    500    # 3 goals
+    300    # 2 goals
+    450    # 3 goals
     600    # 4 goals
-    4000   # 5 goals
-    5000   # 6 goals
-    10000  # 7 goals
-    12000  # 8 goals
+    800    # 5 goals (was 4000 - too big a jump!)
+    1000   # 6 goals (was 5000)
+    1500   # 7 goals (was 10000)
+    2000   # 8 goals (was 12000)
 )
 
 # Training parameters optimized for state curriculum

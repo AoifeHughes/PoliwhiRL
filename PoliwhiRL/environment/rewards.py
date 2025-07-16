@@ -34,25 +34,28 @@ class Rewards:
         self.medium_penalty = -0.1
         self.large_penalty = -0.5
 
-        # Fixed reward values - no episode length scaling to prevent non-stationary learning
-        self.goal_reward = 5.0  # Reduced tutorial goal reward
-        self.final_goal_bonus = 2.0  # Reduced final bonus
-
-        # Clipping
-        self.clip = 15.0  # Reduced clipping range
-
-        # Fixed rewards independent of episode length
-        self.exploration_reward = 1.0  # Increased exploration reward
-        self.step_penalty = -0.001 if self.punish_steps else 0  # Small constant penalty
-        self.button_penalty = self.small_penalty  # Keep menu penalty small
-        self.pokedex_seen_reward = 1.5  # Increased pokedex rewards
-        self.pokedex_owned_reward = 3.0  # Increased pokedex rewards
+        # Episode-length aware reward scaling to maintain balance
+        base_episode_length = 500  # Reference length for reward scaling
+        length_scale = max(1.0, self.max_steps / base_episode_length)
         
-        # Fixed exploration parameters
-        self.novelty_reward = 0.5  # Increased novelty reward
+        self.goal_reward = 5.0 * length_scale  # Scales up for longer episodes
+        self.final_goal_bonus = 2.0 * length_scale  # Scales up for longer episodes
+
+        # Episode-length scaled clipping to prevent early clipping in long episodes
+        self.clip = 15.0 * length_scale  # Scales with episode length
+
+        # Episode-length scaled rewards to maintain balance
+        self.exploration_reward = 1.0 * length_scale  # Scales with episode length
+        self.step_penalty = -0.001 if self.punish_steps else 0  # Keep step penalty constant
+        self.button_penalty = self.small_penalty  # Keep menu penalty small
+        self.pokedex_seen_reward = 1.5 * length_scale  # Scales with episode length
+        self.pokedex_owned_reward = 3.0 * length_scale  # Scales with episode length
+        
+        # Episode-length scaled exploration parameters
+        self.novelty_reward = 0.5 * length_scale  # Scales with episode length
         self.idle_penalty_threshold = 30  # Fixed idle threshold
         self.idle_penalty = -0.05  # Fixed idle penalty
-        self.map_transition_bonus = 2.0  # Increased map bonus
+        self.map_transition_bonus = 2.0 * length_scale  # Scales with episode length
 
         # Multi-objective tracking
         self.objective_scores = {
@@ -96,7 +99,7 @@ class Rewards:
         self.current_goal_index = 0
 
         # Distance-based guidance reward
-        self.distance_reward_factor = 0.1  # Fixed distance reward
+        self.distance_reward_factor = 0.1 * length_scale  # Scales with episode length
         
         # Milestone system for long episodes
         self.milestone_interval = max(100, self.max_steps // 20)  # Milestone every 5% of episode

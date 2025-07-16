@@ -61,6 +61,10 @@ class PPOAgent:
         self.best_reward = float("-inf")
         self.best_episode = 0
         self.model = PPOModel(input_shape, action_size, config)
+        
+        # Set initial curriculum state
+        self.model.set_current_goals(self.current_n_goals)
+        self.model.set_stage_episode(self.stage_episode)
         self.memory = InMemoryPPOBuffer(config)
         
         # Performance optimizations for PyTorch
@@ -185,6 +189,11 @@ class PPOAgent:
             self.stage_episode = 0
             self.stage_start_episode = self.episode
             self.current_n_goals = new_n_goals
+            
+            # Update model with new stage information
+            if hasattr(self, 'model'):
+                self.model.set_current_goals(self.current_n_goals)
+                self.model.set_stage_episode(self.stage_episode)
             
             # Reset performance tracking for new stage
             self.performance_window.clear()
@@ -311,6 +320,9 @@ class PPOAgent:
             self.run_episode(record_loc=record_loc)
             self.episode += 1
             self.stage_episode += 1
+            # Update model with new stage episode for entropy decay
+            if hasattr(self, 'model'):
+                self.model.set_stage_episode(self.stage_episode)
 
             if is_subprocess and episode_idx % 5 == 0:
                 self._log_training_progress(f"Completed episode {self.episode - 1}")

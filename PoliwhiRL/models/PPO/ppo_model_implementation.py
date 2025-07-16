@@ -49,6 +49,8 @@ class PPOModel:
             self.input_shape,
             self.action_size,
             ppo_exploration_history_length=ppo_exploration_history_length,
+            use_gradient_checkpointing=self.config.get("use_gradient_checkpointing", True),
+            use_sparse_attention=self.config.get("use_sparse_attention", False),
         ).to(self.device)
         self.icm = ICMModule(self.input_shape, self.action_size, self.config)
 
@@ -103,7 +105,13 @@ class PPOModel:
         if self.entropy_decay_mode == "step":
             self.total_steps += len(data["states"])
         
-        actor_loss, critic_loss, entropy_loss = self._compute_ppo_losses(data, episode)
+        # Ensure stage_episode is properly synchronized for curriculum learning
+        if hasattr(self, 'stage_episode'):
+            actual_episode = self.stage_episode
+        else:
+            actual_episode = episode
+            
+        actor_loss, critic_loss, entropy_loss = self._compute_ppo_losses(data, actual_episode)
         icm_loss = self.icm.update(
             data["states"][:, -1], data["next_states"][:, -1], data["actions"]
         )
@@ -128,6 +136,10 @@ class PPOModel:
         # This prevents entropy collapse across curriculum stages
         stage_episode = getattr(self, "stage_episode", episode)
         
+        # Stage-specific entropy boost for challenging transitions
+        current_goals = getattr(self, "current_goals", 1)
+        stage_entropy_boost = self._get_stage_entropy_boost(current_goals, stage_episode)
+        
         # MUCH gentler entropy decay - only after initial exploration phase
         if stage_episode < 50:
             # Keep high entropy for first 50 episodes of each stage
@@ -142,8 +154,8 @@ class PPOModel:
         # Adaptive entropy boost for stage transitions
         entropy_boost = getattr(self, "entropy_boost", 0.0)
         
-        # Combine base and boost
-        final_entropy = base_entropy + entropy_boost
+        # Combine base, boost, and stage-specific boost
+        final_entropy = base_entropy + entropy_boost + stage_entropy_boost
         
         # MUCH higher floor to prevent collapse - never below 60% of initial
         exploration_floor = max(self.entropy_coef * 0.6, 0.03)
@@ -152,6 +164,32 @@ class PPOModel:
         # Cap at 2x initial to prevent instability
         max_entropy = self.entropy_coef * 2.0
         return min(final_entropy, max_entropy)
+    
+    def _get_stage_entropy_boost(self, current_goals, stage_episode):
+        """Get stage-specific entropy boost based on difficulty."""
+        # Higher entropy boost for more challenging stages
+        if current_goals >= 5:
+            # Stage 5+ needs significant exploration boost
+            if stage_episode < 20:
+                return 0.15  # Large boost for first 20 episodes
+            elif stage_episode < 50:
+                return 0.10  # Medium boost for episodes 20-50
+            else:
+                return 0.05  # Small boost for later episodes
+        elif current_goals >= 3:
+            # Stage 3-4 needs moderate exploration boost
+            if stage_episode < 20:
+                return 0.08
+            elif stage_episode < 40:
+                return 0.05
+            else:
+                return 0.02
+        else:
+            # Stage 1-2 needs minimal boost
+            if stage_episode < 10:
+                return 0.05
+            else:
+                return 0.0
     
     def _get_entropy_coef_step_based(self):
         # Step-based entropy decay for long episodes
@@ -302,8 +340,11 @@ class PPOModel:
         return advantages
     
     def _compute_gae(self, rewards, values, dones, states, exploration_tensors=None, game_states=None):
-        """Compute Generalized Advantage Estimation (GAE)"""
+        """Compute Generalized Advantage Estimation (GAE) with truncation for long sequences"""
         with torch.no_grad():
+            # Get GAE truncation length from config
+            gae_truncation_length = self.config.get("gae_truncation_length", 64)
+            
             # Get next state values
             # For the last state, we need to compute its value
             last_game_state = game_states[-1:] if game_states is not None else None
@@ -320,24 +361,60 @@ class PPOModel:
             gae = 0
             next_value = last_value.squeeze()
             
-            # Backward iteration through the trajectory
-            for t in reversed(range(len(rewards))):
-                if t == len(rewards) - 1:
-                    next_non_terminal = 1.0 - dones[t].float()
-                    next_values = next_value
-                else:
-                    next_non_terminal = 1.0 - dones[t].float()
-                    next_values = values[t + 1]
-                
-                # TD residual: r + γV(s') - V(s)
-                delta = rewards[t] + self.gamma * next_values * next_non_terminal - values[t]
-                
-                # GAE: A_t = δ_t + γλA_{t+1}
-                gae = delta + self.gamma * self.lambda_ * next_non_terminal * gae
-                advantages[t] = gae
-                
-                # Returns for value function training
-                returns[t] = advantages[t] + values[t]
+            # For very long sequences, process in chunks to avoid numerical instability
+            sequence_length = len(rewards)
+            
+            if sequence_length > gae_truncation_length:
+                # Process in chunks from the end
+                for chunk_start in range(sequence_length - gae_truncation_length, -1, -gae_truncation_length):
+                    chunk_end = min(chunk_start + gae_truncation_length, sequence_length)
+                    
+                    # Reset GAE at the beginning of each chunk
+                    gae = 0
+                    
+                    # Process chunk backwards
+                    for t in reversed(range(chunk_start, chunk_end)):
+                        if t == sequence_length - 1:
+                            next_non_terminal = 1.0 - dones[t].float()
+                            next_values = next_value
+                        else:
+                            next_non_terminal = 1.0 - dones[t].float()
+                            next_values = values[t + 1]
+                        
+                        # TD residual: r + γV(s') - V(s)
+                        delta = rewards[t] + self.gamma * next_values * next_non_terminal - values[t]
+                        
+                        # GAE: A_t = δ_t + γλA_{t+1}
+                        gae = delta + self.gamma * self.lambda_ * next_non_terminal * gae
+                        advantages[t] = gae
+                        
+                        # Returns for value function training
+                        returns[t] = advantages[t] + values[t]
+                        
+                    # Update next_value for the next chunk
+                    if chunk_start > 0:
+                        next_value = values[chunk_start]
+                        
+            else:
+                # Standard GAE computation for shorter sequences
+                # Backward iteration through the trajectory
+                for t in reversed(range(len(rewards))):
+                    if t == len(rewards) - 1:
+                        next_non_terminal = 1.0 - dones[t].float()
+                        next_values = next_value
+                    else:
+                        next_non_terminal = 1.0 - dones[t].float()
+                        next_values = values[t + 1]
+                    
+                    # TD residual: r + γV(s') - V(s)
+                    delta = rewards[t] + self.gamma * next_values * next_non_terminal - values[t]
+                    
+                    # GAE: A_t = δ_t + γλA_{t+1}
+                    gae = delta + self.gamma * self.lambda_ * next_non_terminal * gae
+                    advantages[t] = gae
+                    
+                    # Returns for value function training
+                    returns[t] = advantages[t] + values[t]
             
             # Normalize advantages
             if advantages.shape[0] > 1:
@@ -437,3 +514,13 @@ class PPOModel:
         
         if hasattr(self, 'update_count'):
             print(f"📌 Updated reference parameters at update {self.update_count}")
+    
+    def set_stage_episode(self, stage_episode):
+        """Set stage-relative episode count for curriculum learning."""
+        self.stage_episode = stage_episode
+        print(f"🎯 Stage episode set to {stage_episode} for entropy decay")
+    
+    def set_current_goals(self, current_goals):
+        """Set current number of goals for stage-specific entropy boost."""
+        self.current_goals = current_goals
+        print(f"🎯 Current goals set to {current_goals} for stage-specific entropy boost")

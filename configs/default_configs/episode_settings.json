@@ -1,5 +1,6 @@
 {
-"episode_length": 50,
+"episode_length": 800,
+"min_episode_length": 200,
 "use_curriculum": false,
 "num_episodes": 12,
 "early_stopping_avg_length": 50,

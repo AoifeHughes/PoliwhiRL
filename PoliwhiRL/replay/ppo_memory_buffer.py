@@ -45,15 +45,17 @@ class InMemoryPPOBuffer:
             self.input_shape = config["input_shape"]
             self.ppo_exploration_history_length = config["ppo_exploration_history_length"]
         
-        # Initialize storage arrays
+        # Initialize storage arrays - use episode length as buffer size, not update frequency
+        buffer_size = max(self.config.get("episode_length", 800), self.update_frequency * 2)
+        
         self.states = np.zeros(
-            (self.update_frequency,) + self.input_shape, dtype=np.uint8
+            (buffer_size,) + self.input_shape, dtype=np.uint8
         )
-        self.actions = np.zeros(self.update_frequency, dtype=np.uint8)
-        self.rewards = np.zeros(self.update_frequency, dtype=np.float32)
-        self.dones = np.zeros(self.update_frequency, dtype=np.bool_)
-        self.log_probs = np.zeros(self.update_frequency, dtype=np.float32)
-        self.values = np.zeros(self.update_frequency, dtype=np.float32)
+        self.actions = np.zeros(buffer_size, dtype=np.uint8)
+        self.rewards = np.zeros(buffer_size, dtype=np.float32)
+        self.dones = np.zeros(buffer_size, dtype=np.bool_)
+        self.log_probs = np.zeros(buffer_size, dtype=np.float32)
+        self.values = np.zeros(buffer_size, dtype=np.float32)
         
         # Adaptive exploration tensor size based on episode length
         episode_length = self.config.get("episode_length", 500)
@@ -63,12 +65,15 @@ class InMemoryPPOBuffer:
             exploration_memory_size = self.config.get("exploration_memory_size", 100)
             
         self.exploration_tensors = np.zeros(
-            (self.update_frequency, exploration_memory_size, 1 + self.ppo_exploration_history_length),
+            (buffer_size, exploration_memory_size, 1 + self.ppo_exploration_history_length),
             dtype=np.float32,
         )
         
         # Storage for game state variables - store as list since they're dictionaries
-        self.game_states = [None] * self.update_frequency
+        self.game_states = [None] * buffer_size
+        
+        # Store buffer size for bounds checking
+        self.buffer_size = buffer_size
         
         self.last_next_state = None
         self.episode_length = 0
@@ -80,8 +85,8 @@ class InMemoryPPOBuffer:
         idx = self.episode_length
         
         # Bounds check
-        if idx >= self.update_frequency:
-            print(f"Warning: Buffer overflow at index {idx}. Buffer size: {self.update_frequency}")
+        if idx >= self.buffer_size:
+            print(f"Warning: Buffer overflow at index {idx}. Buffer size: {self.buffer_size}")
             return
             
         self.states[idx] = state
@@ -103,7 +108,7 @@ class InMemoryPPOBuffer:
                 new_locations, new_features = actual_shape
                 old_tensors = self.exploration_tensors
                 self.exploration_tensors = np.zeros(
-                    (self.update_frequency, new_locations, new_features),
+                    (self.buffer_size, new_locations, new_features),
                     dtype=np.float32,
                 )
                 # Copy existing data up to the minimum size if we have any
@@ -123,54 +128,81 @@ class InMemoryPPOBuffer:
 
     def get_all_data(self):
         """
-        Get all stored data formatted for PPO training.
+        Get all stored data formatted for PPO training with sequence chunking.
         Returns None if not enough data for sequences.
         """
         if self.episode_length < self.sequence_length:
             return None
             
+        # For long sequences, use chunking to avoid memory issues
+        max_sequences_per_update = self.config.get("max_sequences_per_update", 32)
+        min_sequences_per_update = self.config.get("min_sequences_per_update", 8)
+        
         num_sequences = self.episode_length - self.sequence_length + 1
         
-        # Create sequences for states
-        sequences = np.array(
-            [self.states[i : i + self.sequence_length] for i in range(num_sequences)]
-        )
+        # Limit number of sequences to prevent memory overflow
+        if num_sequences > max_sequences_per_update:
+            # Sample evenly across the episode
+            step_size = max(1, num_sequences // max_sequences_per_update)
+            sequence_indices = list(range(0, num_sequences, step_size))[:max_sequences_per_update]
+        else:
+            sequence_indices = list(range(num_sequences))
         
-        # Create next state sequences
-        next_sequences = np.array(
-            [
-                self.states[i + 1 : i + self.sequence_length + 1]
-                for i in range(num_sequences - 1)
-            ]
-            + [
-                np.concatenate(
-                    [self.states[-self.sequence_length + 1 :], [self.last_next_state]]
+        # Ensure we have at least minimum sequences
+        if len(sequence_indices) < min_sequences_per_update:
+            return None
+            
+        # Create sequences for states - use chunking to avoid memory issues
+        sequences = []
+        next_sequences = []
+        
+        for i in sequence_indices:
+            sequences.append(self.states[i : i + self.sequence_length])
+            if i < num_sequences - 1:
+                next_sequences.append(self.states[i + 1 : i + self.sequence_length + 1])
+            else:
+                next_sequences.append(
+                    np.concatenate(
+                        [self.states[-self.sequence_length + 1 :], [self.last_next_state]]
+                    )
                 )
-            ]
-        )
+        
+        sequences = np.array(sequences)
+        next_sequences = np.array(next_sequences)
+        
+        # Get corresponding actions, rewards, etc. for the selected sequences
+        selected_actions = self.actions[self.sequence_length - 1 : self.episode_length]
+        selected_rewards = self.rewards[self.sequence_length - 1 : self.episode_length]
+        selected_dones = self.dones[self.sequence_length - 1 : self.episode_length]
+        selected_log_probs = self.log_probs[self.sequence_length - 1 : self.episode_length]
+        selected_values = self.values[self.sequence_length - 1 : self.episode_length]
+        selected_exploration_tensors = self.exploration_tensors[self.sequence_length - 1 : self.episode_length]
+        selected_game_states = self.game_states[self.sequence_length - 1 : self.episode_length]
+        
+        # For long sequences, subsample the output arrays to match sequence selection
+        if len(sequence_indices) < len(selected_actions):
+            # Map sequence indices to output indices
+            output_indices = [idx + self.sequence_length - 1 for idx in sequence_indices]
+            output_indices = [idx for idx in output_indices if idx < self.episode_length]
+            
+            selected_actions = selected_actions[:len(output_indices)]
+            selected_rewards = selected_rewards[:len(output_indices)]
+            selected_dones = selected_dones[:len(output_indices)]
+            selected_log_probs = selected_log_probs[:len(output_indices)]
+            selected_values = selected_values[:len(output_indices)]
+            selected_exploration_tensors = selected_exploration_tensors[:len(output_indices)]
+            selected_game_states = selected_game_states[:len(output_indices)]
         
         return {
             "states": torch.FloatTensor(sequences).to(self.device),
             "next_states": torch.FloatTensor(next_sequences).to(self.device),
-            "actions": torch.LongTensor(
-                self.actions[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "rewards": torch.FloatTensor(
-                self.rewards[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "dones": torch.BoolTensor(
-                self.dones[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "old_log_probs": torch.FloatTensor(
-                self.log_probs[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "values": torch.FloatTensor(
-                self.values[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "exploration_tensors": torch.FloatTensor(
-                self.exploration_tensors[self.sequence_length - 1 : self.episode_length]
-            ).to(self.device),
-            "game_states": self.game_states[self.sequence_length - 1 : self.episode_length],
+            "actions": torch.LongTensor(selected_actions).to(self.device),
+            "rewards": torch.FloatTensor(selected_rewards).to(self.device),
+            "dones": torch.BoolTensor(selected_dones).to(self.device),
+            "old_log_probs": torch.FloatTensor(selected_log_probs).to(self.device),
+            "values": torch.FloatTensor(selected_values).to(self.device),
+            "exploration_tensors": torch.FloatTensor(selected_exploration_tensors).to(self.device),
+            "game_states": selected_game_states,
         }
 
     def __len__(self):
