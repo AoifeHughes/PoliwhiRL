@@ -101,16 +101,17 @@ class TestRewardSystem(unittest.TestCase):
 
         reward_system = Rewards(config)
 
-        # Test clipping works
-        self.assertEqual(reward_system.clip, 50.0)
+        # Test clipping works - updated to new value
+        self.assertEqual(reward_system.clip, 1000)
 
         # Test penalty values are reasonable
         self.assertLessEqual(reward_system.step_penalty, 0)
         self.assertGreaterEqual(reward_system.step_penalty, -1.0)
 
-        # Test goal rewards are positive
-        self.assertGreater(reward_system.goal_reward_max, 0)
-        self.assertGreater(reward_system.goal_reward_min, 0)
+        # Test goal rewards are positive - updated to new structure
+        self.assertGreater(reward_system.goal_reward, 0)
+        self.assertGreater(reward_system.sequence_bonus, 0)
+        self.assertGreater(reward_system.checkpoint_bonus, 0)
 
     def test_reward_goal_achievement(self):
         """Test that goal achievement produces positive rewards"""
@@ -139,8 +140,8 @@ class TestRewardSystem(unittest.TestCase):
         # Should complete the episode since break_on_goal defaults to True
         self.assertTrue(done)
 
-    def test_reward_step_penalty_progression(self):
-        """Test that step penalties increase over time"""
+    def test_reward_step_penalty_consistency(self):
+        """Test that step penalties are consistent (fixed per step)"""
         config = load_default_config()
         config["N_goals_target"] = 1
         config["episode_length"] = 100
@@ -159,7 +160,7 @@ class TestRewardSystem(unittest.TestCase):
             "pokedex_owned": 0,
         }
 
-        # Take several steps and check penalty increases
+        # Take several steps and check penalty is consistent
         early_reward, _ = reward_system.calculate_reward(env_vars, "A")
 
         # Advance to middle of episode
@@ -168,8 +169,8 @@ class TestRewardSystem(unittest.TestCase):
 
         mid_reward, _ = reward_system.calculate_reward(env_vars, "A")
 
-        # Mid-episode penalty should be more negative than early penalty
-        self.assertLess(mid_reward, early_reward)
+        # Penalties should be consistent (equal) per step
+        self.assertAlmostEqual(mid_reward, early_reward, delta=0.001)
 
 
 if __name__ == "__main__":

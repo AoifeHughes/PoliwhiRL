@@ -13,6 +13,7 @@ from PoliwhiRL.replay.enhanced_exploration_memory import EnhancedExplorationMemo
 from PoliwhiRL.models.PPO import PPOModel
 from PoliwhiRL.utils.resource_manager import get_resource_pool
 from PoliwhiRL.utils.macro_actions import MacroActionLearner
+from PoliwhiRL.utils.metrics_tracker import MetricsTracker
 
 
 class PPOAgent:
@@ -54,6 +55,10 @@ class PPOAgent:
             )
         else:
             self.macro_learner = None
+
+        # Initialize metrics tracker
+        experiment_name = config.get("experiment_name", None)
+        self.metrics_tracker = MetricsTracker(self.results_dir, experiment_name)
 
     def update_parameters_from_config(self):
         self.episode = self.config["start_episode"]
@@ -100,9 +105,15 @@ class PPOAgent:
             self.macro_learner._reset_episode()
 
     def run_curriculum(self, start_goal_n, end_goal_n, step_increment):
+        """Run adaptive curriculum learning with dynamic episode length adjustment"""
         initial_episode_length = self.config["episode_length"]
+        success_threshold = self.config.get("curriculum_success_threshold", 0.7)
+        min_episode_length = self.config.get("curriculum_min_episode_length", 100)
+        episode_decay = self.config.get("curriculum_episode_decay", 0.95)
+
         for n in range(start_goal_n, end_goal_n + 1):
             self.config["N_goals_target"] = n
+            # Start with longer episodes, will adapt based on success
             self.config["episode_length"] = initial_episode_length + (
                 step_increment * (n - 1)
             )
@@ -111,11 +122,188 @@ class PPOAgent:
             )
             self.memory.reset(config=self.config)
             self.reset_tracking()
-            print(f"Starting training for goal {n}")
-            print(f"Episode length: {self.config['episode_length']}")
-            print(f"Early stopping length: {self.config['early_stopping_avg_length']}")
+
+            print(f"\n{'=' * 60}")
+            print(f"Starting Curriculum Stage {n}/{end_goal_n}")
+            print(f"Initial episode length: {self.config['episode_length']}")
+            print(f"Success threshold: {success_threshold * 100:.0f}%")
+            print(f"{'=' * 60}\n")
+
             self.update_parameters_from_config()
-            self.train_agent()
+            self.train_agent_with_adaptation(
+                success_threshold=success_threshold,
+                min_episode_length=min_episode_length,
+                episode_decay=episode_decay,
+            )
+
+    def train_agent_with_adaptation(
+        self, success_threshold=0.7, min_episode_length=100, episode_decay=0.95
+    ):
+        """Train agent with adaptive episode length based on success rate"""
+        from collections import deque
+
+        success_window = deque(maxlen=20)
+        initial_episode_length = self.config["episode_length"]
+        current_episode_length = initial_episode_length
+        episodes_since_adaptation = 0
+
+        if self.train_from_memory:
+            print("Training from memory. Loading data from database and training.")
+            self.train_from_memories()
+
+        # Check if we're in a subprocess
+        import multiprocessing as mp
+
+        is_subprocess = mp.current_process().name != "MainProcess"
+
+        if self.report_episode and not is_subprocess:
+            position = self.config.get("tqdm_position", 0)
+            desc_prefix = self.config.get("tqdm_desc_prefix", "")
+            pbar = tqdm(
+                range(self.num_episodes),
+                desc=f"{desc_prefix} Adaptive Training (Goals: {self.n_goals})",
+                position=position + 1,
+                leave=False,
+            )
+        else:
+            pbar = range(self.num_episodes)
+            if is_subprocess:
+                print(
+                    f"Adaptive training in subprocess - {self.num_episodes} episodes, {self.n_goals} goals"
+                )
+
+        self._update_entropy_boost()
+
+        for episode_idx in pbar:
+            if is_subprocess and episode_idx % 5 == 0:
+                self._log_training_progress(f"Episode {self.episode}/{self.num_episodes}")
+
+            # Update episode length dynamically
+            self.config["episode_length"] = int(current_episode_length)
+            self.episode_length = int(current_episode_length)
+
+            if self.episode % 10 == 0:
+                self._update_entropy_boost()
+
+            record_loc = (
+                f"N_goals_{self.n_goals}/{self.episode}"
+                if (self.episode % self.record_frequency == 0 and self.record)
+                else None
+            )
+
+            # Run episode and track success
+            episode_reward = self.run_episode(record_loc=record_loc)
+            goal_reached = episode_reward > 100  # Success if got significant reward
+            success_window.append(1 if goal_reached else 0)
+
+            # Log metrics
+            current_entropy = self.model._get_entropy_coef(self.episode)
+            episode_len = self.episode_data["episode_lengths"][-1] if self.episode_data["episode_lengths"] else 0
+            goals_reached = 1 if goal_reached else 0  # Simplified for now
+
+            self.metrics_tracker.log_episode(
+                episode=self.episode,
+                total_reward=episode_reward,
+                episode_length=episode_len,
+                goals_reached=goals_reached,
+                entropy=current_entropy,
+                success=goal_reached,
+                curriculum_stage=self.n_goals,
+            )
+
+            self.episode += 1
+            episodes_since_adaptation += 1
+
+            # Update model
+            if len(self.memory) > self.sequence_length:
+                if is_subprocess and episode_idx % 5 == 0:
+                    self._log_training_progress("Updating model")
+                self.update_model()
+
+            # Adaptive episode length adjustment (every 10 episodes after warmup)
+            if len(success_window) == 20 and episodes_since_adaptation >= 10:
+                success_rate = sum(success_window) / len(success_window)
+
+                # Gradually reduce episode length if agent is succeeding
+                if success_rate > success_threshold:
+                    new_length = max(
+                        min_episode_length, int(current_episode_length * episode_decay)
+                    )
+                    if new_length < current_episode_length:
+                        current_episode_length = new_length
+                        episodes_since_adaptation = 0
+                        if not is_subprocess:
+                            print(
+                                f"\n✓ Success rate {success_rate * 100:.1f}% → "
+                                f"Reducing episode length to {int(current_episode_length)}"
+                            )
+
+                        # Check if stage is mastered
+                        if (
+                            success_rate > 0.8
+                            and current_episode_length <= min_episode_length * 1.5
+                        ):
+                            if not is_subprocess:
+                                print(
+                                    f"\n🎓 Stage mastered! Success rate: {success_rate * 100:.1f}%"
+                                )
+                            break
+
+            if self.report_episode and not is_subprocess:
+                # Update progress bar with success rate
+                if len(success_window) > 0:
+                    current_success = sum(success_window) / len(success_window)
+                    pbar.set_postfix(
+                        {
+                            "ep_len": int(current_episode_length),
+                            "success": f"{current_success * 100:.0f}%",
+                        }
+                    )
+
+            if (self.episode % 10 == 0 and self.episode > 1) or self.episode == self.num_episodes:
+                if is_subprocess:
+                    self._log_training_progress("Plotting metrics")
+                self._plot_metrics()
+
+            self.model.step_scheduler()
+
+            if (
+                self.episode % self.checkpoint_frequency == 0
+                and self.config.get("save_checkpoint", True)
+                and self.config.get("checkpoint") is not None
+            ):
+                self.save_model(self.config["checkpoint"])
+
+        if (
+            self.config.get("save_checkpoint", True)
+            and self.config.get("checkpoint") is not None
+        ):
+            self.save_model(self.config["checkpoint"])
+
+        if self.config.get("save_training_states", False):
+            self.run_episode(
+                save_path=f"{self.export_state_loc}/N_goals_{self.n_goals}.pkl"
+            )
+        else:
+            self.run_episode(save_path=None)
+
+        # Export metrics and generate report at end of curriculum stage
+        if len(success_window) > 0:
+            final_success_rate = sum(success_window) / len(success_window)
+            self.metrics_tracker.log_curriculum_stage_completion(
+                stage=self.n_goals,
+                final_success_rate=final_success_rate,
+                final_episode_length=int(current_episode_length),
+                episodes_taken=episode_idx + 1,
+            )
+
+        # Export metrics to CSV and JSON
+        self.metrics_tracker.export_to_csv()
+        self.metrics_tracker.export_to_json()
+
+        # Generate comprehensive training report
+        if not is_subprocess:
+            self.metrics_tracker.generate_training_report()
 
     def train_agent(self):
         if self.train_from_memory:
@@ -242,6 +430,7 @@ class PPOAgent:
 
         try:
             self.steps = 0
+            reward_sum = 0  # Initialize reward sum
             if self.continue_from_state and (np.random.rand() < 0.9):
                 state = env.load_gym_state(
                     self.continue_from_state_loc, self.episode_length, self.n_goals
@@ -250,7 +439,6 @@ class PPOAgent:
             else:
                 state = env.reset()
                 self.memory.reset()
-                reward_sum = 0
                 state_sequence = deque(
                     [state] * self.sequence_length, maxlen=self.sequence_length
                 )
@@ -332,8 +520,12 @@ class PPOAgent:
                 exploration_bonus = 0.0
                 if hasattr(self.exploration_memory, "get_exploration_bonus"):
                     state_hash = self.exploration_memory._compute_hash(state)
+                    coord_exploration_weight = self.config.get(
+                        "ppo_coordinate_exploration_weight", 0.5
+                    )
                     exploration_bonus = (
-                        self.exploration_memory.get_exploration_bonus(state_hash) * 0.01
+                        self.exploration_memory.get_exploration_bonus(state_hash)
+                        * coord_exploration_weight
                     )
 
                 total_reward = self._compute_total_reward(
@@ -384,6 +576,8 @@ class PPOAgent:
 
             if save_path is not None:
                 env.save_gym_state(save_path)
+
+            return reward_sum
         finally:
             # Ensure environment is properly closed
             env.close()

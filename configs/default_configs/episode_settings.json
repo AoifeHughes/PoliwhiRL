@@ -1,9 +1,12 @@
 {
-"episode_length": 50,
-"use_curriculum": false,
-"num_episodes": 12,
-"early_stopping_avg_length": 50,
+"episode_length": 400,
+"use_curriculum": true,
+"num_episodes": 100,
+"early_stopping_avg_length": 200,
 "record_frequency": 100,
 "ignored_buttons": ["", "start", "select"],
-"start_episode": 0
+"start_episode": 0,
+"curriculum_success_threshold": 0.7,
+"curriculum_min_episode_length": 100,
+"curriculum_episode_decay": 0.95
 }

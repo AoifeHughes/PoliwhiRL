@@ -5,7 +5,7 @@
 "scaling_factor": 0.5,
 "use_grayscale": false,
 "vision": true,
-"sequence_length": 16,
+"sequence_length": 64,
 "record": true,
 "verbose": false,
 "manual_control": false,
@@ -13,5 +13,8 @@
 "load_checkpoint_num": 0,
 "checkpoint_frequency": 5,
 "report_episode" : true,
-"step_increment": 1000
+"step_increment": 1000,
+"ppo_d_model": 256,
+"ppo_num_layers": 6,
+"ppo_nhead": 8
 }

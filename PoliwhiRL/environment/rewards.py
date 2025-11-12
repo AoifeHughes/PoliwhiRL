@@ -11,20 +11,20 @@ class Rewards:
         self.break_on_goal = config["break_on_goal"]
         self.punish_steps = config["punish_steps"]
 
-        # Simplified integer rewards (NO time dependency)
-        self.goal_reward = 100  # Fixed reward per goal
-        self.sequence_bonus = 50  # Bonus for completing goals in order
-        self.checkpoint_bonus = 200  # Major milestone bonus
-        self.all_goals_bonus = 500  # Completing all goals
-        
+        # Get reward values from config with defaults
+        self.goal_reward = config.get("goal_reward", 200)
+        self.sequence_bonus = config.get("sequence_bonus", 100)
+        self.checkpoint_bonus = config.get("checkpoint_bonus", 400)
+        self.all_goals_bonus = config.get("all_goals_bonus", 1000)
+
         # Fixed penalties
-        self.step_penalty = -1 if self.punish_steps else 0  # Fixed -1 per step
-        self.button_penalty = -5  # Fixed -5 for start/select
-        self.large_penalty = -100  # Timeout penalty per uncompleted goal
-        
+        self.step_penalty = config.get("step_penalty", -0.1) if self.punish_steps else 0
+        self.button_penalty = config.get("button_penalty", -2)
+        self.large_penalty = config.get("large_penalty", -50)
+
         # Pokedex rewards
-        self.pokedex_seen_reward = 25
-        self.pokedex_owned_reward = 50
+        self.pokedex_seen_reward = config.get("pokedex_seen_reward", 50)
+        self.pokedex_owned_reward = config.get("pokedex_owned_reward", 100)
         
         # Clipping
         self.clip = 1000  # Higher to accommodate integer rewards
@@ -35,7 +35,7 @@ class Rewards:
         
         # Exploration parameters (kept for compatibility)
         self.exploration_reward = 0.0
-        self.distance_reward_factor = 0.0
+        self.distance_reward_factor = 0.0  # Distance rewards disabled
 
         # State variables
         self.pokedex_seen = 0
@@ -52,9 +52,6 @@ class Rewards:
         # Variables for ordered goals
         self.location_goals = OrderedDict()
         self.current_goal_index = 0
-
-        # Parameter for distance-based reward
-        self.distance_reward_factor = self.medium_reward
 
         self.set_goals(config["location_goals"], config["pokedex_goals"])
 
