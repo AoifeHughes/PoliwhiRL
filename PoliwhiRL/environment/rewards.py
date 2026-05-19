@@ -64,6 +64,30 @@ class Rewards:
         self.max_steps = max_steps
         self.done = False
 
+    def start_new_episode(self):
+        """Reset per-episode counters while preserving curriculum progress
+        (current_goal_index, N_goals, pokedex_*) AND exploration state
+        (explored_tiles).
+
+        After an action replay walks the env forward, we want the training
+        episode that follows to:
+          - have a clean step budget (steps=0, max_steps applies fresh)
+          - track its own reward sum (cumulative_reward=0)
+          - NOT double-reward the agent for re-walking tiles the replay
+            already covered. explored_tiles is intentionally preserved —
+            exploration_reward only fires for genuinely-new tiles, which
+            is the whole reason we use action replay over save-states.
+
+        explored_tile_count in the RAM observation (feature 20) likewise
+        keeps growing across the replay/training boundary, giving the
+        policy a continuous "how much have I covered" signal.
+        """
+        self.done = False
+        self.last_action = None
+        self.steps = 0
+        self.last_location = None
+        self.cumulative_reward = 0
+
     def set_goals(self, location_goals, pokedex_goals):
         self.location_goals = OrderedDict()
         self.pokedex_goals = {}
@@ -226,3 +250,28 @@ class Rewards:
                 "is_checkpoint": (self.current_goal_index + 1) in self.checkpoint_goals,
             }
         return None
+
+    def get_current_target_vector(self):
+        """Goal-conditioning signal for the policy.
+
+        Returns (target_x, target_y, target_map, has_active_target).
+        When all location goals are complete the target is the player's
+        most recently expected location (last goal in the sequence) and
+        has_active_target is 0 — so the input remains numerically stable
+        but the model can route on the flag.
+        """
+        if self.current_goal_index < len(self.location_goals):
+            goal = list(self.location_goals.values())[self.current_goal_index]
+            # `goal` is a list of acceptable [x, y, map] options. Use the
+            # first option as the canonical representative target.
+            x, y, map_num = goal[0][0], goal[0][1], goal[0][2]
+            return float(x), float(y), float(map_num), 1.0
+        # All goals done — return the final goal's coords as a stable
+        # neutral value, flagged inactive.
+        if self.location_goals:
+            last = list(self.location_goals.values())[-1][0]
+            return float(last[0]), float(last[1]), float(last[2]), 0.0
+        return 0.0, 0.0, 0.0, 0.0
+
+    def explored_tile_count(self):
+        return len(self.explored_tiles)

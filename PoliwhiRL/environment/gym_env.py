@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import io
+import math
 import os
 import pickle
 import shutil
@@ -12,6 +13,107 @@ from . import RAM
 from PoliwhiRL.utils.visuals import record_step
 from .rewards import Rewards
 from pyboy import PyBoy
+
+
+# Stable ordering for the RAM observation vector. Treat this as a contract:
+# changing the order or removing an entry will invalidate trained models.
+# New features should be appended to the end. The model's RAM encoder reads
+# its input dim from RAM_OBS_DIM at startup, so additions here are
+# automatically picked up by the model.
+STORY_FLAGS_NUM_BYTES = 256  # RAM region 0xDA72–0xDB71
+
+_BASE_RAM_FEATURE_KEYS = (
+    "x",
+    "y",
+    "map_num",
+    "map_bank",
+    "room",
+    "warp_number",
+    "party_level",
+    "party_hp",
+    "party_exp",
+    "money",
+    "pokedex_seen",
+    "pokedex_owned",
+    "collision_down",
+    "collision_up",
+    "collision_left",
+    "collision_right",
+    # Goal-conditioning: target_x, target_y, target_map come from the active
+    # Rewards goal; has_active_target is 1 while a location goal is pending.
+    "target_x",
+    "target_y",
+    "target_map",
+    "has_active_target",
+    # Per-episode exploration summary so the policy has at least a rough
+    # signal for "have I been finding new tiles."
+    "explored_tile_count",
+)
+# Story-flag bytes are appended after the base features. Each byte is one
+# of 256 entries in the 0xDA72–0xDB71 region; each holds 8 individual story
+# flags as a bitfield. We expose them as bytes (one float per byte, /255)
+# rather than expanding to 2048 bits — the policy learns relevant patterns
+# from byte values.
+RAM_FEATURE_KEYS = _BASE_RAM_FEATURE_KEYS + tuple(
+    f"story_flag_byte_{i:03d}" for i in range(STORY_FLAGS_NUM_BYTES)
+)
+RAM_OBS_DIM = len(RAM_FEATURE_KEYS)
+_BASE_RAM_LEN = len(_BASE_RAM_FEATURE_KEYS)
+
+
+def _build_ram_vector(env_vars, target, explored_tile_count):
+    """Pack RAM + goal-conditioning + exploration scalars into a fixed-order,
+    ~[0, 1]-scaled float32 vector. Single source of truth — env, tests, any
+    eval tool should construct the vector via this function.
+
+    Parameters
+    ----------
+    env_vars : dict
+        Output of RAM.RAMManagement.get_variables().
+    target : tuple
+        (target_x, target_y, target_map, has_active_target) from
+        Rewards.get_current_target_vector().
+    explored_tile_count : int
+        len(Rewards.explored_tiles) at this step.
+    """
+    party_level, party_hp, party_exp = env_vars["party_info"]
+    target_x, target_y, target_map, has_active = target
+    base = np.array(
+        [
+            env_vars["X"] / 255.0,
+            env_vars["Y"] / 255.0,
+            env_vars["map_num"] / 255.0,
+            env_vars["map_bank"] / 255.0,
+            env_vars["room"] / 255.0,
+            env_vars["warp_number"] / 255.0,
+            party_level / 100.0,
+            party_hp / 1000.0,
+            math.log1p(max(0, party_exp)) / 20.0,
+            env_vars["money"] / 1_000_000.0,
+            env_vars["pokedex_seen"] / 251.0,
+            env_vars["pokedex_owned"] / 251.0,
+            env_vars["collision_down"] / 255.0,
+            env_vars["collision_up"] / 255.0,
+            env_vars["collision_left"] / 255.0,
+            env_vars["collision_right"] / 255.0,
+            target_x / 255.0,
+            target_y / 255.0,
+            target_map / 255.0,
+            float(has_active),
+            # Soft saturation for unbounded count; agent only needs relative
+            # sense of "low vs high."
+            math.log1p(max(0, explored_tile_count)) / 6.0,
+        ],
+        dtype=np.float32,
+    )
+    # Story flags: 256 raw bytes normalised to [0, 1]. Each byte holds 8
+    # individual flag bits; the model learns the patterns directly.
+    story_flags = np.asarray(env_vars["story_flags"], dtype=np.float32) / 255.0
+    if story_flags.size != STORY_FLAGS_NUM_BYTES:
+        raise ValueError(
+            f"Expected {STORY_FLAGS_NUM_BYTES} story flag bytes, got {story_flags.size}"
+        )
+    return np.concatenate([base, story_flags])
 
 
 class PyBoyEnvironment(gym.Env):
@@ -80,6 +182,47 @@ class PyBoyEnvironment(gym.Env):
     def get_state_bytes(self):
         return io.BytesIO(self.state_bytes_content)
 
+    def set_state_path(self, path):
+        """Swap in a new save-state. Takes effect on the next reset() so
+        the current episode finishes normally. Used by VecPyBoyEnv for
+        per-episode state cycling across a pool of save-states.
+        """
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"State file not found: {path}")
+        with open(path, "rb") as f:
+            self.state_bytes_content = f.read()
+        self.state_path = path
+
+    def replay_actions(self, actions):
+        """Walk the env forward by replaying a sequence of actions.
+
+        Used immediately after env.reset() to warm-start the env state +
+        Rewards object to a curriculum-aligned position. The actions are
+        executed without storing transitions; rewards accrued during replay
+        are *not* counted toward the training episode.
+
+        After replay:
+            - PyBoy memory is at the post-replay position.
+            - Rewards.current_goal_index, N_goals, pokedex_* reflect what
+              was achieved during replay (so the next goal target is the
+              one *after* the replay's reach).
+            - Per-episode fields (steps, explored_tiles, cumulative_reward)
+              are cleared via Rewards.start_new_episode() so the training
+              episode that follows has a clean step budget.
+            - env.steps and env._fitness are reset to 0.
+        """
+        if not actions:
+            return self.get_observation()
+        for a in actions:
+            self._handle_action(int(a))
+            self._calculate_fitness()
+        # Promote curriculum state forward; clear per-episode counters.
+        self.reward_calculator.start_new_episode()
+        self.steps = 0
+        self._fitness = 0
+        self.done = False
+        return self.get_observation()
+
     def check_files_exist(self, files):
         for file in files:
             if not os.path.isfile(file):
@@ -110,9 +253,13 @@ class PyBoyEnvironment(gym.Env):
         return observation, self._fitness, self.done, False
 
     def output_shape(self):
+        """Image observation shape (C, H, W)."""
         if not self.config["vision"]:
             return self.get_game_area().shape
         return self.get_screen_image().shape
+
+    def ram_observation_shape(self):
+        return (RAM_OBS_DIM,)
 
     def get_game_area(self):
         return self.pyboy.game_area()[:18, :20].astype(np.uint8)
@@ -134,11 +281,23 @@ class PyBoyEnvironment(gym.Env):
             self.done = True
 
     def get_observation(self):
-        return (
+        """Multi-modal observation dict {"image": ndarray, "ram": ndarray}.
+
+        The image preserves the original screen / tilemap output for the
+        CNN. The RAM vector packs position, party state, goal target, and
+        exploration summary for the policy to condition on directly.
+        """
+        image = (
             self.get_game_area()
             if not self.config["vision"]
             else self.get_screen_image()
         )
+        ram = _build_ram_vector(
+            self.ram.get_variables(),
+            self.reward_calculator.get_current_target_vector(),
+            self.reward_calculator.explored_tile_count(),
+        )
+        return {"image": image, "ram": ram}
 
     def reset(self):
         self.button = 0
@@ -149,12 +308,14 @@ class PyBoyEnvironment(gym.Env):
         self.reward_calculator = Rewards(self.config)
         self._fitness = 0
         self._handle_action(0)
-        observation = self.get_observation()
         self.steps = 0
         self.episode += 1
         self.render = self.config["vision"]
+        # Compute fitness BEFORE building the observation so the goal-target
+        # field in the RAM vector reflects any goal advance that fired on the
+        # no-op startup step.
         self._calculate_fitness()
-        return observation
+        return self.get_observation()
 
     def close(self):
         if self._is_closed:

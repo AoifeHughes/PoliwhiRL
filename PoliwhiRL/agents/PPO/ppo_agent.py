@@ -6,9 +6,11 @@ from tqdm.auto import tqdm
 import torch
 
 from PoliwhiRL.environment import PyBoyEnvironment as Env
-from PoliwhiRL.utils.visuals import plot_metrics
+from PoliwhiRL.environment.vec_env import _load_actions_file
+from PoliwhiRL.utils import plot_metrics, RewardScaler
 from PoliwhiRL.replay import PPOMemory
 from PoliwhiRL.models.PPO import PPOModel
+from PoliwhiRL.agents.PPO._minibatch import run_ppo_epochs
 
 
 class PPOAgent:
@@ -23,10 +25,29 @@ class PPOAgent:
         self.best_reward = float("-inf")
         self.model = PPOModel(input_shape, action_size, config)
         self.memory = PPOMemory(config)
+        # Running variance of discounted returns; rewards are divided by
+        # sqrt(var) before GAE so the critic regresses onto a normalised
+        # target whose scale is roughly stable across stages.
+        self.reward_scaler = RewardScaler(
+            gamma=float(self.config["ppo_gamma"]), num_envs=1
+        )
+        # Optional action-replay: single-env mode uses the first entry of
+        # action_replay_paths if configured. The env walks through these
+        # actions on each reset before training starts collecting transitions.
+        replay_paths = self.config.get("action_replay_paths") or []
+        self._replay_actions = _load_actions_file(replay_paths[0]) if replay_paths else []
+        # Track the best single-episode reward and the action sequence that
+        # produced it. Saved to <Checkpoints>/actions.steps for use by the
+        # next curriculum stage's action_replay_paths.
+        self.best_episode_reward = float("-inf")
         self.reset_tracking()
         # Stage-relative episode counter for entropy schedule. Updated by
         # load_model when resuming so each curriculum stage decays from fresh.
         self.stage_start_episode = self.episode
+        # Per-list lengths at the start of the current stage. None on a fresh
+        # run; populated by load_model so plot_metrics can render a current-
+        # stage-only view alongside the all-data view.
+        self.stage_data_offsets = None
 
     def _stage_episode(self):
         return self.episode - self.stage_start_episode
@@ -34,7 +55,9 @@ class PPOAgent:
     def update_parameters_from_config(self):
         self.episode = self.config["start_episode"]
         self.record = self.config["record"]
-        self.num_episodes = self.config["num_episodes"]
+        # In single-env mode one outer-loop iteration runs one episode, so
+        # num_rollouts here is functionally "number of episodes to run."
+        self.num_rollouts = self.config["num_rollouts"]
         self.episode_length = self.config["episode_length"]
         self.sequence_length = self.config["sequence_length"]
         self.n_goals = self.config["N_goals_target"]
@@ -46,6 +69,10 @@ class PPOAgent:
         self.report_episode = self.config["report_episode"]
         self.update_frequency = self.config["ppo_update_frequency"]
         self.epochs = self.config["ppo_epochs"]
+        # None disables adaptive early-stop; numeric value is the per-update
+        # approx-KL ceiling above which we abort remaining epochs.
+        self.target_kl = self.config.get("ppo_target_kl", None)
+        self.minibatch_size = self.config.get("ppo_minibatch_size", None)
 
     def reset_tracking(self):
         self.episode_data = {
@@ -63,12 +90,12 @@ class PPOAgent:
     def train_agent(self):
         if self.report_episode:
             pbar = tqdm(
-                range(self.num_episodes),
+                range(self.num_rollouts),
                 desc=f"Training (Goals: {self.n_goals})",
                 leave=True,
             )
         else:
-            pbar = range(self.num_episodes)
+            pbar = range(self.num_rollouts)
 
         for episode_idx in pbar:
             record_loc = (
@@ -88,7 +115,7 @@ class PPOAgent:
 
             if (
                 self.episode % 10 == 0 and self.episode > 1
-            ) or self.episode == self.num_episodes:
+            ) or self.episode == self.num_rollouts:
                 self._plot_metrics()
 
             self.model.step_scheduler()
@@ -118,11 +145,25 @@ class PPOAgent:
 
         try:
             self.steps = 0
-            state = env.reset()
+            env.reset()
+            # Replay walks the env (and Rewards) forward to a curriculum-
+            # aligned start. The replay transitions are not stored in memory
+            # or counted toward the episode reward — only the training
+            # episode that follows is.
+            if self._replay_actions:
+                obs = env.replay_actions(self._replay_actions)
+            else:
+                obs = env.get_observation()
+            state, ram = obs["image"], obs["ram"]
             self.memory.reset()
             reward_sum = 0
+            current_episode_actions = []
+            # Parallel sliding windows for the dual-input model.
             state_sequence = deque(
                 [state] * self.sequence_length, maxlen=self.sequence_length
+            )
+            ram_sequence = deque(
+                [ram] * self.sequence_length, maxlen=self.sequence_length
             )
             # Per-trajectory transformer memory: starts fresh each episode and
             # carries across rollout steps. Each transition stores the memory
@@ -146,15 +187,23 @@ class PPOAgent:
             for _ in iter_range:
                 self.steps += 1
                 state_seq_arr = np.array(state_sequence)
-                action, log_prob, new_mems = self.model.get_action(state_seq_arr, mems)
+                ram_seq_arr = np.array(ram_sequence)
+                action, log_prob, new_mems = self.model.get_action(
+                    state_seq_arr, ram_seq_arr, mems
+                )
                 self.episode_data["buttons_pressed"].append(action)
+                current_episode_actions.append(int(action))
 
-                next_state, reward, done, _ = env.step(action)
+                next_obs, reward, done, _ = env.step(action)
+                next_state, next_ram = next_obs["image"], next_obs["ram"]
                 reward_sum += reward
+                self.reward_scaler.observe(reward, done)
 
                 self.memory.store_transition(
                     state,
+                    ram,
                     next_state,
+                    next_ram,
                     action,
                     reward,
                     done,
@@ -164,7 +213,9 @@ class PPOAgent:
 
                 mems = new_mems
                 state = next_state
+                ram = next_ram
                 state_sequence.append(state)
+                ram_sequence.append(ram)
 
                 if done:
                     break
@@ -176,11 +227,33 @@ class PPOAgent:
                     self.update_model()
 
             self._update_episode_stats(reward_sum)
+            self._maybe_dump_best_actions(reward_sum, current_episode_actions)
 
             if save_path is not None:
                 env.save_gym_state(save_path)
         finally:
             env.close()
+
+    def _maybe_dump_best_actions(self, reward_sum, actions):
+        """Persist the action sequence whenever a new single-episode reward
+        record is set. The file is at <Checkpoints>/actions.steps; the next
+        curriculum stage's `action_replay_paths` can point at this to skip
+        the learned prefix."""
+        if reward_sum <= self.best_episode_reward:
+            return
+        self.best_episode_reward = float(reward_sum)
+        ckpt = self.config.get("checkpoint")
+        if not ckpt:
+            return
+        try:
+            os.makedirs(ckpt, exist_ok=True)
+            path = os.path.join(ckpt, "actions.steps")
+            with open(path, "w") as f:
+                f.write(f"# best_episode_reward = {reward_sum}\n")
+                for a in actions:
+                    f.write(f"{int(a)}\n")
+        except Exception as e:
+            print(f"[PPOAgent] Failed to write best actions file: {e}")
 
     def _update_episode_stats(self, total_reward):
         self.episode_data["episode_rewards"].append(total_reward)
@@ -192,19 +265,78 @@ class PPOAgent:
         self.episode_data["episode_entropies"].append(current_entropy)
 
     def update_model(self, data=None):
-        total_loss = 0
-        for _ in range(self.epochs):
-            data = self.memory.get_all_data() if data is None else data
-            if data is None:
-                return
-            loss = self.model.update(data, self._stage_episode())
-            total_loss += loss
-        self._update_loss_stats(total_loss)
+        if data is None:
+            data = self.memory.get_all_data()
+        if data is None:
+            return
+
+        # Reward normalisation: scale rewards by the inverse running std of
+        # discounted returns. The critic naturally settles into predicting
+        # values in this normalised space; V(s_{T+1}) bootstrap stays
+        # consistent because it comes from the same network.
+        data["rewards"] = data["rewards"] * float(self.reward_scaler.scale_factor())
+
+        self._precompute_targets(data)
+
+        total_loss, epochs_run = run_ppo_epochs(
+            model=self.model,
+            data=data,
+            episode=self._stage_episode(),
+            epochs=self.epochs,
+            minibatch_size=self.minibatch_size,
+            target_kl=self.target_kl,
+        )
+
+        self._update_loss_stats(total_loss, epochs_run)
         self.memory.reset()
 
-    def _update_loss_stats(self, total_loss):
-        steps_since_update = len(self.memory)
-        avg_loss = total_loss / (self.epochs * steps_since_update)
+    def _precompute_targets(self, data):
+        """Run V(s_t), V(s_{T+1}) tail bootstrap, and GAE once for the whole
+        rollout so subsequent minibatched updates can shuffle freely without
+        breaking the time-ordered return computation."""
+        mems = data.get("mems", None)
+        with torch.no_grad():
+            _, values, _ = self.model.actor_critic(
+                data["states"], data["ram_states"], mems
+            )
+            values = values.squeeze()
+            if values.dim() == 0:
+                values = values.unsqueeze(0)
+
+            # Only bootstrap when the final transition is genuinely truncated
+            # (not terminal). For a terminal tail, V(s_{T+1}) = 0 regardless.
+            last_value = None
+            dones = data["dones"]
+            if dones.numel() > 0 and not bool(dones[-1].item()):
+                tail_input = data["next_states"][-1:].detach()
+                tail_ram = data["next_ram_states"][-1:].detach()
+                tail_mems = (
+                    [m[-1:].detach() for m in mems] if mems is not None else None
+                )
+                _, tail_v, _ = self.model.actor_critic(
+                    tail_input, tail_ram, tail_mems
+                )
+                last_value = tail_v.squeeze().detach()
+
+        use_gae = self.config.get("ppo_gae_lambda", 0) > 0
+        if use_gae:
+            returns, advantages = self.model._compute_gae(
+                data["rewards"], values, data["dones"], last_value=last_value
+            )
+        else:
+            returns = self.model._compute_returns(
+                data["rewards"], data["dones"], last_value=last_value
+            )
+            advantages = returns - values
+
+        data["returns"] = returns
+        data["advantages"] = advantages
+        data["old_values"] = values.detach()
+
+    def _update_loss_stats(self, total_loss, epochs_run):
+        steps_since_update = max(1, len(self.memory))
+        denom = max(1, epochs_run) * steps_since_update
+        avg_loss = total_loss / denom
         self.episode_data["episode_losses"].append(avg_loss)
         self.episode_data["moving_avg_loss"].append(avg_loss)
 
@@ -251,6 +383,7 @@ class PPOAgent:
             self.episode,
             save_loc=self.results_dir,
             entropies=self.episode_data.get("episode_entropies", None),
+            stage_data_offsets=self.stage_data_offsets,
         )
 
     def save_model(self, path):
@@ -267,8 +400,23 @@ class PPOAgent:
                 else float("-inf")
             ),
             "episode_data": self.episode_data,
+            "reward_scaler": self.reward_scaler.state_dict(),
         }
         torch.save(info, f"{path}/info.pth")
+
+        # Snapshot a separate "best" checkpoint when the 100-episode rolling
+        # mean reward improves. Gated on a full window so we don't lock in
+        # an early-luck spike. Latest checkpoint above is still overwritten
+        # every cycle for vanilla resume; this is purely additive.
+        ma_buf = self.episode_data["moving_avg_reward"]
+        if len(ma_buf) >= ma_buf.maxlen:
+            current_ma = float(np.mean(ma_buf))
+            if current_ma > self.best_reward:
+                self.best_reward = current_ma
+                best_path = os.path.join(path, "best")
+                os.makedirs(best_path, exist_ok=True)
+                self.model.save(best_path)
+                torch.save(info, f"{best_path}/info.pth")
 
     def load_model(self, path):
         try:
@@ -283,6 +431,10 @@ class PPOAgent:
             # for this curriculum stage.
             self.stage_start_episode = self.episode
             print(f"Loaded checkpoint from {path}, episode {self.episode}")
+
+            scaler_state = info.get("reward_scaler")
+            if scaler_state is not None:
+                self.reward_scaler.load_state_dict(scaler_state)
 
             loaded_episode_data = info.get("episode_data", {})
             if loaded_episode_data:
@@ -307,6 +459,15 @@ class PPOAgent:
                 self.episode_data = fresh_episode_data
                 if len(self.episode_data["buttons_pressed"]) == 0:
                     self.episode_data["buttons_pressed"].append(0)
+
+            # Snapshot list lengths so plot_metrics can slice out current-stage
+            # data and render a second "current stage only" plot.
+            self.stage_data_offsets = {
+                "rewards": len(self.episode_data["episode_rewards"]),
+                "losses": len(self.episode_data["episode_losses"]),
+                "steps": len(self.episode_data["episode_lengths"]),
+                "entropies": len(self.episode_data["episode_entropies"]),
+            }
 
         except FileNotFoundError:
             print(f"No checkpoint found at {path}, starting from scratch.")
