@@ -43,6 +43,14 @@ class RAMManagement:
         self.collision_left = 0xC2FC
         self.collision_right = 0xC2FD
 
+        # Priority 1 raw features
+        self.battle_type = 0xD22D
+        self.johto_badges = 0xD857
+        self.player_state = 0xD95D
+        self.key_items_count = 0xD8BC
+        self.game_hour = 0xD4B7
+        self.bgm_id = 0xC2A9
+
     def get_memory_value(self, address):
         return self.pyboy.memory[address]
 
@@ -88,7 +96,7 @@ class RAMManagement:
             total_level += level
             total_hp += hp
             total_exp += exp
-        return int(total_level), int(total_hp), int(total_exp)
+        return int(num_pokemon), int(total_level), int(total_hp), int(total_exp)
 
     def get_pokedex_seen(self):
         start_address, end_address = self.pokedex_seen
@@ -112,6 +120,24 @@ class RAMManagement:
 
     def get_map_num(self):
         return self.get_memory_value(self.map_number)
+
+    def get_battle_type(self):
+        return self.get_memory_value(self.battle_type)
+
+    def get_johto_badges(self):
+        return self.get_memory_value(self.johto_badges)
+
+    def get_player_state(self):
+        return self.get_memory_value(self.player_state)
+
+    def get_key_items_count(self):
+        return self.get_memory_value(self.key_items_count)
+
+    def get_game_hour(self):
+        return self.get_memory_value(self.game_hour)
+
+    def get_bgm_id(self):
+        return self.get_memory_value(self.bgm_id)
 
     def get_story_flags(self):
         """Return the 256-byte story-flag region as a uint8 ndarray.
@@ -157,6 +183,7 @@ class RAMManagement:
 
     def get_variables(self):
         x, y = self.get_XY()
+        story_flags = self.get_story_flags()
         return {
             "money": self.get_player_money(),
             "X": x,
@@ -172,5 +199,11 @@ class RAMManagement:
             "collision_up": self.get_memory_value(self.collision_up),
             "collision_left": self.get_memory_value(self.collision_left),
             "collision_right": self.get_memory_value(self.collision_right),
-            "story_flags": self.get_story_flags(),
+            "story_flags": story_flags,
+            "battle_type": self.get_battle_type(),
+            "johto_badges": self.get_johto_badges(),
+            "player_state": self.get_player_state(),
+            "key_items_count": self.get_key_items_count(),
+            "game_hour": self.get_game_hour(),
+            "bgm_id": self.get_bgm_id(),
         }

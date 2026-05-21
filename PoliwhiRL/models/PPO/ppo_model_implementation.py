@@ -21,6 +21,10 @@ class PPOModel:
         self.entropy_coef = self.config["ppo_entropy_coef"]
         self.entropy_decay = self.config["ppo_entropy_coef_decay"]
         self.entropy_min = self.config["ppo_entropy_coef_min"]
+        # Offset subtracted from the episode counter before decay so that
+        # plateau-triggered resets can "rewind" the schedule and boost
+        # exploration without permanently changing the base coefficient.
+        self._entropy_reset_offset = 0
         self.clip_value_loss = self.config.get("ppo_clip_value_loss", True)
 
         self._initialize_networks()
@@ -28,10 +32,14 @@ class PPOModel:
 
     def _initialize_networks(self):
         ram_dim = int(self.config["ram_obs_dim"])
+        d_ram = int(self.config.get("d_ram", 64))
+        mem_len = int(self.config.get("mem_len", 64))
         self.actor_critic = PPOTransformer(
             self.input_shape,
             self.action_size,
             ram_dim=ram_dim,
+            d_ram=d_ram,
+            mem_len=mem_len,
         ).to(self.device)
 
     def _initialize_optimizers(self):
@@ -89,7 +97,23 @@ class PPOModel:
         return loss.item(), approx_kl
 
     def _get_entropy_coef(self, episode):
-        return max(self.entropy_coef * self.entropy_decay**episode, self.entropy_min)
+        # Linear decay from initial to min over the planned budget, with an
+        # offset that lets plateau detection "rewind" part of the schedule.
+        total = self.config.get("ppo_entropy_anneal_steps",
+                                self.config.get("num_rollouts", 1))
+        effective_ep = max(0, episode - self._entropy_reset_offset)
+        progress = min(effective_ep / max(total, 1), 1.0)
+        return self.entropy_coef * (1 - progress) + self.entropy_min * progress
+
+    def set_entropy_offset(self, offset):
+        """Rewind the entropy schedule by setting an episode offset.
+
+        The effective episode used for decay becomes (episode - offset),
+        so a larger offset means the schedule is further back and entropy
+        is higher. Call this when plateau detection fires to inject a
+        temporary exploration boost.
+        """
+        self._entropy_reset_offset = offset
 
     def _compute_ppo_losses(self, data, episode):
         use_gae = self.config.get("ppo_gae_lambda", 0) > 0

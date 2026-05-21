@@ -21,5 +21,8 @@
     "all_goals_bonus": 500,
     "step_penalty": -1,
     "require_sequential": false,
-    "checkpoint_goals": [3, 6]
+    "checkpoint_goals": [3, 6],
+    "party_level_reward": 0,
+    "party_exp_reward": 0,
+    "party_reward_check_battle": false
 }

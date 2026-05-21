@@ -2,7 +2,9 @@
 
 ## Overview
 
-PPO training for Pokémon Crystal (Game Boy Color) via the PyBoy emulator. The policy sees both the **screen image** and a **normalised RAM vector** (position, party state, current goal target, exploration summary) and chooses one of nine discrete button presses per step. Rewards come from configurable sequential location goals plus exploration and step penalties. Both single-environment and vectorised multi-process training are supported, with a per-worker save-state pool for curriculum mixing.
+PPO training for Pokémon Crystal (Game Boy Color) via the PyBoy emulator. The policy sees both the **screen image** and a **normalised RAM vector** (position, party state, current goal target, exploration summary) and chooses one of nine discrete button presses per step. Rewards come from configurable sequential location goals plus exploration, step penalties, and party progress bonuses. Both single-environment and vectorised multi-process training are supported, with a per-worker save-state pool for curriculum mixing.
+
+**Current status:** Stages 1–2 solved. Stage 3 collapsed mid-training (entropy floor + curriculum jump). Stage 4 structurally misconfigured (unreachable target). See [`model_status.md`](./model_status.md) for full evaluation and recommended fixes.
 
 **Architecture:**
 ```
@@ -43,7 +45,8 @@ PoliwhiRL/
 │   ├── ppo_storage.py                   # Single-env rollout buffer (images + RAM)
 │   └── vec_ppo_storage.py               # (T, N, ...) rollout buffer with sliding-window emission
 ├── explorer/                            # Manual/random data collection (separate from PPO)
-├── reward_evaluator/                    # Predefined-action evaluation tool
+├── reward_evaluation/                   # Predefined-action evaluation tool
+├── evaluator/                           # Inference-only model runner (greedy playthrough)
 └── utils/
     ├── running_stats.py                 # RunningMeanStd + RewardScaler for return normalisation
     └── visuals.py                       # plot_metrics (with per-state summaries), record_step
@@ -57,10 +60,10 @@ configs/
 │   ├── reward_settings.json             # Default goal layout and reward magnitudes
 │   ├── outputs_settings.json            # Output paths
 │   └── rom_settings.json                # ROM and start-state paths
-├── stages/{first,second,third}.json     # Curriculum stages, extending curriculum_base.json
-├── fourth_steps.json                    # Stage 4: multi-state pool + softer step penalty
+├── stages/{first,second,third,fourth}.json     # Curriculum stages, extending curriculum_base.json
 ├── explore.json                         # Manual/random data collection mode
-└── evaluate_reward_system.json          # Reward-evaluation mode
+├── evaluate_reward_system.json          # Reward-evaluation mode (model="reward_eval")
+└── inference.json                       # Inference-only model runner (model="inference")
 
 tests/
 ├── test_PPO.py                          # Model init, losses, GAE/returns, bootstrap, KL
@@ -78,7 +81,88 @@ tests/
 
 ---
 
-## Three Modes
+## Step Semantics — what "one step" actually means
+
+**One step = one button press = one model decision.** Frame timing is handled inside the env; the agent never sees frames.
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `frames_per_action` | 90 | Frames advanced per `env.step()` (~1.5s at 60 fps) |
+| `button_hold_frames` | 15 | Frames the button is held; remaining 75 frames are no-input so animations/dialogue advance |
+
+Implications for everything else:
+
+- `episode_length=256` means **256 button presses**, not 256 frames. Wall-clock per episode ≈ `256 × 1.5s ≈ 6.5 min` of in-game time.
+- Most steps inside the player's house are spent **mashing A through dialogue / cutscenes**, not navigating. Goal-to-goal distance in tiles is ~3–7 for the in-house segment; the 300-step total to "got first pokemon" is dominated by dialogue, not movement.
+- Wild encounters and trainer battles are also navigated one button press at a time. The policy must learn to read `battle_type` (RAM index 21) and switch behavior — battles look nothing like the overworld.
+- `start`/`select` cost `button_penalty = -5` per press (fixed in `rewards.py`).
+
+---
+
+## Goal & reward semantics — exact rules
+
+The reward system has three knobs that interact non-obviously. **Read this before touching curriculum configs.**
+
+### Goal lists vs `N_goals_target`
+
+| Config field | Meaning |
+|---|---|
+| `location_goals` | A list of *acceptable* goal positions. Each entry is itself a list of `[x, y, map_num, room]` options — hitting *any* option counts as that goal. Matching uses `[x, y, map_num]` (ignores `room` and `map_bank`). |
+| `pokedex_goals` | `{"seen": N}` and/or `{"owned": N}` — fires once when `pokedex_*` count reaches `N`. Counts toward `N_goals` like location goals. |
+| `N_goals_target` | The terminator. When `N_goals >= N_goals_target` and `break_on_goal=true`, the episode ends. **This is independent of `len(location_goals)`** — a target lower than the list length means later goals never train; a target higher than `list + pokedex` is unreachable and the episode times out on `episode_length` instead. |
+| `require_sequential` | If true (default), goals must be hit in order. Hitting a later goal early doesn't count. |
+| `checkpoint_goals` | List of `N_goals` values that trigger an extra `checkpoint_bonus`. Default `[2, 4, 6]`. |
+| `break_on_goal` | Terminate the episode on reaching `N_goals_target`. |
+
+### Per-step reward formula
+
+```
+r = goal_hit_reward                           # 0 or goal_reward + bonuses on tile hit
+  + pokedex_seen_reward (50) if seen ++        # auto, fires once per seen (hardcoded in rewards.py)
+  + pokedex_owned_reward (150) if owned ++     # auto, fires once per owned (hardcoded in rewards.py)
+  + pokedex_goal_bonus                         # additional all_goals_bonus when pokedex_goal threshold crossed
+  + party_level_reward × Δlevel                # configurable; default 10 in curriculum_base, 0 elsewhere
+  + party_exp_reward × Δexp                    # configurable; default 0.01 in curriculum_base, 0 elsewhere
+  + exploration_reward                         # if (x, y, map_num) novel this episode
+  + step_penalty                               # if punish_steps
+  + button_penalty (-5)                        # if action ∈ {start, select}
+clipped to [-1000, 1000]
+```
+
+**Party progress rewards** (`_check_party_progress`): tracks the party's total level and EXP between steps. Rewards increases (never decreases — levels/EXP only go up). Seeded from step 0 of each training episode (`start_new_episode()` resets `_prev_party_level` / `_prev_party_exp`) so replay transitions don't produce phantom rewards. Configurable via `party_level_reward` and `party_exp_reward`; defaults to 0 (disabled) in reward_settings.json, enabled at `10` / `0.01` in curriculum_base.json.
+
+A goal hit yields `goal_reward + sequence_bonus (+ checkpoint_bonus) (+ all_goals_bonus + early_completion_bonus on final)`.
+
+### The current curriculum's goal list (decoded)
+
+From `Reward Documentation/rewards.md` — these are the seven location goals used across stages:
+
+| # | `[x, y, map]` | What it represents | Typical distance from prior goal |
+|---|---|---|---|
+| 1 | `[9, 1, 6]` | Downstairs entry tile in player's house | start (~0) |
+| 2 | `[8\|9, 4, 6]` | Talking-to-mother position | ~3 tiles |
+| 3 | `[8\|9, 5, 6]` | One tile past mother (commits to leaving) | 1 tile |
+| 4 | `[13, 6, 4]` | First step outside on the town map | ~5 tiles + door warp |
+| 5 | `[6, 4, 4]` | Professor's lab door | ~7 tiles |
+| 6 | `[59, 8\|9, 3]` | Entry to Route 29 (east edge) | many tiles + lab interior + pokemon cutscene |
+| 7 | `[31, 13, 3]` | Tricky gap on Route 29 | ~30 tiles on the route |
+
+Stage 3 also adds `pokedex_goals: {"owned": 1}` — fires when the agent receives the starter inside the lab. Counts as one goal, slotted in by order of occurrence (so it lands between goals 5 and 6 chronologically).
+
+### Curriculum stages — what each stage actually trains
+
+| Stage | Goals trained | New content vs prior stage | Notes |
+|---|---|---|---|
+| 1 (`first.json`) | 1–2 (`N_goals_target=2`) | from-scratch | Trains the "down stairs → mother" sequence. No checkpoint to load. **SOLVED** (97% success). |
+| 2 (`second.json`) | 1–4 (`N_goals_target=4`) | adds "exit past mother → step outside" | Loads stage 1 best. Action replay from stage 1. **SOLVED** (100% success). |
+| 3 (`third.json`) | 1–7 + pokedex owned (`N_goals_target=8`) | adds "walk to lab door, get pokemon (via pokedex), exit lab, enter Route 29" | The hardest stage by far. **COLLAPSED** at ep ~4050 — entropy floor + distance shaping neutralised + curriculum jump too large. See model_status.md. |
+| 4 (`fourth.json`) | 1–7 + pokedex owned+seen (`N_goals_target=10`) | vec mode (num_envs=16), longer episodes | **Misconfigured** — target unreachable (max 9 goals possible). 100% episodes truncated. See model_status.md. |
+
+`action_replay_paths` chains stages: stage N's training output writes `actions.steps` + `top_*.steps`, stage N+1 replays those before each training episode so the policy only has to learn the *terminal segment* of the cumulative curriculum.
+
+---
+
+## Modes
 
 Dispatched in `main.py` based on `config["model"]`:
 
@@ -86,7 +170,8 @@ Dispatched in `main.py` based on `config["model"]`:
 |------|-------|---------|
 | Train | `"PPO"` | PPO training (single-env or vec, decided by `num_envs`) |
 | Explore | `"explore"` | Manual or random data collection to SQLite DB |
-| Evaluate | `"evaluate"` | Run predefined action sequences, evaluate reward function |
+| Evaluate | `"reward_eval"` | Run predefined action sequences, evaluate reward function |
+| Inference | `"inference"` | Greedy playthrough of trained model with PNG recording |
 
 ---
 
@@ -125,7 +210,7 @@ obs = {
 
 The order is defined in `RAM_FEATURE_KEYS` (in `environment/gym_env.py`) and built by `_build_ram_vector`. **Treat the order as a contract** — changing it invalidates trained models. To extend, append new keys at the end. The model reads `ram_dim` from config at startup; nothing else changes.
 
-Current vector width: **`RAM_OBS_DIM = 277`** (21 base + 256 story-flag bytes).
+Current vector width: **`RAM_OBS_DIM = 303`** (27 base + 20 derived flags + 256 story-flag bytes).
 
 | index | feature | source | scaling |
 |---|---|---|---|
@@ -138,11 +223,47 @@ Current vector width: **`RAM_OBS_DIM = 277`** (21 base + 256 story-flag bytes).
 | 16–18 | target_x, target_y, target_map | Rewards.get_current_target_vector() | / 255 |
 | 19 | has_active_target | Rewards | 0 or 1 |
 | 20 | explored_tile_count | len(Rewards.explored_tiles) | log1p / 6 |
-| 21–276 | story_flag_byte_000..255 | RAM 0xDA72–0xDB71 | / 255 |
+| 21 | battle_type | RAM `D22D` (0=none, 1=wild, 2=trainer) | / 255 |
+| 22 | johto_badges | RAM `D857` (8-bit badge bitmask) | / 255 |
+| 23 | player_state | RAM `D95D` (0=walk, 1=bike, 2=skate, 4=surf) | / 255 |
+| 24 | key_items_count | RAM `D8BC` | / 25 |
+| 25 | game_hour | RAM `D4B7` (0–23) | / 255 |
+| 26 | bgm_id | RAM `C2A9` (current BGM track) | / 255 |
+| 27–46 | derived flags (see table below) | story-flag bit extraction | 0 or 1 |
+| 47–302 | story_flag_byte_000..255 | RAM 0xDA72–0xDB71 | / 255 |
+
+### Derived flags (indices 27–46)
+
+Individual bits extracted from the story-flag bytes for immediate policy access. Each is 0 (flag clear) or 1 (flag set).
+
+| index | feature | story flag | meaning |
+|---|---|---|---|
+| 27 | has_starter | 25 | Received Pokemon from Elm (Route 29 opens) |
+| 28 | has_cut | 16 | HM01 Cut acquired |
+| 29 | has_surf | 18 | HM03 Surf acquired |
+| 30 | has_strength | 19 | HM04 Strength acquired |
+| 31 | has_flash | 20 | HM05 Flash acquired |
+| 32 | farfetchd_herded | 43 | Farfetch'd quest done, Headbutt available |
+| 33 | sudowoodo_defeated | 44 | Route 36 to Ecruteak open |
+| 34 | slowpoke_well_cleared | 38 | Team Rocket cleared from Slowpoke Well |
+| 35 | rocket_cleared_hideout | 53 | Goldenrod Hideout cleared |
+| 36 | rocket_cleared_radio | 52 | Radio Tower cleared |
+| 37 | whitney_defeated | 41 | Gym 3 beaten |
+| 38 | ilex_gate_clear | 1611 | Lass no longer blocks Ilex Forest gate |
+| 39 | route_43_gate_clear | 1625 | Rocket grunts cleared from Route 43 gate |
+| 40 | mahogany_east_clear | 1631 | Pokefan no longer blocks Mahogany east exit |
+| 41 | mahogany_gym_clear | 1632 | Pokefan no longer blocks Mahogany Gym |
+| 42 | blackthorn_gym_clear | 1646 | Super Nerd no longer blocks Blackthorn Gym |
+| 43 | radio_tower_stairs_clear | 1587 | Blackbelt no longer blocks Radio Tower stairs |
+| 44 | dragons_den_clear | 1655 | Gramps no longer blocks Dragon's Den |
+| 45 | snorlax_moved | 1661 | Snorlax defeated/moved from route |
+| 46 | goldenrod_civilians_returned | 1568 | Civilians returned to Goldenrod (post-Rocket) |
 
 **Goal-conditioning (indices 16–19)** is the lever that solves narrative backtracking: when the curriculum advances to a new goal whose coordinates differ from the last one, the policy's input changes accordingly, so the same visual state can map to a different action depending on what the agent is currently targeting.
 
-**Story flags (indices 21–276)** are the 256-byte region at `0xDA72–0xDB71` — each byte holds 8 individual story flags as a bitfield (2048 flags total). We expose the bytes raw (normalised /255) rather than expanding to 2048 bits; the policy learns the relevant byte-value patterns. These give the model awareness of game-progress milestones (received starter, beat Falkner, etc.) that the screen image alone doesn't convey.
+**Battle type (index 21)** is the single highest-impact addition: it tells the policy whether it's exploring (0), in a wild battle (1), or in a trainer battle (2). This prevents the policy from pressing random navigation buttons during battles.
+
+**Story flags (indices 47–302)** are the 256-byte region at `0xDA72–0xDB71` — each byte holds 8 individual story flags as a bitfield (2048 flags total). We expose the bytes raw (normalised /255) rather than expanding to 2048 bits; the policy learns the relevant byte-value patterns. These give the model awareness of game-progress milestones (received starter, beat Falkner, etc.) that the screen image alone doesn't convey.
 
 > **Read-only.** We never write to this region. The 8-byte GameShark-style write quirk is irrelevant to us.
 
@@ -198,7 +319,7 @@ The shared iterator in `agents/PPO/_minibatch.py` shuffles the (W × N) flat bat
 ```
 x_image (B, T, C, H, W) ─→ GameBoyCNN ────────→ (B*T, d_model=128)   ┐
                                                                      ├─ concat → Linear(160, 128) → (B*T, 128)
-x_ram   (B, T, ram_dim) ─→ RAMEncoder (MLP) ──→ (B*T, d_ram=32)      ┘
+x_ram   (B, T, ram_dim) ─→ RAMEncoder (MLP) ──→ (B*T, d_ram=64)      ┘
                                                                               ↓
                                             PositionalEncoding (sinusoidal, max_len=1000)
                                                                               ↓
@@ -210,7 +331,7 @@ x_ram   (B, T, ram_dim) ─→ RAMEncoder (MLP) ──→ (B*T, d_ram=32)      �
                                                           └─ fc_critic → (B, 1)
 ```
 
-Transformer-XL memory is **caller-managed**: `init_mems(batch_size, device)` returns a per-layer list of `(B, mem_len=16, d_model)` zero tensors. Each forward pass receives mems and returns updated mems (detached). The agent stores the **input** mems at each transition so PPO replay reproduces the exact attention context.
+Transformer-XL memory is **caller-managed**: `init_mems(batch_size, device)` returns a per-layer list of `(B, mem_len=64, d_model)` zero tensors. Each forward pass receives mems and returns updated mems (detached). The agent stores the **input** mems at each transition so PPO replay reproduces the exact attention context.
 
 ### Normalisation choice
 `GameBoyBlock` uses `GroupNorm` (groups = min(8, channels) with auto-fallback for non-divisible channel counts) instead of BatchNorm. BatchNorm is a known PPO pitfall: rollout-time batches (size N) differ from update-time batches (size W×N), and running stats accumulate across mismatched distributions, silently biasing the policy. GroupNorm is batch-size-independent.
@@ -235,12 +356,11 @@ The user config supports an **`"extends": "../path.json"`** key (resolved relati
 | `num_envs` | `4` | Parallel envs. `>1` uses `VecPPOAgent`. | Scale with cores; common values 4–32. |
 | `num_rollouts` | `12` | **Training budget.** Single-env: outer-loop iterations ≈ episodes run. Vec: number of (T × N) collect+update cycles. | Total env steps = `num_rollouts × ppo_update_frequency × num_envs`. |
 | `episode_length` | `50` | Per-episode step cap before forced done. | Tune to goal depth. |
-| `sequence_length` | `8` | Transformer input sequence length per forward pass. | Rarely. |
+| `sequence_length` | `16` (core_settings) / `8` (curriculum_base) | Transformer input sequence length per forward pass. | curriculum_base overrides to 8; restore to 16 for stages with long navigation segments (see model_status.md). |
 | `record_frequency` | `100` | Save image dumps every N completed episodes (vec: env 0 only). | Bigger = less disk, less visibility. |
 | `state_paths` | `[]` | Save-state pool (list of paths). If empty, falls back to single `state_path`. | Add entries to mix in mid-game starts. |
-| `state_cycle_strategy` | `"round_robin"` | How envs pick their next save-state on auto-reset. `"round_robin"` / `"random"` / `"none"`. | `"none"` to pin each env to its initial state. |
-| `action_replay_paths` | `[]` | Action-replay pool (list of `.steps` paths). Each env replays its assigned sequence after every reset, walking Rewards forward to a curriculum-aligned start. | Set for stage-to-stage continuation. |
-| `action_replay_cycle_strategy` | `"round_robin"` | How envs pick their next replay on auto-reset. Same strategies as state cycling. | `"none"` to pin each env to its initial replay. |
+| `state_cycle_strategy` | `"random"` | How envs pick their next save-state on auto-reset. `"random"` / `"none"`. | `"none"` to pin each env to its initial state. |
+| `action_replay_paths` | `[]` | Action-replay pool (list of `.steps` paths). Workers sample uniformly from the pool on each reset, applying a random prefix. | Set for stage-to-stage continuation. |
 | `ppo_update_frequency` | `128` | Transitions per env per PPO update (rollout length T). Larger → bigger batch, fewer mid-episode truncations. | `128`–`256`. With long episodes avoid tiny values. |
 | `ppo_epochs` | `3` | PPO update passes per batch. KL early-stop usually bounds this. | `3`–`8`. |
 | `ppo_minibatch_size` | `128` | Shuffled minibatch size. `null` or `0` disables minibatching. | Scale with effective batch (W × N). |
@@ -267,22 +387,17 @@ The user config supports an **`"extends": "../path.json"`** key (resolved relati
 | `exploration_reward` | `0.0` | Per first-visit `(x, y, map)` tile. | Small values (`1`–`3`) for sparse-goal stages. |
 | `step_penalty` | `-1` | Per-step penalty when `punish_steps`. | Scale to episode_length. Per-episode worst case `step_penalty × episode_length` should stay smaller than a goal reward. |
 | `button_penalty` | `-5` (fixed) | Penalty for start/select presses. | Not configurable. |
+| `party_level_reward` | `0` | Per-level-increase reward for the party's total level. | Configurable; curriculum_base sets `10`. Provides dense signal during battles without creating a navigation gradient. |
+| `party_exp_reward` | `0` | Per-EXP-point reward for the party's total EXP. | Configurable; curriculum_base sets `0.01`. Seeded from step 0 of each training episode to avoid phantom rewards after replay. |
+| `distance_shaping_coef` | `0` | Potential-based distance-to-goal shaping coefficient. | curriculum_base sets `0.5`. Must exceed `\|step_penalty\|` to produce net-positive signal for correct movement (e.g. `1.5` with penalty `-0.5`). |
 
 ---
 
 ## Reward System
 
-`PoliwhiRL/environment/rewards.py`. Each step's reward is the clipped sum of:
+`PoliwhiRL/environment/rewards.py`. See **Goal & reward semantics** above for the formula, list-vs-target rules, and the actual curriculum goal list.
 
-1. **Goal achievement** (sequential by default): `goal_reward + sequence_bonus + (checkpoint_bonus if in checkpoint_goals) + (all_goals_bonus + early_completion_bonus if final)`. Episode terminates if `break_on_goal` and all goals hit.
-2. **Pokedex updates** (seen / owned).
-3. **Exploration**: `exploration_reward` for each first-visit `(x, y, map_num)` tile this episode.
-4. **Step penalty** (if `punish_steps`).
-5. **Button penalty** for `start`/`select`.
-
-All summed, clipped to `[-1000, 1000]`, returned as `float32`.
-
-**Goals** are configured as `location_goals: [[ [x, y, map, room], ... ], ... ]` — each outer entry is one ordered goal, each inner list is a set of acceptable coordinates for that goal. Matching uses `[x, y, map_num]`. `Rewards.get_current_target_vector()` exposes the active goal's primary `[x, y, map]` and a `has_active_target` flag — used by the env to populate indices 16–19 of the RAM observation.
+`Rewards.get_current_target_vector()` exposes the active goal's primary `[x, y, map]` and a `has_active_target` flag — used by the env to populate indices 16–19 of the RAM observation, which is how the policy is goal-conditioned.
 
 ---
 
@@ -293,7 +408,7 @@ All summed, clipped to `[-1000, 1000]`, returned as `float32`.
 **Per-episode cycling** is driven by the agent (vec mode only). After an env completes an episode:
 
 1. Record the metric tagged with the state that was just used.
-2. Pick the next state for that env according to `state_cycle_strategy`: `round_robin` advances cyclically; `random` uniform-samples from the pool; `none` keeps the assignment fixed.
+2. Pick the next state for that env according to `state_cycle_strategy`: `random` uniform-samples from the pool; `none` keeps the assignment fixed.
 3. Send the new state to the worker via `set_env_state_index`. The worker queues it and applies it on its **next auto-reset** — so the change takes effect one episode later than the cycling decision. The agent tracks this with `env_state_indices` (currently running) and `env_pending_state_indices` (queued).
 
 ### Per-state metrics
@@ -337,13 +452,12 @@ The training agent never sees the replay transitions — they're not stored in t
 
 ### Replay pool
 
-Mirrors the save-state pool exactly:
+All trajectories from every configured `.steps` file are flattened into a single pool. Each worker independently samples on every (auto-)reset:
 
-- `config["action_replay_paths"]`: list of `.steps` paths. Round-robin assigned to workers at init.
-- `config["action_replay_cycle_strategy"]`: `"round_robin"` (default), `"random"`, or `"none"`.
-- Cycling uses the same lag-by-one pattern as state cycling: `env_replay_indices[i]` tracks the currently-running replay; `env_pending_replay_indices[i]` is queued for the next auto-reset.
+- **Trajectory**: chosen uniformly from the pool.
+- **Cutoff**: chosen with a quadratic bias toward later indices, so the policy starts training closer to the curriculum endpoint. A trajectory of length L has P(k) ∝ (k+1) for cutoff k in [0, L].
 
-State pool and replay pool are independent — a worker uses `state_paths[state_index]` as its base PyBoy load, then walks forward through `action_replay_paths[replay_index]`. Both pools can mix sizes/lengths.
+There is no per-env cycling state — diversity comes from the random sampling itself. Per-worker RNGs are seeded per `env_idx` for reproducibility.
 
 ### Best-actions dump
 
@@ -357,10 +471,6 @@ Both agents track `best_episode_reward` (the highest single-episode reward seen 
 ```
 
 The replay file is overwritten each time a new best is set. If you want to preserve historical best paths, copy them out manually.
-
-### Per-replay metrics
-
-Like per-state tagging: `episode_data["episode_replay_indices"]` is parallel to `episode_rewards`, recording the replay-pool index each committed episode used (`-1` when no replay was active). The training-metrics JSON includes this list. Combined with `episode_state_indices`, you can slice performance by (state, replay) pair for offline analysis.
 
 ### Trade-offs
 
@@ -436,8 +546,8 @@ python main.py --use_config configs/stages/first.json
 python main.py --use_config configs/stages/second.json
 python main.py --use_config configs/stages/third.json
 
-# Stage 4 with multi-state pool
-python main.py --use_config configs/fourth_steps.json
+# Stage 4 (vec mode, num_envs=16)
+python main.py --use_config configs/stages/fourth.json
 
 # Override anything via CLI
 python main.py --num_envs 16 --num_rollouts 1000 --ppo_update_frequency 256
@@ -471,7 +581,7 @@ These are the invariants new code has to maintain:
 - **`num_episodes` is gone.** The training budget is `num_rollouts` everywhere. `self.episode` is still a running counter for entropy schedule, recording cadence, and metrics — never a stopping criterion.
 - **Vec env workers are torch-free.** Don't import torch inside the worker — it inflates startup and breaks on some platforms.
 - **Save-state pool indexing:** the agent's `env_state_indices[i]` always reflects the state currently running in env i. Cycling updates `env_pending_state_indices[i]` first; when the next done occurs, the agent promotes `pending → running` and tags that episode's metric. This lag-by-one is intentional and accurate.
-- **Action-replay pool indexing:** mirrors save-state cycling exactly — `env_replay_indices[i]` is the currently-running replay, `env_pending_replay_indices[i]` is queued. Same lag-by-one promotion on done. The agent never trains on replay transitions; they're a pre-episode warm-up only.
+- **Action-replay pool:** no per-env cycling — each worker samples (trajectory, cutoff) independently on every reset. Cutoff is quadratically biased toward later indices. The agent never trains on replay transitions; they're a pre-episode warm-up only.
 - **`.steps` file format:** plain text, one int per line, `#` comments and blanks tolerated. Always overwritten at `<Checkpoints>/actions.steps` when a new single-episode reward record is set — copy out manually if you need history.
 - **Story flags are read-only.** We extract 0xDA72–0xDB71 (256 bytes) into the RAM vector. Never write to this region.
 - **Reward scaler:** `RewardScaler.observe(rewards, dones)` must be called after every env step in both modes. State is persisted in `info.pth`.
