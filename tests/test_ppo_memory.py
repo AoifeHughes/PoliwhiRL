@@ -5,7 +5,6 @@ import torch
 
 from PoliwhiRL.replay import PPOMemory
 
-
 RAM_DIM = 5
 
 

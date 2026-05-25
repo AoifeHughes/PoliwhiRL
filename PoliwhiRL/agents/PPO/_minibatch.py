@@ -10,9 +10,9 @@ Precomputation is intentional: GAE/returns must use the actual rollout
 ordering (with the V(s_{T+1}) bootstrap on the genuine tail). Shuffling
 *before* GAE would scramble that ordering.
 """
+
 import numpy as np
 import torch
-
 
 # Keys consumed by PPOModel._compute_ppo_losses. Anything else in the flat
 # data dict (e.g. raw `rewards`, `dones`, `next_states`) is unused at update
