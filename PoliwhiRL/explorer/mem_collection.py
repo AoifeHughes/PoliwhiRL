@@ -49,8 +49,7 @@ def setup_database(db_path):
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute(
-        """
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS memory_data (
         id INTEGER PRIMARY KEY,
         image BLOB,
@@ -72,8 +71,7 @@ def setup_database(db_path):
         action INTEGER,
         episode_id INTEGER
         )
-    """
-    )
+    """)
     return conn, cursor
 
 

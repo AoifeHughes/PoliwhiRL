@@ -4,12 +4,12 @@
 No emulator needed — these test the buffer's shape/slicing logic against
 synthetic data.
 """
+
 import unittest
 import numpy as np
 import torch
 
 from PoliwhiRL.replay import VecPPOMemory
-
 
 RAM_DIM = 4
 
@@ -131,9 +131,7 @@ class TestVecPPOMemory(unittest.TestCase):
                 )
             )
             self.assertTrue(
-                np.allclose(
-                    data["rewards"][w].numpy(), all_rewards[raw_idx], atol=1e-6
-                )
+                np.allclose(data["rewards"][w].numpy(), all_rewards[raw_idx], atol=1e-6)
             )
             self.assertTrue(
                 np.allclose(
