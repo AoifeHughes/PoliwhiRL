@@ -3,6 +3,7 @@
 vec training step. These spawn real PyBoy instances, so they require the
 ROM and state files to be present in emu_files/.
 """
+
 import unittest
 import tempfile
 import shutil
@@ -121,6 +122,7 @@ class TestVecPPOAgentSmoke(unittest.TestCase):
 
     def test_single_rollout_updates_model(self):
         from PoliwhiRL.environment import PyBoyEnvironment
+
         env = PyBoyEnvironment(self.config)
         try:
             state_shape = env.output_shape()
@@ -130,7 +132,9 @@ class TestVecPPOAgentSmoke(unittest.TestCase):
 
         agent = VecPPOAgent(state_shape, num_actions, self.config)
 
-        params_before = [p.detach().clone() for p in agent.model.actor_critic.parameters()]
+        params_before = [
+            p.detach().clone() for p in agent.model.actor_critic.parameters()
+        ]
         agent.train_agent()
         params_after = list(agent.model.actor_critic.parameters())
 
