@@ -10,6 +10,7 @@ Only `var` is used for scaling; we do not subtract the mean (zero reward
 should stay zero — the step penalty and goal reward have distinct
 semantic meanings around zero).
 """
+
 import numpy as np
 
 

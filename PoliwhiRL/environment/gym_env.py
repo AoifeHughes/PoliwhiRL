@@ -14,7 +14,6 @@ from PoliwhiRL.utils.visuals import record_step
 from .rewards import Rewards
 from pyboy import PyBoy
 
-
 # Stable ordering for the RAM observation vector. Treat this as a contract:
 # changing the order or removing an entry will invalidate trained models.
 # New features should be appended to the end. The model's RAM encoder reads
