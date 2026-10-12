@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Tests for RunningMeanStd and RewardScaler (no emulator needed)."""
+
 import unittest
 import numpy as np
 
